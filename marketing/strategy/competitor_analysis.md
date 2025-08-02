@@ -1,1 +1,0 @@
-# competitor_analysis.md
