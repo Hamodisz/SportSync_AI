@@ -87,7 +87,7 @@ def analyze_silent_drivers_combined(answers: dict, questions: list, lang: str = 
     ]
 
     for q in questions:
-        if not q.get("layer_z", False):
+       if isinstance(q, dict) and not q.get("layer_z", False):
             continue
 
         q_key = q["key"]
