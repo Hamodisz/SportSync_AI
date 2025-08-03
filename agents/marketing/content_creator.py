@@ -7,7 +7,7 @@ from analysis.analysis_layers_101_141 import apply_layers_101_141
 from analysis.layer_z_engine import analyze_silent_drivers_combined as analyze_silent_drivers
 from analysis.user_analysis import summarize_traits
 from agents.marketing.content_keys_engine import get_content_hooks  # ✅
-from core.brand_signature import sign_output
+from core.brand_signature import add_brand_signature  # ✅
 
 def generate_content(user_data, lang="ar"):
     """
@@ -66,6 +66,7 @@ def build_social_post(hook, summary, lang="ar"):
 
 #SportSyncAI #HumanDriven
         """.strip()
+
 
 
 
