@@ -1,1 +1,132 @@
-# english_questions.json
+[
+  {
+    "key": "q1",
+    "question_en": "What activities make you completely lose track of time?",
+    "multiple_choices": ["Playing", "Coding or designing", "Reading or meditating", "Deep conversations"],
+    "allow_custom": true,
+    "layer_z": true
+  },
+  {
+    "key": "q2",
+    "question_en": "When facing a new challenge, what do you prefer?",
+    "multiple_choices": ["Understand it before starting", "Jump in directly", "Watch someone else first"],
+    "allow_custom": true,
+    "layer_z": true
+  },
+  {
+    "key": "q3",
+    "question_en": "What usually makes you quit a workout or hobby?",
+    "multiple_choices": ["Boredom", "No visible results", "Repetition", "Lack of appreciation"],
+    "allow_custom": true,
+    "layer_z": true
+  },
+  {
+    "key": "q4",
+    "question_en": "If you entered a room full of tools, what would attract you first?",
+    "multiple_choices": ["Electronic device", "Something for fighting", "A book or paper", "Something mysterious"],
+    "allow_custom": true,
+    "layer_z": true
+  },
+  {
+    "key": "q5",
+    "question_en": "Do you prefer training alone or with others?",
+    "multiple_choices": ["Alone", "With a close person", "In a group", "Depends on the mood"],
+    "allow_custom": true
+  },
+  {
+    "key": "q6",
+    "question_en": "Which type of achievement makes you feel happiest?",
+    "multiple_choices": ["Private personal achievement", "Group achievement", "Small but joyful moment"],
+    "allow_custom": true,
+    "layer_z": true
+  },
+  {
+    "key": "q7",
+    "question_en": "What motivates you most?",
+    "multiple_choices": ["A tough challenge", "Progress feeling", "Encouraging words", "Music or vibes"],
+    "allow_custom": true
+  },
+  {
+    "key": "q8",
+    "question_en": "If you had an extra hour in your day, how would you spend it?",
+    "multiple_choices": ["Working out", "Learning something new", "Creating or writing", "Resting or reflecting"],
+    "allow_custom": true,
+    "layer_z": true
+  },
+  {
+    "key": "q9",
+    "question_en": "How do you react in situations that require speed or involve risk?",
+    "multiple_choices": ["I get excited", "I get anxious", "I avoid them", "I analyze before acting"],
+    "allow_custom": true,
+    "layer_z": true
+  },
+  {
+    "key": "q10",
+    "question_en": "How do you handle routines?",
+    "multiple_choices": ["I hate them", "I get used to them", "I constantly change them", "I turn them into challenges"],
+    "allow_custom": true,
+    "layer_z": true
+  },
+  {
+    "key": "q11",
+    "question_en": "What grabs your attention first in a new environment?",
+    "multiple_choices": ["Devices", "People", "Sounds", "Unusual details"],
+    "allow_custom": true
+  },
+  {
+    "key": "q12",
+    "question_en": "Do you prefer sports that involve strategy or physical movement?",
+    "multiple_choices": ["Strategy and analysis", "Movement and interaction", "A mix of both"],
+    "allow_custom": true
+  },
+  {
+    "key": "q13",
+    "question_en": "Do you like to understand things before trying them?",
+    "multiple_choices": ["Always", "Sometimes", "Rarely", "No, I prefer to try first"],
+    "allow_custom": true,
+    "layer_z": true
+  },
+  {
+    "key": "q14",
+    "question_en": "What feeling do you seek most through sports?",
+    "multiple_choices": ["Power", "Achievement", "Freedom", "Inner connection"],
+    "allow_custom": true
+  },
+  {
+    "key": "q15",
+    "question_en": "Do you prefer environments full of energy or calm and focused?",
+    "multiple_choices": ["High energy", "Calm and focused", "Balanced mix"],
+    "allow_custom": true
+  },
+  {
+    "key": "q16",
+    "question_en": "When you see a trending challenge online, what do you do?",
+    "multiple_choices": ["Save it for later", "Try it immediately", "Ignore it", "Research more"],
+    "allow_custom": true
+  },
+  {
+    "key": "q17",
+    "question_en": "What type of content do you enjoy the most?",
+    "multiple_choices": ["Games", "Science", "Music", "Stories or anime"],
+    "allow_custom": true,
+    "layer_z": true
+  },
+  {
+    "key": "q18",
+    "question_en": "What makes you buy a sports gadget?",
+    "multiple_choices": ["Its design", "Its function", "People's feedback", "Curiosity"],
+    "allow_custom": true
+  },
+  {
+    "key": "q19",
+    "question_en": "How would you rate your movement style?",
+    "multiple_choices": ["Fast and reactive", "Balanced", "Slow but precise"],
+    "allow_custom": true
+  },
+  {
+    "key": "q20",
+    "question_en": "Do you enjoy building a new skill or mastering an existing one?",
+    "multiple_choices": ["Learning something new", "Mastering what I know", "Depends on the situation"],
+    "allow_custom": true
+  }
+]
