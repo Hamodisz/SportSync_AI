@@ -1,103 +1,83 @@
-def analyze_silent_drivers_combined(answers: dict, questions: list, lang: str = "العربية") -> list:
+from analysis.analysis_layers_1_40 import apply_layers_1_40
+from analysis.analysis_layers_41_80 import apply_layers_41_80
+from analysis.analysis_layers_81_100 import apply_layers_81_100
+from analysis.analysis_layers_101_141 import apply_layers_101_141
+from analysis.layer_z_engine import analyze_silent_drivers_combined as analyze_silent_drivers
+from analysis.user_analysis import summarize_traits
+from agents.marketing.content_keys_engine import get_content_hooks
+from core.brand_signature import add_brand_signature
+
+
+def generate_content(user_data, lang="ar"):
     """
-    تحليل Layer Z لاستخراج المحركات الخفية من إجابات المستخدم،
-    بناءً على الأسئلة المعلّمة بـ "layer_z": true داخل ملف الأسئلة.
-
-    ✅ يدعم اللغة العربية والإنجليزية
-    ✅ مرن وقابل للتوسع
-    ✅ يحلل الخيارات المكتوبة أو الحرة
-
-    Returns:
-        قائمة بالمحركات الصامتة + بعض الجمل التي تفسّرها
+    توليد محتوى تعليمي تسويقي يعتمد على التحليل النفسي للمستخدم
     """
-    drivers = []
-    explanation_lines = []
+    # 🧠 جلب النص الكامل من المستخدم
+    full_text = user_data.get("full_text", "")
 
-    def translate(ar, en):
-        return ar if lang == "العربية" else en
+    # 🔍 تحليل السمات والطبقات
+    traits_1_40 = apply_layers_1_40(full_text)
+    traits_41_80 = apply_layers_41_80(full_text)
+    traits_81_100 = apply_layers_81_100(full_text)
+    traits_101_141 = apply_layers_101_141(full_text)
+    
+    # ✅ تمرير answers كـ questions إذا لم تكن موجودة
+    questions = user_data.get("answers", {})
+    silent_drivers = analyze_silent_drivers(user_data, questions)
 
-    # تعريف الكلمات المفتاحية المرتبطة بكل محرك
-    keyword_map = [
-        {
-            "label": translate("الاندماج الإبداعي", "Creative Flow"),
-            "keywords": ["برمجة", "كتابة", "رسم", "تصميم", "programming", "writing", "drawing", "design"]
-        },
-        {
-            "label": translate("الانغماس الحسي", "Sensory Immersion"),
-            "keywords": ["لعب", "جيم", "قتال", "vr", "gaming", "combat", "action"]
-        },
-        {
-            "label": translate("الهروب الذهني", "Mental Escape"),
-            "keywords": ["مشاهدة", "قراءة", "استماع", "watching", "reading", "listening"]
-        },
-        {
-            "label": translate("القوة الذاتية", "Inner Power"),
-            "keywords": ["أنجزت", "تحدي", "achieved", "challenge"]
-        },
-        {
-            "label": translate("التمكن العقلي", "Mental Mastery"),
-            "keywords": ["حليت", "فهمت", "solved", "understood"]
-        },
-        {
-            "label": translate("النجاة والسرعة", "Survival Instinct"),
-            "keywords": ["هربت", "نجوت", "escaped", "survived"]
-        },
-        {
-            "label": translate("غريزة السيطرة", "Control Drive"),
-            "keywords": ["سلاح", "مسدس", "سيف", "gun", "weapon", "sword"]
-        },
-        {
-            "label": translate("فضول تقني", "Tech Curiosity"),
-            "keywords": ["جهاز", "تقنية", "device", "tech"]
-        },
-        {
-            "label": translate("فضول تحليلي", "Analytical Curiosity"),
-            "keywords": ["مكبر", "عدسة", "عدسات", "magnifier", "lens"]
-        },
-        {
-            "label": translate("نمط تعلّم تحليلي", "Analytical Learner"),
-            "keywords": ["أفهم", "أعرف", "understand", "learn first"]
-        },
-        {
-            "label": translate("نمط تعلّم حركي", "Kinetic Learner"),
-            "keywords": ["أجرب", "أبدأ", "أحاول", "try", "explore", "jump in"]
-        },
-        {
-            "label": translate("يكره التكرار", "Dislikes Repetition"),
-            "keywords": ["ملل", "ممل", "boring", "boredom"]
-        },
-        {
-            "label": translate("يبحث عن وضوح التقدّم", "Seeks Progress Clarity"),
-            "keywords": ["مافي هدف", "ما أحس بنتيجة", "no goal", "no result"]
-        },
-        {
-            "label": translate("يفضل اللعب الفردي", "Prefers Solo Activities"),
-            "keywords": ["الناس", "زحمة", "crowd", "people"]
-        },
-        {
-            "label": translate("يركز على الإنجاز الشخصي", "Private Accomplishment"),
-            "keywords": ["أنجز", "أكمل", "achieve", "complete"]
-        },
-        {
-            "label": translate("يستمتع بالعوالم الداخلية", "Inner World Enjoyment"),
-            "keywords": ["أكتب", "أفكر", "تفكير", "write", "think", "reflect"]
-        },
-    ]
+    # 🧠 دمج السمات بشكل آمن
+    all_traits = {}
+    for group in [traits_1_40, traits_41_80, traits_81_100, traits_101_141, silent_drivers]:
+        if isinstance(group, dict):
+            all_traits.update(group)
+        else:
+            print("⚠ Ignored non-dict group:", type(group))
 
-    for q in questions:
-        if not isinstance(q, dict) or not q.get("layer_z", False):
-            continue
+    # 🧠 تلخيص الشخصية
+    summary = summarize_traits(all_traits)
 
-        q_key = q["key"]
-        response_list = answers.get(q_key, [])
-        response_text = " ".join(response_list).lower()
+    # 🎯 الحصول على مفاتيح السوشال ميديا (hooks)
+    hooks = get_content_hooks(summary, lang=lang)
 
-        for kw_group in keyword_map:
-            if any(kw.lower() in response_text for kw in kw_group["keywords"]):
-                if kw_group["label"] not in drivers:
-                    drivers.append(kw_group["label"])
-                    explanation_lines.append(
-                        f"{q['question_ar'] if lang == 'العربية' else q['question_en']}: {response_text}"
-                    )
+    # ✍ توليد المحتوى النهائي
+    contents = []
+    for hook in hooks:
+        post = build_social_post(hook, summary, lang)
+        signed = sign_output(post)
+        contents.append(signed)
 
-    return explanation_lines + drivers
+    return contents
+
+
+def build_social_post(hook, summary, lang="ar"):
+    """
+    صياغة منشور جذاب بناءً على hook وتحليل الشخصية
+    """
+    if lang == "ar":
+        return f"""
+🎯 {hook}
+
+📌 هل تعلم أن: {summary.get('core_emotion', 'كل شخص يتحرك بدافع مختلف')}؟
+
+👀 اكتشف رياضتك التي تكشف حقيقتك الخفية.
+
+#الذكاء_الرياضي #SportSyncAI
+        """.strip()
+    
+    else:
+        return f"""
+🎯 {hook}
+
+📌 Did you know: {summary.get('core_emotion', 'everyone moves from a different inner drive')}?
+
+👀 Discover your sport that reveals your hidden self.
+
+#SportSyncAI #HumanDriven
+        """.strip()
+
+
+def sign_output(text):
+    """
+    توقيع المحتوى بتوقيع البراند
+    """
+    return add_brand_signature(text)
