@@ -1,1 +1,132 @@
-# arabic_questions.json
+[
+  {
+    "key": "q1",
+    "question_ar": "ما الأنشطة التي تجعلك تنسى الوقت تمامًا؟",
+    "multiple_choices": ["اللعب", "البرمجة أو التصميم", "المطالعة أو التأمل", "محادثة مع شخص عميق"],
+    "allow_custom": true,
+    "layer_z": true
+  },
+  {
+    "key": "q2",
+    "question_ar": "عندما تواجه تحديًا جديدًا، ماذا تفضل؟",
+    "multiple_choices": ["أفهمه قبل أن أبدأ", "أجرب مباشرة", "أشوف أحد يسويه أول"],
+    "allow_custom": true,
+    "layer_z": true
+  },
+  {
+    "key": "q3",
+    "question_ar": "ما أكثر شيء يخليك تترك تمرين أو هواية؟",
+    "multiple_choices": ["الملل", "مافي نتيجة واضحة", "التكرار", "قلة التقدير"],
+    "allow_custom": true,
+    "layer_z": true
+  },
+  {
+    "key": "q4",
+    "question_ar": "لو دخلت مكان فيه أدوات متنوعة، وش أول شي يجذبك؟",
+    "multiple_choices": ["أداة إلكترونية", "سلاح أو شيء للقتال", "كتاب أو ورقة", "شي غريب ما أعرفه"],
+    "allow_custom": true,
+    "layer_z": true
+  },
+  {
+    "key": "q5",
+    "question_ar": "تحب تتمرن لوحدك أو مع ناس؟",
+    "multiple_choices": ["لوحدي أفضل", "مع شخص قريب", "مع مجموعة", "حسب المزاج"],
+    "allow_custom": true
+  },
+  {
+    "key": "q6",
+    "question_ar": "أي نوع من الإنجاز يسعدك أكثر؟",
+    "multiple_choices": ["إنجاز شخصي بدون ما أحد يدري", "إنجاز جماعي", "شي بسيط بس استمتعت فيه"],
+    "allow_custom": true,
+    "layer_z": true
+  },
+  {
+    "key": "q7",
+    "question_ar": "وش اللي يحفزك أكثر؟",
+    "multiple_choices": ["تحدي صعب", "إحساس التقدم", "كلام محفز", "موسيقى أو أجواء"],
+    "allow_custom": true
+  },
+  {
+    "key": "q8",
+    "question_ar": "لو كانت عندك ساعة إضافية في يومك، كيف تستخدمها؟",
+    "multiple_choices": ["أتمرن", "أتعلم شي جديد", "أبدع أو أكتب", "أرتاح أو أتأمل"],
+    "allow_custom": true,
+    "layer_z": true
+  },
+  {
+    "key": "q9",
+    "question_ar": "كيف تتصرف في موقف يتطلب سرعة أو خطر؟",
+    "multiple_choices": ["أتحمس", "أتوتر", "أتجنب", "أحلله قبل أتحرك"],
+    "allow_custom": true,
+    "layer_z": true
+  },
+  {
+    "key": "q10",
+    "question_ar": "كيف تتعامل مع الروتين؟",
+    "multiple_choices": ["أكرهه", "أتعود", "أغيره باستمرار", "أحوله لتحدي"],
+    "allow_custom": true,
+    "layer_z": true
+  },
+  {
+    "key": "q11",
+    "question_ar": "وش يلفت انتباهك أولًا لما تدخل مكان جديد؟",
+    "multiple_choices": ["الأجهزة", "الناس", "الأصوات", "التفاصيل الغريبة"],
+    "allow_custom": true
+  },
+  {
+    "key": "q12",
+    "question_ar": "هل تفضل الرياضات التي فيها تخطيط أو حركة مباشرة؟",
+    "multiple_choices": ["تخطيط وتحليل", "حركة وتفاعل", "مزيج بينهم"],
+    "allow_custom": true
+  },
+  {
+    "key": "q13",
+    "question_ar": "هل تحب تفهم الشي قبل تبدأه؟",
+    "multiple_choices": ["دائمًا", "أحيانًا", "نادراً", "لا، أفضل أجرب"],
+    "allow_custom": true,
+    "layer_z": true
+  },
+  {
+    "key": "q14",
+    "question_ar": "وش أكثر شعور تسعى له في الرياضة؟",
+    "multiple_choices": ["قوة", "إنجاز", "حرية", "اتصال داخلي"],
+    "allow_custom": true
+  },
+  {
+    "key": "q15",
+    "question_ar": "هل تفضل بيئة فيها حماس عالي أو هدوء وتركيز؟",
+    "multiple_choices": ["حماس عالي", "هدوء وتركيز", "مزيج بينهم"],
+    "allow_custom": true
+  },
+  {
+    "key": "q16",
+    "question_ar": "لو شفت تحدي جديد على الإنترنت، وش تسوي؟",
+    "multiple_choices": ["أحفظه للمستقبل", "أجربه", "أتجاهله", "أبحث عنه أكثر"],
+    "allow_custom": true
+  },
+  {
+    "key": "q17",
+    "question_ar": "ما نوع المحتوى اللي تستمتع فيه أكثر؟",
+    "multiple_choices": ["ألعاب", "علوم", "موسيقى", "قصص أو أنمي"],
+    "allow_custom": true,
+    "layer_z": true
+  },
+  {
+    "key": "q18",
+    "question_ar": "وش أول شي يخليك تشتري أداة رياضية؟",
+    "multiple_choices": ["شكلها", "وظيفتها", "انطباع الناس", "حب الاكتشاف"],
+    "allow_custom": true
+  },
+  {
+    "key": "q19",
+    "question_ar": "كيف تقيّم نفسك حركيًا؟",
+    "multiple_choices": ["سريع الحركة", "متوازن", "بطيء لكن دقيق"],
+    "allow_custom": true
+  },
+  {
+    "key": "q20",
+    "question_ar": "تحب تبني مهارة جديدة؟ ولا تفضّل تتقن مهارة موجودة؟",
+    "multiple_choices": ["أحب أتعلم جديد", "أفضل أتقن الموجود", "حسب المزاج"],
+    "allow_custom": true
+  }
+]
