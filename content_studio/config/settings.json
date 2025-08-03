@@ -1,1 +1,20 @@
-
+{
+  "default_style": "cinematic-realistic",
+  "styles": {
+    "motivational": {
+      "image_style": "vivid-real",
+      "video_style": "fast-dynamic",
+      "voice_style": "energetic"
+    },
+    "philosophical": {
+      "image_style": "moody-anime",
+      "video_style": "slow-cinematic",
+      "voice_style": "deep-calm"
+    },
+    "educational": {
+      "image_style": "flat-minimal",
+      "video_style": "slides-fast",
+      "voice_style": "clear-neutral"
+    }
+  }
+}
