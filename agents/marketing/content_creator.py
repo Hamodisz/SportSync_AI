@@ -12,11 +12,14 @@ def generate_content(user_data, lang="ar"):
     """
     توليد محتوى تعليمي تسويقي يعتمد على التحليل النفسي للمستخدم
     """
+    # 🧠 جلب النص الكامل من المستخدم
+    full_text = user_data.get("full_text", "")
+
     # 🔍 تحليل السمات والطبقات
-    traits_1_40 = apply_layers_1_40(user_data)
-    traits_41_80 = apply_layers_41_80(user_data)
-    traits_81_100 = apply_layers_81_100(user_data)
-    traits_101_141 = apply_layers_101_141(user_data)
+    traits_1_40 = apply_layers_1_40(full_text)
+    traits_41_80 = apply_layers_41_80(full_text)
+    traits_81_100 = apply_layers_81_100(full_text)
+    traits_101_141 = apply_layers_101_141(full_text)
     
     # ✅ تمرير answers كـ questions إذا لم تكن موجودة
     questions = user_data.get("answers", {})
