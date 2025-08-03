@@ -1,5 +1,3 @@
-# logic/layer_z_engine.py
-
 def analyze_silent_drivers_combined(answers: dict, questions: list, lang: str = "العربية") -> list:
     """
     تحليل Layer Z لاستخراج المحركات الخفية من إجابات المستخدم،
@@ -87,7 +85,7 @@ def analyze_silent_drivers_combined(answers: dict, questions: list, lang: str = 
     ]
 
     for q in questions:
-        if isinstance(q, dict) and not q.get("layer_z", False):
+        if not isinstance(q, dict) or not q.get("layer_z", False):
             continue
 
         q_key = q["key"]
