@@ -5,10 +5,10 @@ from analysis.analysis_layers_101_141 import apply_layers_101_141
 from core.brand_signature import add_brand_signature
 
 from agents.marketing.content_keys_engine import get_content_hooks
-from agents.marketing.video_script_agent import generate_script_from_traits
-from agents.marketing.image_generator_agent import generate_images_from_script
-from agents.marketing.voiceover_generator import generate_voiceover
-from agents.marketing.video_composer import compose_final_video
+from agents.marketing.video_pipeline.script_writer import generate_script_from_traits
+from agents.marketing.video_pipeline.image_generator import generate_images_from_script
+from agents.marketing.video_pipeline.voice_generator import generate_voiceover
+from agents.marketing.video_pipeline.video_composer import compose_final_video
 
 
 def generate_ai_video(user_data: dict, lang: str = "en") -> str:
