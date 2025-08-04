@@ -34,20 +34,24 @@ video_type = st.radio("🎬 نوع الفيديو:", ["🎞 مقطع طويل", 
 # 🚀 توليد الفيديو
 # =========================
 if st.button("🚀 توليد الفيديو الآن"):
-    if not user_input.strip():
+    if not user_input or not str(user_input).strip():
         st.warning("الرجاء إدخال الفكرة أو بيانات المستخدم أولاً.")
     else:
         with st.spinner("جاري تحليل البيانات وتوليد الفيديو... ⏳"):
+            # ✅ ضمان أن البيانات نص وليست list
+            full_text = user_input if isinstance(user_input, str) else str(user_input)
+
             user_data = {
-                "full_text": user_input,
-                "answers": {},  # تقدر تطوره لاحقًا
+                "full_text": full_text,
+                "answers": {},  # يمكن تطويرها لاحقًا
+                "video_type": video_type,  # ⬅ تمت إضافة نوع الفيديو هنا
             }
 
             try:
                 video_path = generate_ai_video(user_data, lang=lang)
                 st.success("✅ تم توليد الفيديو بنجاح!")
                 st.video(video_path)
-                st.markdown(f"📁 *المسار:* {video_path}")
+                st.markdown(f"📁 المسار: {video_path}")
             except Exception as e:
                 st.error(f"❌ حصل خطأ أثناء التوليد: {e}")
 
