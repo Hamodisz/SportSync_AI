@@ -1,65 +1,71 @@
-# agents/marketing/full_video_pipeline.py
+# dashboard.py
 
-from analysis.analysis_layers_1_40 import apply_layers_1_40
-from analysis.analysis_layers_41_80 import apply_layers_41_80
-from analysis.analysis_layers_81_100 import apply_layers_81_100
-from analysis.analysis_layers_101_141 import apply_layers_101_141
-from core.brand_signature import add_brand_signature
+import streamlit as st
+from agents.marketing.video_pipeline.full_video_pipeline import generate_ai_video
+import os
+from datetime import datetime
+import uuid
 
-from agents.marketing.video_pipeline.image_generator import generate_images_from_script
-from agents.marketing.video_pipeline.voice_generator import generate_voiceover
-from agents.marketing.video_pipeline.video_composer import compose_final_video
+st.set_page_config(page_title="SportSync Dashboard", layout="centered")
 
+# =========================
+# ⛳ العنوان الرئيسي
+# =========================
+st.title("🏁 SportSync AI – Dashboard القيادة الذكية")
+st.markdown("مرحبًا 👋 هذا مركز التحكم الكامل لمشروعك، بدون أي كود أو ملفات.")
 
-def import_script_generator():
-    # ✅ حل الاستيراد الدائري
-    from agents.marketing.video_pipeline.script_writer import generate_script_from_traits
-    return generate_script_from_traits
+# =========================
+# 🧠 بيانات المستخدم / الفكرة
+# =========================
+st.subheader("1. أدخل فكرة الفيديو أو بيانات المستخدم:")
+user_input = st.text_area("🎯 اكتب الفكرة أو ألصق تحليل المستخدم:", height=150)
 
+# =========================
+# 🌐 اختيار اللغة
+# =========================
+lang = st.selectbox("🌍 اختر اللغة:", ["en", "arabic"])
 
-def generate_ai_video(user_data: dict, lang: str = "en") -> str:
-    """
-    توليد فيديو كامل مبني على تحليل نفسي عميق للمستخدم
-    """
-    # ✅ استيراد داخلي لتحليل المحركات الصامتة وتلخيص السمات
-    from analysis.layer_z_engine import analyze_silent_drivers_combined as analyze_silent_drivers
-    from analysis.user_analysis import summarize_traits
+# =========================
+# 📹 نوع الفيديو
+# =========================
+video_type = st.radio("🎬 نوع الفيديو:", ["🎞 مقطع طويل", "🎯 اقتباس قصير", "📢 إعلان تجريبي"])
 
-    # 1️⃣ التحليل النفسي الكامل
-    full_text = user_data.get("full_text", "")
-    answers = user_data.get("answers", {})
+# =========================
+# 🚀 توليد الفيديو
+# =========================
+if st.button("🚀 توليد الفيديو الآن"):
+    if not user_input or not str(user_input).strip():
+        st.warning("الرجاء إدخال الفكرة أو بيانات المستخدم أولاً.")
+    else:
+        with st.spinner("جاري تحليل البيانات وتوليد الفيديو... ⏳"):
+            # ✅ ضمان أن البيانات نص وليست list
+            full_text = user_input if isinstance(user_input, str) else str(user_input)
 
-    traits_1_40 = apply_layers_1_40(full_text)
-    traits_41_80 = apply_layers_41_80(full_text)
-    traits_81_100 = apply_layers_81_100(full_text)
-    traits_101_141 = apply_layers_101_141(full_text)
-    silent_drivers = analyze_silent_drivers(user_data, answers)
+            user_data = {
+                "full_text": full_text,
+                "answers": {},  # تقدر تطوره لاحقًا
+            }
 
-    # 2️⃣ دمج السمات
-    full_summary = {
-        **traits_1_40,
-        **traits_41_80,
-        **traits_81_100,
-        **traits_101_141,
-        **silent_drivers
-    }
+            try:
+                video_path = generate_ai_video(user_data, lang=lang)
+                st.success("✅ تم توليد الفيديو بنجاح!")
+                st.video(video_path)
+                st.markdown(f"📁 المسار: {video_path}")
+            except Exception as e:
+                st.error(f"❌ حصل خطأ أثناء التوليد: {e}")
 
-    summary = summarize_traits(full_summary)
+# =========================
+# 📈 ملاحظات الأداء
+# =========================
+with st.expander("📊 ملاحظات أداء وتحليل"):
+    st.markdown("""
+    - 📈 الأفضل أداءً: فيديوهات بتوقيت 8:00 PM
+    - 🧠 نبرة [ثقة + هدوء] كانت الأعلى في التفاعل
+    - 🎯 الكلمات المفتاحية الناجحة: inner drive, mental athlete, deep identity
+    """)
 
-    # 3️⃣ توليد السكربت بناءً على السمات
-    script_text = import_script_generator()(summary, lang=lang)
-
-    # 4️⃣ توليد الصور من السكربت
-    images = generate_images_from_script(script_text)
-
-    # 5️⃣ توليد الصوت من السكربت
-    voice_path = generate_voiceover(script_text, lang=lang)
-
-    # 6️⃣ تركيب الفيديو النهائي
-    final_video_path = compose_final_video(images, voice_path, lang=lang)
-
-    # 7️⃣ توقيع الفيديو بشعار البراند
-    signed_video = add_brand_signature(final_video_path)
-
-    print(f"\n✅ Final signed video ready: {signed_video}")
-    return signed_video
+# =========================
+# 🧰 أدوات إضافية (قريبًا)
+# =========================
+st.sidebar.title("🧰 أدوات قادمة")
+st.sidebar.info("🚧 جاري بناء وحدة النشر التلقائي + تدريب الصوت الشخصي")
