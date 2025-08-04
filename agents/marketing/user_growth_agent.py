@@ -5,7 +5,7 @@ from analysis.analysis_layers_41_80 import apply_layers_41_80
 from analysis.analysis_layers_81_100 import apply_layers_81_100
 from analysis.analysis_layers_101_141 import apply_layers_101_141
 from analysis.layer_z_engine import analyze_silent_drivers
-from analysis.user_analysis import summarize_traits
+from analysis.trait_utils import summarize_traits
 from core.user_logger import log_user_insight
 from data.insights_log import load_insights
 import datetime
@@ -56,3 +56,4 @@ def optimize_growth_strategy(user_data, platform="youtube", lang="en"):
                      data=strategy)
 
     return strategy
+
