@@ -15,7 +15,7 @@ from agents.marketing.voiceover_generator import generate_voiceover
 from agents.marketing.video_composer import compose_final_video
 
 
-def generate_ai_video(user_data, lang="en"):
+def generate_ai_video(user_data: dict, lang: str = "en") -> str:
     """
     توليد فيديو كامل بناءً على تحليل المستخدم
     """
@@ -29,6 +29,7 @@ def generate_ai_video(user_data, lang="en"):
     traits_101_141 = apply_layers_101_141(full_text)
     silent_drivers = analyze_silent_drivers(user_data, answers)
 
+    # 🧬 2. دمج السمات
     full_summary = {
         **traits_1_40,
         **traits_41_80,
@@ -39,19 +40,20 @@ def generate_ai_video(user_data, lang="en"):
 
     summary = summarize_traits(full_summary)
 
-    # 📝 2. توليد سكربت القصة
+    # 📝 3. توليد سكربت القصة
     script_text = generate_script_from_traits(summary, lang=lang)
 
-    # 🖼 3. توليد صور لكل مقطع
+    # 🖼 4. توليد صور لكل مقطع
     images = generate_images_from_script(script_text)
 
-    # 🔊 4. توليد صوت الراوي
+    # 🔊 5. توليد صوت الراوي
     voice_path = generate_voiceover(script_text, lang=lang)
 
-    # 🎥 5. تركيب الفيديو الكامل
+    # 🎥 6. تركيب الفيديو الكامل
     final_video_path = compose_final_video(images, voice_path, lang=lang)
 
-    # 🔐 6. توقيع الفيديو بالبراند
+    # 🔐 7. توقيع الفيديو بالبراند
     signed_video = add_brand_signature(final_video_path)
 
+    print(f"\n✅ Final signed video ready: {signed_video}")
     return signed_video
