@@ -1,36 +1,50 @@
-# agents/marketing/video_pipeline/script_writer.py
+# script_writer.py
 
-def generate_script_from_traits(summary: dict, lang: str = "en") -> str:
-    """
-    توليد سكربت فيديو قصصي بناءً على ملخص السمات
-    """
-    name = summary.get("name", "this person")
-    emotion = summary.get("core_emotion", "a deep, unique drive")
-    driver = summary.get("silent_driver", "an invisible inner force")
-    sport = summary.get("suggested_sport", "a sport that mirrors their soul")
+def generate_script_from_traits(user_data: dict, lang: str = "en") -> str:
+    full_text = user_data.get("full_text", "")
+    video_type = user_data.get("video_type", "🎞 مقطع طويل")
 
-    if lang == "ar":
-        return f"""
-تخيل شخصًا يحمل في داخله {emotion}، يتحرك بدافع {driver}...
-
-ربما لم يُكتشف بعد، لكنه موجود. طريقه ليس شائعًا، ولا يشبه أحدًا.
-
-الرياضة التي تنتظره؟ ليست مجرد لعبة… إنها {sport}.
-
-ليس لأنه يجيدها، بل لأنها تُشبهه.
-
-افتح الباب… واكتشف من أنت حقًا.
-        """.strip()
-    
+    # توليد سكربت بناءً على نوع الفيديو
+    if video_type == "🎞 مقطع طويل":
+        script = generate_long_form_script(full_text, lang)
+    elif video_type == "🎯 اقتباس قصير":
+        script = generate_short_quote_script(full_text, lang)
+    elif video_type == "📢 إعلان تجريبي":
+        script = generate_teaser_ad_script(full_text, lang)
     else:
-        return f"""
-Imagine someone driven by {emotion}, moved by {driver}...
+        script = generate_long_form_script(full_text, lang)  # النوع الافتراضي
 
-They might still be undiscovered, but their path is real. And unique.
+    return script
 
-The sport waiting for them? Not just a game… it's {sport}.
 
-Not because they’re good at it — but because it reflects who they are.
+# ⬇ دوال مخصصة لكل نوع فيديو
 
-Open the door… and discover your real self.
-        """.strip()
+def generate_long_form_script(text: str, lang: str) -> str:
+    return f"""[Long Form Script in {lang.upper()}]
+
+Welcome to a deep journey into identity and movement.
+
+{ text.strip() }
+
+Because every athlete has a story — and yours is just beginning.
+"""
+
+def generate_short_quote_script(text: str, lang: str) -> str:
+    quote = text.strip().split(".")[0]
+    return f"""[Short Quote Format – {lang.upper()}]
+
+"{quote}"
+
+This is your reminder: you are built for more. ⚡
+"""
+
+def generate_teaser_ad_script(text: str, lang: str) -> str:
+    return f"""[Teaser Ad Format – {lang.upper()}]
+
+What if your drive had a sport?
+What if your story had a field?
+
+{ text.strip() }
+
+This is SportSync AI. Your movement begins now.
+"""
