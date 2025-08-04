@@ -1,5 +1,3 @@
-# full_video_pipeline.py
-
 from analysis.analysis_layers_1_40 import apply_layers_1_40
 from analysis.analysis_layers_41_80 import apply_layers_41_80
 from analysis.analysis_layers_81_100 import apply_layers_81_100
@@ -28,9 +26,13 @@ def generate_ai_video(user_data: dict, lang: str = "en") -> str:
 
     user_data["traits"] = traits
 
-    # 2. استدعاء مولد السكربت الديناميكي
+    # 2. استدعاء مولد السكربت الديناميكي مع تمرير video_type
     generate_script_from_traits = import_script_generator()
-    script_text = generate_script_from_traits(user_data, lang=lang)
+    script_text = generate_script_from_traits(
+        user_data,
+        lang=lang,
+        video_type=user_data.get("video_type", "🎞 مقطع طويل")  # 🆕 دعم نوع الفيديو
+    )
 
     # 3. توليد الصور
     images = generate_images(script_text)
