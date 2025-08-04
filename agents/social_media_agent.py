@@ -1,5 +1,3 @@
-# agents/social_media_agent.py
-
 import os
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(_file_), "..", "..")))
@@ -8,17 +6,19 @@ from analysis.analysis_layers_1_40 import apply_layers_1_40
 from analysis.analysis_layers_41_80 import apply_layers_41_80
 from analysis.analysis_layers_81_100 import apply_layers_81_100
 from analysis.analysis_layers_101_141 import apply_layers_101_141
-from analysis.layer_z_engine import analyze_silent_drivers
-from analysis.user_analysis import summarize_traits
+
 from agents.marketing.content_keys_engine import get_content_hooks
 from core.brand_signature import sign_output
-
 from content_studio.content_engine import generate_video_from_topic
 
 def generate_social_package(user_data, lang="ar"):
     """
     توليد بوست + فيديو تلقائي بناءً على تحليل الشخصية
     """
+    # ✅ استيراد داخلي لحل الاستيراد الدائري
+    from analysis.layer_z_engine import analyze_silent_drivers
+    from analysis.user_analysis import summarize_traits
+
     # 🧠 تحليل المستخدم
     traits = {
         **apply_layers_1_40(user_data),
