@@ -1,10 +1,10 @@
 import os
 import tempfile
-from gtts import gTTS  # يمكنك استبداله بأي محرك TTS آخر مثل ElevenLabs API
+from gtts import gTTS  # يمكنك استبداله بمحرك TTS أقوى مثل ElevenLabs لاحقًا
 
-def generate_voice(text, lang='ar'):
+def generate_voiceover(text, lang='ar'):
     """
-    توليد صوت من نص باستخدام Google TTS وحفظه مؤقتًا
+    توليد صوت الراوي من النص باستخدام Google TTS وحفظه مؤقتًا
     """
     tts = gTTS(text=text, lang=lang)
     
