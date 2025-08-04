@@ -1,5 +1,3 @@
-# dashboard.py
-
 import streamlit as st
 from agents.marketing.video_pipeline.full_video_pipeline import generate_ai_video
 import os
@@ -38,13 +36,12 @@ if st.button("🚀 توليد الفيديو الآن"):
         st.warning("الرجاء إدخال الفكرة أو بيانات المستخدم أولاً.")
     else:
         with st.spinner("جاري تحليل البيانات وتوليد الفيديو... ⏳"):
-            # ✅ ضمان أن البيانات نص وليست list
             full_text = user_input if isinstance(user_input, str) else str(user_input)
 
             user_data = {
                 "full_text": full_text,
-                "answers": {},  # يمكن تطويرها لاحقًا
-                "video_type": video_type,  # ⬅ تمت إضافة نوع الفيديو هنا
+                "answers": {},
+                "video_type": video_type  # ✅ تم الإضافة هنا
             }
 
             try:
