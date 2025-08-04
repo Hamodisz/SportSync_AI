@@ -1,50 +1,53 @@
-# script_writer.py
+def generate_script_from_traits(summary: dict, lang: str = "en", video_type: str = "🎞 مقطع طويل") -> str:
+    """
+    توليد سكربت فيديو بناءً على السمات والتحليل + نوع الفيديو
+    """
 
-def generate_script_from_traits(user_data: dict, lang: str = "en") -> str:
-    full_text = user_data.get("full_text", "")
-    video_type = user_data.get("video_type", "🎞 مقطع طويل")
+    # 📌 استخراج سمات مهمة
+    core_motives = summary.get("core_motives", "growth, identity, freedom")
+    dominant_trait = summary.get("dominant_trait", "resilience")
+    sport_style = summary.get("preferred_style", "solo & creative")
+    silent_driver = summary.get("silent_driver", "losing track of time in flow state")
 
-    # توليد سكربت بناءً على نوع الفيديو
+    # 📝 بناء السكربت حسب نوع الفيديو
     if video_type == "🎞 مقطع طويل":
-        script = generate_long_form_script(full_text, lang)
+        script = f"""
+In a world driven by {core_motives}, there are a few who don't follow — they lead.
+This story is about someone whose core is built on {dominant_trait}.
+Not because it’s easy, but because comfort was never the goal.
+
+They move through life with a {sport_style} rhythm.
+No audience. No medals. Just {silent_driver} — the zone where time disappears.
+
+This is not just training. This is identity.
+This is SportSync.
+"""
     elif video_type == "🎯 اقتباس قصير":
-        script = generate_short_quote_script(full_text, lang)
+        script = f"""
+{dominant_trait.upper()} isn’t something you show.
+It’s what makes you move — even when no one’s watching.
+
+SportSync. Identity in motion.
+"""
     elif video_type == "📢 إعلان تجريبي":
-        script = generate_teaser_ad_script(full_text, lang)
+        script = f"""
+What if your sport... wasn’t just a hobby?
+
+What if it was a map to your mind?
+At SportSync, we decode your {dominant_trait}, your drive, your identity.
+
+Join the movement.
+"""
+
     else:
-        script = generate_long_form_script(full_text, lang)  # النوع الافتراضي
+        # 🎬 احتياطي: fallback للنص الكامل
+        script = f"""
+SportSync is built for those who train beyond applause.
 
-    return script
+Driven by {core_motives}, fueled by {silent_driver}, 
+and defined by a {sport_style} spirit.
 
-
-# ⬇ دوال مخصصة لكل نوع فيديو
-
-def generate_long_form_script(text: str, lang: str) -> str:
-    return f"""[Long Form Script in {lang.upper()}]
-
-Welcome to a deep journey into identity and movement.
-
-{ text.strip() }
-
-Because every athlete has a story — and yours is just beginning.
+This is who you are. This is SportSync.
 """
 
-def generate_short_quote_script(text: str, lang: str) -> str:
-    quote = text.strip().split(".")[0]
-    return f"""[Short Quote Format – {lang.upper()}]
-
-"{quote}"
-
-This is your reminder: you are built for more. ⚡
-"""
-
-def generate_teaser_ad_script(text: str, lang: str) -> str:
-    return f"""[Teaser Ad Format – {lang.upper()}]
-
-What if your drive had a sport?
-What if your story had a field?
-
-{ text.strip() }
-
-This is SportSync AI. Your movement begins now.
-"""
+    return script.strip()
