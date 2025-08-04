@@ -1,14 +1,10 @@
-# agents/marketing/full_video_pipeline.py
-
 from analysis.analysis_layers_1_40 import apply_layers_1_40
 from analysis.analysis_layers_41_80 import apply_layers_41_80
 from analysis.analysis_layers_81_100 import apply_layers_81_100
 from analysis.analysis_layers_101_141 import apply_layers_101_141
-from analysis.layer_z_engine import analyze_silent_drivers_combined as analyze_silent_drivers
-from analysis.user_analysis import summarize_traits
-from agents.marketing.content_keys_engine import get_content_hooks
 from core.brand_signature import add_brand_signature
 
+from agents.marketing.content_keys_engine import get_content_hooks
 from agents.marketing.video_script_agent import generate_script_from_traits
 from agents.marketing.image_generator_agent import generate_images_from_script
 from agents.marketing.voiceover_generator import generate_voiceover
@@ -19,6 +15,10 @@ def generate_ai_video(user_data: dict, lang: str = "en") -> str:
     """
     توليد فيديو كامل بناءً على تحليل المستخدم
     """
+    # ✅ استيراد داخلي لحل الاستيراد الدائري
+    from analysis.layer_z_engine import analyze_silent_drivers_combined as analyze_silent_drivers
+    from analysis.user_analysis import summarize_traits
+
     # 🧠 1. التحليل النفسي الكامل
     full_text = user_data.get("full_text", "")
     answers = user_data.get("answers", {})
