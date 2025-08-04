@@ -1,85 +1,64 @@
-from analysis.analysis_layers_1_40 import apply_layers_1_40
-from analysis.analysis_layers_41_80 import apply_layers_41_80
-from analysis.analysis_layers_81_100 import apply_layers_81_100
-from analysis.analysis_layers_101_141 import apply_layers_101_141
-from agents.marketing.content_keys_engine import get_content_hooks
-from core.brand_signature import add_brand_signature
+# analysis/layer_z_engine.py
 
-
-def generate_content(user_data, lang="ar"):
+def analyze_silent_drivers_combined(user_data, questions={}):
     """
-    توليد محتوى تعليمي تسويقي يعتمد على التحليل النفسي للمستخدم
+    تحليل المحركات الصامتة (Layer Z) لربط النوايا الداخلية بالتوصيات الرياضية.
     """
-    # ✅ حل الاستيراد الدائري:
-    from analysis.layer_z_engine import analyze_silent_drivers_combined as analyze_silent_drivers
-    from analysis.user_analysis import summarize_traits  # ✅ استيراد داخلي
+    from analysis.user_analysis import summarize_traits  # ✅ استيراد داخلي لحل الاستيراد الدائري
 
-    # 🧠 جلب النص الكامل من المستخدم
     full_text = user_data.get("full_text", "")
+    answers = questions or user_data.get("answers", {})
 
-    # 🔍 تحليل السمات والطبقات
-    traits_1_40 = apply_layers_1_40(full_text)
-    traits_41_80 = apply_layers_41_80(full_text)
-    traits_81_100 = apply_layers_81_100(full_text)
-    traits_101_141 = apply_layers_101_141(full_text)
-    
-    # ✅ تمرير answers كـ questions إذا لم تكن موجودة
-    questions = user_data.get("answers", {})
-    silent_drivers = analyze_silent_drivers(user_data, questions)
+    results = {}
 
-    # 🧠 دمج السمات بشكل آمن
-    all_traits = {}
-    for group in [traits_1_40, traits_41_80, traits_81_100, traits_101_141, silent_drivers]:
-        if isinstance(group, dict):
-            all_traits.update(group)
+    # ❶ تحليل الذوبان في النشاط (flow state)
+    if "Q1" in answers:
+        q1 = answers["Q1"].lower()
+        if "time" in q1 or "forget" in q1 or "focus" in q1:
+            results["flow_trigger"] = "deep immersion"
+        elif "friends" in q1:
+            results["flow_trigger"] = "social connection"
         else:
-            print("⚠ Ignored non-dict group:", type(group))
+            results["flow_trigger"] = "unknown"
 
-    # 🧠 تلخيص الشخصية
-    summary = summarize_traits(all_traits)
+    # ❷ تحليل النية الداخلية وراء الحماس
+    if "Q2" in answers:
+        q2 = answers["Q2"].lower()
+        if "challenge" in q2:
+            results["inner_drive"] = "overcome limits"
+        elif "control" in q2 or "mastery" in q2:
+            results["inner_drive"] = "skill mastery"
+        else:
+            results["inner_drive"] = "expression"
 
-    # 🎯 الحصول على مفاتيح السوشال ميديا (hooks)
-    hooks = get_content_hooks(summary, lang=lang)
+    # ❸ تحليل قرارك التلقائي في بيئة جديدة
+    if "Q3" in answers:
+        q3 = answers["Q3"].lower()
+        if "ball" in q3 or "equipment" in q3:
+            results["impulse"] = "object curiosity"
+        elif "climb" in q3 or "move" in q3:
+            results["impulse"] = "movement initiation"
+        else:
+            results["impulse"] = "observe first"
 
-    # ✍ توليد المحتوى النهائي
-    contents = []
-    for hook in hooks:
-        post = build_social_post(hook, summary, lang)
-        signed = sign_output(post)
-        contents.append(signed)
+    # ❹ تحليل ترددات الانقطاع أو الملل
+    if "Q5" in answers:
+        q5 = answers["Q5"].lower()
+        if "bored" in q5 or "routine" in q5:
+            results["break_trigger"] = "lack of novelty"
+        elif "injury" in q5 or "pain" in q5:
+            results["break_trigger"] = "physical discomfort"
+        else:
+            results["break_trigger"] = "unclear motivation"
 
-    return contents
+    # ❺ تحليل المتعة الخاصة المخفية
+    if "Q6" in answers:
+        q6 = answers["Q6"].lower()
+        if "secret" in q6 or "no one knows" in q6:
+            results["hidden_reward"] = "private validation"
+        elif "accomplish" in q6 or "create" in q6:
+            results["hidden_reward"] = "inner pride"
+        else:
+            results["hidden_reward"] = "uncategorized"
 
-
-def build_social_post(hook, summary, lang="ar"):
-    """
-    صياغة منشور جذاب بناءً على hook وتحليل الشخصية
-    """
-    if lang == "ar":
-        return f"""
-🎯 {hook}
-
-📌 هل تعلم أن: {summary.get('core_emotion', 'كل شخص يتحرك بدافع مختلف')}؟
-
-👀 اكتشف رياضتك التي تكشف حقيقتك الخفية.
-
-#الذكاء_الرياضي #SportSyncAI
-        """.strip()
-    
-    else:
-        return f"""
-🎯 {hook}
-
-📌 Did you know: {summary.get('core_emotion', 'everyone moves from a different inner drive')}?
-
-👀 Discover your sport that reveals your hidden self.
-
-#SportSyncAI #HumanDriven
-        """.strip()
-
-
-def sign_output(text):
-    """
-    توقيع المحتوى بتوقيع البراند
-    """
-    return add_brand_signature(text)
+    return results
