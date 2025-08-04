@@ -2,7 +2,6 @@ from analysis.analysis_layers_1_40 import apply_layers_1_40
 from analysis.analysis_layers_41_80 import apply_layers_41_80
 from analysis.analysis_layers_81_100 import apply_layers_81_100
 from analysis.analysis_layers_101_141 import apply_layers_101_141
-from analysis.user_analysis import summarize_traits
 from agents.marketing.content_keys_engine import get_content_hooks
 from core.brand_signature import add_brand_signature
 
@@ -13,6 +12,7 @@ def generate_content(user_data, lang="ar"):
     """
     # ✅ حل الاستيراد الدائري:
     from analysis.layer_z_engine import analyze_silent_drivers_combined as analyze_silent_drivers
+    from analysis.user_analysis import summarize_traits  # ✅ استيراد داخلي
 
     # 🧠 جلب النص الكامل من المستخدم
     full_text = user_data.get("full_text", "")
