@@ -2,16 +2,18 @@ from analysis.analysis_layers_1_40 import apply_layers_1_40
 from analysis.analysis_layers_41_80 import apply_layers_41_80
 from analysis.analysis_layers_81_100 import apply_layers_81_100
 from analysis.analysis_layers_101_141 import apply_layers_101_141
-from analysis.layer_z_engine import analyze_silent_drivers_combined as analyze_silent_drivers
-from analysis.user_analysis import summarize_traits
+
 from agents.marketing.content_keys_engine import get_content_hooks
 from core.brand_signature import add_brand_signature
-
 
 def generate_content(user_data, lang="ar"):
     """
     توليد محتوى تعليمي تسويقي يعتمد على التحليل النفسي للمستخدم
     """
+    # ✅ استيرادات داخلية لحل الاستيراد الدائري
+    from analysis.layer_z_engine import analyze_silent_drivers_combined as analyze_silent_drivers
+    from analysis.user_analysis import summarize_traits
+
     # 🧠 جلب النص الكامل من المستخدم
     full_text = user_data.get("full_text", "")
 
@@ -20,7 +22,7 @@ def generate_content(user_data, lang="ar"):
     traits_41_80 = apply_layers_41_80(full_text)
     traits_81_100 = apply_layers_81_100(full_text)
     traits_101_141 = apply_layers_101_141(full_text)
-    
+
     # ✅ تمرير answers كـ questions إذا لم تكن موجودة
     questions = user_data.get("answers", {})
     silent_drivers = analyze_silent_drivers(user_data, questions)
@@ -45,7 +47,6 @@ def generate_content(user_data, lang="ar"):
         contents.append(signed)
 
     return contents
-
 
 def build_social_post(hook, summary, lang="ar"):
     """
@@ -73,11 +74,8 @@ def build_social_post(hook, summary, lang="ar"):
 #SportSyncAI #HumanDriven
         """.strip()
 
-
 def sign_output(text):
     """
     توقيع المحتوى بتوقيع البراند
     """
     return add_brand_signature(text)
-
-
