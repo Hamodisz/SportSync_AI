@@ -1,71 +1,48 @@
-# dashboard.py
+# full_video_pipeline.py
 
-import streamlit as st
-from agents.marketing.video_pipeline.full_video_pipeline import generate_ai_video
-import os
-from datetime import datetime
-import uuid
+from analysis.analysis_layers_1_40 import apply_layers_1_40
+from analysis.analysis_layers_41_80 import apply_layers_41_80
+from analysis.analysis_layers_81_100 import apply_layers_81_100
+from analysis.analysis_layers_101_141 import apply_layers_101_141
+from core.brand_signature import add_brand_signature
 
-st.set_page_config(page_title="SportSync Dashboard", layout="centered")
+from agents.marketing.video_pipeline.image_generator import generate_images
+from agents.marketing.video_pipeline.voice_generator import generate_voiceover
+from agents.marketing.video_pipeline.video_composer import compose_final_video
 
-# =========================
-# ⛳ العنوان الرئيسي
-# =========================
-st.title("🏁 SportSync AI – Dashboard القيادة الذكية")
-st.markdown("مرحبًا 👋 هذا مركز التحكم الكامل لمشروعك، بدون أي كود أو ملفات.")
+# ✅ حل الاستيراد الدائري
+def import_script_generator():
+    from agents.marketing.video_pipeline.script_writer import generate_script_from_traits
+    return generate_script_from_traits
 
-# =========================
-# 🧠 بيانات المستخدم / الفكرة
-# =========================
-st.subheader("1. أدخل فكرة الفيديو أو بيانات المستخدم:")
-user_input = st.text_area("🎯 اكتب الفكرة أو ألصق تحليل المستخدم:", height=150)
+def generate_ai_video(user_data: dict, lang: str = "en") -> str:
+    """
+    توليد فيديو كامل مبني على تحليل نفسي عميق للمستخدم
+    """
+    # 1. تحليل السمات
+    traits = {}
+    traits.update(apply_layers_1_40(user_data))
+    traits.update(apply_layers_41_80(user_data))
+    traits.update(apply_layers_81_100(user_data))
+    traits.update(apply_layers_101_141(user_data))
 
-# =========================
-# 🌐 اختيار اللغة
-# =========================
-lang = st.selectbox("🌍 اختر اللغة:", ["en", "arabic"])
+    user_data["traits"] = traits
 
-# =========================
-# 📹 نوع الفيديو
-# =========================
-video_type = st.radio("🎬 نوع الفيديو:", ["🎞 مقطع طويل", "🎯 اقتباس قصير", "📢 إعلان تجريبي"])
+    # 2. استدعاء مولد السكربت الديناميكي
+    generate_script_from_traits = import_script_generator()
+    script_text = generate_script_from_traits(user_data, lang=lang)
 
-# =========================
-# 🚀 توليد الفيديو
-# =========================
-if st.button("🚀 توليد الفيديو الآن"):
-    if not user_input or not str(user_input).strip():
-        st.warning("الرجاء إدخال الفكرة أو بيانات المستخدم أولاً.")
-    else:
-        with st.spinner("جاري تحليل البيانات وتوليد الفيديو... ⏳"):
-            # ✅ ضمان أن البيانات نص وليست list
-            full_text = user_input if isinstance(user_input, str) else str(user_input)
+    # 3. توليد الصور
+    images = generate_images(script_text)
 
-            user_data = {
-                "full_text": full_text,
-                "answers": {},  # تقدر تطوره لاحقًا
-            }
+    # 4. توليد الصوت
+    voice_path = generate_voiceover(script_text, lang=lang)
 
-            try:
-                video_path = generate_ai_video(user_data, lang=lang)
-                st.success("✅ تم توليد الفيديو بنجاح!")
-                st.video(video_path)
-                st.markdown(f"📁 المسار: {video_path}")
-            except Exception as e:
-                st.error(f"❌ حصل خطأ أثناء التوليد: {e}")
+    # 5. تركيب الفيديو
+    final_video_path = compose_final_video(images, voice_path)
 
-# =========================
-# 📈 ملاحظات الأداء
-# =========================
-with st.expander("📊 ملاحظات أداء وتحليل"):
-    st.markdown("""
-    - 📈 الأفضل أداءً: فيديوهات بتوقيت 8:00 PM
-    - 🧠 نبرة [ثقة + هدوء] كانت الأعلى في التفاعل
-    - 🎯 الكلمات المفتاحية الناجحة: inner drive, mental athlete, deep identity
-    """)
+    # 6. توقيع البراند
+    signed_video = add_brand_signature(final_video_path)
 
-# =========================
-# 🧰 أدوات إضافية (قريبًا)
-# =========================
-st.sidebar.title("🧰 أدوات قادمة")
-st.sidebar.info("🚧 جاري بناء وحدة النشر التلقائي + تدريب الصوت الشخصي")
+    print(f"\n✅ Final signed video ready: {signed_video}")
+    return signed_video
