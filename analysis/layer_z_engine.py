@@ -2,7 +2,7 @@ from analysis.analysis_layers_1_40 import apply_layers_1_40
 from analysis.analysis_layers_41_80 import apply_layers_41_80
 from analysis.analysis_layers_81_100 import apply_layers_81_100
 from analysis.analysis_layers_101_141 import apply_layers_101_141
-from analysis.trait_utils import summarize_traits
+from analysis.user_analysis import summarize_traits
 from agents.marketing.content_keys_engine import get_content_hooks
 from core.brand_signature import add_brand_signature
 
