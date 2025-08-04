@@ -1,10 +1,18 @@
-def generate_images(script_text):
+# agents/marketing/video_pipeline/image_generator.py
+
+import os
+
+def generate_images_from_script(script_text: str) -> list:
     """
-    توليد صور باستخدام نموذج ذكاء اصطناعي بناءً على السكربت.
+    توليد صور تمثّل مشاهد من السكربت النصي.
+    حاليًا نولد مسارات وهمية لكل جملة.
     """
-    # للتبسيط، نعيد مسارات صور وهمية حالياً
     image_paths = []
-    for i, sentence in enumerate(script_text.split(".")):
-        if sentence.strip():
-            image_paths.append(f"generated_images/scene_{i+1}.png")
+    sentences = [s.strip() for s in script_text.split(".") if s.strip()]
+    
+    for i, sentence in enumerate(sentences):
+        # لاحقًا: يمكن ربط هذا مع نموذج توليد صور فعلي مثل DALL·E أو StableDiffusion
+        filename = f"generated_images/scene_{i+1}.png"
+        image_paths.append(filename)
+    
     return image_paths
