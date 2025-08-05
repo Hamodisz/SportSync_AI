@@ -1,31 +1,31 @@
 import logging
 
 def generate_ai_video(user_data: dict, lang: str = "en") -> str:
-    logging.basicConfig(level=logging.DEBUG)
     logging.debug("🚀 Starting generate_ai_video")
 
     try:
-        # Step 1: Generate script
+        from agents.marketing.video_pipeline.script_writer import generate_script_from_traits
+        from agents.marketing.video_pipeline.image_generator import generate_images
+        from agents.marketing.video_pipeline.voice_generator import generate_voiceover
+        from agents.marketing.video_pipeline.video_composer import compose_final_video
+
         script = generate_script_from_traits(user_data, lang)
-        logging.debug(f"🧠 Generated script:\n{script}")
+        logging.debug(f"📝 Script generated:\n{script}")
 
-        # Step 2: Generate images
-        images = generate_images(script, lang)
-        logging.debug(f"🖼 Images generated: {images}")
+        image_paths = generate_images(script, lang)
+        logging.debug(f"🖼 Image paths: {image_paths}")
 
-        # Step 3: Generate voiceover
-        voice_path = generate_voiceover(script, lang)
-        logging.debug(f"🔊 Voiceover path: {voice_path}")
+        audio_path = generate_voiceover(script, lang)
+        logging.debug(f"🎙 Voiceover path: {audio_path}")
 
-        # Step 4: Compose final video
-        video_path = compose_final_video(images, voice_path, lang)
-        logging.debug(f"🎬 Final video path: {video_path}")
+        final_video_path = compose_final_video(image_paths, audio_path, lang)
+        logging.debug(f"🎬 Final video path: {final_video_path}")
 
-        return video_path
+        return final_video_path
 
     except Exception as e:
         logging.error(f"❌ Error in generate_ai_video: {e}")
         return ""
 
     finally:
-        logging.debug("🏁 Ending generate_ai_video")
+        logging.debug("✅ Ending generate_ai_video")
