@@ -3,8 +3,9 @@ import sys
 import os
 from pathlib import Path
 
-# ✅ تعديل مهم لـ Render: يسمح بالوصول لمجلد agents و content_studio
-sys.path.append(os.path.abspath(".."))
+# ✅ حل مؤكد لمشكلة Render: إضافة مجلد المشروع الجذري لمسار الاستيراد
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(_file_)))
+sys.path.append(ROOT_DIR)
 
 from agents.marketing.video_pipeline.generate_ai_video import generate_ai_video
 from content_studio.ai_video.video_composer import compose_video_from_assets
@@ -41,18 +42,15 @@ with st.form("video_form"):
 if submit:
     st.info("🛠 جاري التحضير...")
 
-    # تجهيز مجلد الصور
+    # إعداد المجلدات
     IMAGES_DIR = Path("content_studio/ai_images/outputs/")
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
-    # تنظيف الصور القديمة
     for file in IMAGES_DIR.glob("*"):
-        file.unlink()
+        file.unlink()  # تنظيف الصور القديمة
 
-    # مسار الصوت النهائي
     VOICE_PATH = Path("content_studio/ai_voice/voices/final_voice.mp3")
 
-    # بيانات المستخدم
     user_data = {
         "name": name,
         "traits": {
@@ -65,19 +63,16 @@ if submit:
     script = ""
 
     if use_custom_script and custom_script.strip():
-        # استخدام سكربت مخصص
         script = custom_script.strip()
         generate_images(script, lang)
         generate_voiceover(script, lang)
     else:
-        # توليد تلقائي كامل (سكربت + صور + صوت)
         video_path = generate_ai_video(user_data, lang)
         if not video_path:
             st.error("❌ فشل توليد الفيديو.")
             st.stop()
-        script = "..."  # placeholder فقط لأن generate_ai_video داخله كل شيء
+        script = "..."  # placeholder فقط لأن كل شيء تولّد تلقائيًا
 
-    # حفظ الصور المرفوعة
     if uploaded_images:
         for i, file in enumerate(uploaded_images):
             img_path = IMAGES_DIR / f"user_image_{i+1}.png"
