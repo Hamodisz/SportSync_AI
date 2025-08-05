@@ -2,28 +2,50 @@
 
 import streamlit as st
 import os
+from pathlib import Path
 from agents.marketing.video_pipeline.generate_ai_video import generate_ai_video
+from content_studio.ai_video.video_composer import compose_video_from_assets
+from agents.marketing.video_pipeline.image_generator import generate_images
+from agents.marketing.video_pipeline.voice_generator import generate_voiceover
 
-st.set_page_config(page_title="🎬 توليد فيديو AI", layout="centered")
-st.title("🎥 توليد فيديو آلي بناءً على شخصيتك")
-st.markdown("املأ السمات أدناه وسنقوم بتوليد فيديو يعبر عنك 👇")
+st.set_page_config(page_title="🎬 فيديو AI شامل", layout="centered")
+st.title("🎥 توليد فيديو AI شامل")
+st.markdown("صمّم الفيديو بطريقتك الخاصة 👇")
 
-# 🧠 إدخال بيانات المستخدم يدوياً
-with st.form("user_traits_form"):
+# 🧠 إدخال السمات يدويًا
+with st.form("video_form"):
     name = st.text_input("👤 اسم المستخدم", value="مستخدم تجريبي")
 
     energy = st.selectbox("⚡ مستوى الطاقة", ["high", "medium", "low"])
     focus = st.selectbox("🎯 درجة التركيز", ["high", "medium", "low"])
     creativity = st.checkbox("🎨 هل تعتبر نفسك مبدع؟", value=True)
 
-    lang = st.selectbox("🗣 اختر اللغة", ["ar", "en"], index=0)
+    lang = st.selectbox("🗣 اللغة", ["ar", "en"], index=0)
 
-    submitted = st.form_submit_button("🚀 توليد الفيديو")
+    use_custom_script = st.checkbox("✏ هل تريد إدخال سكربت مخصص؟", value=False)
+    custom_script = ""
+    if use_custom_script:
+        custom_script = st.text_area("📝 أدخل السكربت النصي الذي تريد تحويله")
 
-if submitted:
-    st.info("🔄 جاري توليد الفيديو... يرجى الانتظار")
+    uploaded_images = st.file_uploader("🖼 ارفع صورك الخاصة (اختياري)", type=["png", "jpg"], accept_multiple_files=True)
 
-    # تركيب بيانات المستخدم
+    image_duration = st.slider("⏱ مدة عرض كل صورة", 1, 10, value=4)
+
+    submit = st.form_submit_button("🚀 توليد الفيديو")
+
+# 🔄 عند الضغط على زر توليد
+if submit:
+    st.info("⏳ جاري التحضير...")
+
+    IMAGES_DIR = Path("content_studio/ai_images/outputs/")
+    IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+
+    VOICE_PATH = Path("content_studio/ai_voice/voices/final_voice.mp3")
+    if IMAGES_DIR.exists():
+        for f in IMAGES_DIR.glob("*"):
+            f.unlink()  # تنظيف الصور القديمة
+
+    # بناء بيانات المستخدم
     user_data = {
         "name": name,
         "traits": {
@@ -33,17 +55,44 @@ if submitted:
         }
     }
 
-    # توليد الفيديو
-    video_path = generate_ai_video(user_data, lang)
+    script = ""
+    if use_custom_script and custom_script.strip():
+        script = custom_script.strip()
+        generate_images(script, lang)
+        generate_voiceover(script, lang)
+    else:
+        script = generate_ai_video(user_data, lang)  # هذا سيولد كل شيء ويعيد path للفيديو
+        if not script:
+            st.error("❌ فشل توليد السكربت أو الفيديو.")
+            st.stop()
 
-    if not video_path:
-        st.error("❌ فشل توليد الفيديو. تحقق من المدخلات أو حاول لاحقًا.")
-    elif not os.path.exists(video_path):
-        st.error(f"⚠ الملف لم يتم توليده رغم رجوع هذا المسار:\n`{video_path}`")
+    # حفظ الصور المرفوعة إذا فيه
+    if uploaded_images:
+        for i, file in enumerate(uploaded_images):
+            img_path = IMAGES_DIR / f"user_image_{i+1}.png"
+            with open(img_path, "wb") as f:
+                f.write(file.read())
+
+    # 🔍 عرض الصور
+    image_files = sorted(IMAGES_DIR.glob("*"))
+    if image_files:
+        st.subheader("📷 الصور المستخدمة:")
+        st.image([str(p) for p in image_files], width=250)
+
+    # 🔊 تشغيل الصوت
+    if VOICE_PATH.exists():
+        st.subheader("🎙 الصوت المولد:")
+        st.audio(str(VOICE_PATH))
+
+    # 🎞 توليد الفيديو
+    st.info("🎞 جاري تركيب الفيديو...")
+    video_path = compose_video_from_assets(image_duration=image_duration)
+
+    if not video_path or not os.path.exists(video_path):
+        st.error("❌ فشل تركيب الفيديو النهائي.")
     else:
         st.success("✅ تم توليد الفيديو بنجاح!")
         st.video(video_path)
-        st.markdown(f"📁 *المسار:* {video_path}")
 
-        with open(video_path, "rb") as file:
-            st.download_button("⬇ تحميل الفيديو", file, file_name=os.path.basename(video_path))
+        with open(video_path, "rb") as f:
+            st.download_button("⬇ تحميل الفيديو", f, file_name=os.path.basename(video_path))
