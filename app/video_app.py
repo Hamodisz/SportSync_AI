@@ -1,23 +1,22 @@
-# app/video_app.py
-
 import streamlit as st
 import sys
 import os
 from pathlib import Path
 
-# ✅ هذا السطر مهم لـ Render عشان يقدر يشوف مجلد agents و content_studio
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(_file_), "..")))
+# ✅ تعديل مهم لـ Render: يسمح بالوصول لمجلد agents و content_studio
+sys.path.append(os.path.abspath(".."))
 
 from agents.marketing.video_pipeline.generate_ai_video import generate_ai_video
 from content_studio.ai_video.video_composer import compose_video_from_assets
 from agents.marketing.video_pipeline.image_generator import generate_images
 from agents.marketing.video_pipeline.voice_generator import generate_voiceover
 
+# إعداد الصفحة
 st.set_page_config(page_title="🎬 فيديو AI شامل", layout="centered")
 st.title("🎥 توليد فيديو AI شامل")
 st.markdown("صمّم الفيديو بطريقتك الخاصة 👇")
 
-# 🧠 إدخال السمات يدويًا
+# 🧠 إدخال البيانات
 with st.form("video_form"):
     name = st.text_input("👤 اسم المستخدم", value="مستخدم تجريبي")
 
@@ -34,23 +33,26 @@ with st.form("video_form"):
 
     uploaded_images = st.file_uploader("🖼 ارفع صورك الخاصة (اختياري)", type=["png", "jpg"], accept_multiple_files=True)
 
-    image_duration = st.slider("⏱ مدة عرض كل صورة", 1, 10, value=4)
+    image_duration = st.slider("⏱ مدة عرض كل صورة (ثواني)", 1, 10, value=4)
 
     submit = st.form_submit_button("🚀 توليد الفيديو")
 
-# 🔄 عند الضغط على زر توليد
+# 🎬 عند الضغط على "توليد الفيديو"
 if submit:
-    st.info("⏳ جاري التحضير...")
+    st.info("🛠 جاري التحضير...")
 
+    # تجهيز مجلد الصور
     IMAGES_DIR = Path("content_studio/ai_images/outputs/")
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
-    VOICE_PATH = Path("content_studio/ai_voice/voices/final_voice.mp3")
-    if IMAGES_DIR.exists():
-        for f in IMAGES_DIR.glob("*"):
-            f.unlink()  # تنظيف الصور القديمة
+    # تنظيف الصور القديمة
+    for file in IMAGES_DIR.glob("*"):
+        file.unlink()
 
-    # بناء بيانات المستخدم
+    # مسار الصوت النهائي
+    VOICE_PATH = Path("content_studio/ai_voice/voices/final_voice.mp3")
+
+    # بيانات المستخدم
     user_data = {
         "name": name,
         "traits": {
@@ -61,40 +63,44 @@ if submit:
     }
 
     script = ""
+
     if use_custom_script and custom_script.strip():
+        # استخدام سكربت مخصص
         script = custom_script.strip()
         generate_images(script, lang)
         generate_voiceover(script, lang)
     else:
-        script = generate_ai_video(user_data, lang)  # هذا سيولد كل شيء ويعيد path للفيديو
-        if not script:
-            st.error("❌ فشل توليد السكربت أو الفيديو.")
+        # توليد تلقائي كامل (سكربت + صور + صوت)
+        video_path = generate_ai_video(user_data, lang)
+        if not video_path:
+            st.error("❌ فشل توليد الفيديو.")
             st.stop()
+        script = "..."  # placeholder فقط لأن generate_ai_video داخله كل شيء
 
-    # حفظ الصور المرفوعة إذا فيه
+    # حفظ الصور المرفوعة
     if uploaded_images:
         for i, file in enumerate(uploaded_images):
             img_path = IMAGES_DIR / f"user_image_{i+1}.png"
             with open(img_path, "wb") as f:
                 f.write(file.read())
 
-    # 🔍 عرض الصور
+    # عرض الصور
     image_files = sorted(IMAGES_DIR.glob("*"))
     if image_files:
         st.subheader("📷 الصور المستخدمة:")
         st.image([str(p) for p in image_files], width=250)
 
-    # 🔊 تشغيل الصوت
+    # عرض الصوت
     if VOICE_PATH.exists():
         st.subheader("🎙 الصوت المولد:")
         st.audio(str(VOICE_PATH))
 
-    # 🎞 توليد الفيديو
-    st.info("🎞 جاري تركيب الفيديو...")
+    # توليد الفيديو
+    st.info("🎞 جاري تركيب الفيديو النهائي...")
     video_path = compose_video_from_assets(image_duration=image_duration)
 
     if not video_path or not os.path.exists(video_path):
-        st.error("❌ فشل تركيب الفيديو النهائي.")
+        st.error("❌ فشل تركيب الفيديو.")
     else:
         st.success("✅ تم توليد الفيديو بنجاح!")
         st.video(video_path)
