@@ -1,26 +1,16 @@
-# agents/marketing/video_pipeline/image_generator.py
+# agents/marketing/video_pipeline/voice_generator.py
 
 import os
-from PIL import Image, ImageDraw, ImageFont
+import tempfile
+from gtts import gTTS  # يمكن استبداله لاحقًا بمحرك أكثر احترافية
 
-def generate_images_from_script(script_text: str) -> list:
+def generate_voiceover(script_text: str, lang: str = "ar") -> str:
     """
-    توليد صور تمثّل مشاهد من السكربت النصي.
-    (حالياً: توليد صور وهمية تحتوي على النص)
+    توليد صوت الراوي من السكربت النصي وحفظه مؤقتًا
     """
-    image_paths = []
-    sentences = [s.strip() for s in script_text.split(".") if s.strip()]
+    tts = gTTS(text=script_text, lang=lang)
     
-    os.makedirs("generated_images", exist_ok=True)
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+    tts.save(temp_file.name)
 
-    for i, sentence in enumerate(sentences):
-        filename = f"generated_images/scene_{i+1}.png"
-        
-        img = Image.new('RGB', (1280, 720), color=(30, 30, 30))
-        draw = ImageDraw.Draw(img)
-        draw.text((50, 300), sentence, fill=(255, 255, 255))  # نرسم الجملة على الصورة
-        
-        img.save(filename)
-        image_paths.append(filename)
-    
-    return image_paths
+    return temp_file.name
