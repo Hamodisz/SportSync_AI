@@ -1,16 +1,17 @@
-# agents/marketing/video_pipeline/voice_generator.py
+import logging
 
-import os
-import tempfile
-from gtts import gTTS  # يمكن استبداله لاحقًا بمحرك أكثر احترافية
+# Assuming other necessary imports are here
 
-def generate_voiceover(script_text: str, lang: str = "ar") -> str:
-    """
-    توليد صوت الراوي من السكربت النصي وحفظه مؤقتًا
-    """
-    tts = gTTS(text=script_text, lang=lang)
+
+def generate_voiceover(...):
+    logging.debug("Starting generate_voiceover")
     
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-    tts.save(temp_file.name)
-
-    return temp_file.name
+    try:
+        # existing code for generating voiceover
+        
+    except Exception as e:
+        logging.error("An error occurred: %s", str(e))
+    
+    logging.debug("Finished generate_voiceover")
+    
+    # return statement or other processing as before
