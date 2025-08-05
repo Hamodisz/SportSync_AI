@@ -7,8 +7,8 @@ def generate_ai_video(user_data: dict, lang: str = "en") -> str:
         from agents.marketing.video_pipeline.script_writer import generate_script_from_traits
         from agents.marketing.video_pipeline.image_generator import generate_images
         from agents.marketing.video_pipeline.voice_generator import generate_voiceover
-        from agents.marketing.video_pipeline.video_composer import compose_final_video
-
+        from content_studio.ai_video.video_composer import compose_video_from_assets
+        
         script = generate_script_from_traits(user_data, lang)
         logging.debug(f"📝 Script generated:\n{script}")
 
