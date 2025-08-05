@@ -1,8 +1,13 @@
 # app/video_app.py
 
 import streamlit as st
+import sys
 import os
 from pathlib import Path
+
+# ✅ هذا السطر مهم لـ Render عشان يقدر يشوف مجلد agents و content_studio
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(_file_), "..")))
+
 from agents.marketing.video_pipeline.generate_ai_video import generate_ai_video
 from content_studio.ai_video.video_composer import compose_video_from_assets
 from agents.marketing.video_pipeline.image_generator import generate_images
