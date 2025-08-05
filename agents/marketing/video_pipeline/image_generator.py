@@ -2,9 +2,10 @@ import os
 import hashlib
 from typing import List
 from openai import OpenAI
+import requests
 
-# ✅ إعداد عميل OpenAI
-client = OpenAI()
+# ✅ إعداد عميل OpenAI مع مفتاح من environment
+client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 # ✅ مجلد الحفظ
 OUTPUT_DIR = "generated_images"
@@ -42,7 +43,6 @@ def generate_images_from_script(script_text: str, style: str = "cinematic", reso
             image_url = response.data[0].url
 
             # ✅ تحميل الصورة
-            import requests
             image_data = requests.get(image_url).content
             with open(file_path, "wb") as f:
                 f.write(image_data)
