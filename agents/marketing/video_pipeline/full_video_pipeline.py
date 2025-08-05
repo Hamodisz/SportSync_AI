@@ -2,7 +2,7 @@ import logging
 
 # Existing code...
 
-def generate_ai_video(...):
+def generate_ai_video(user_data: dict, lang: str = "en") -> str:
     logging.debug("Starting generate_ai_video")
     try:
         # Existing functionality...
