@@ -1,26 +1,56 @@
-# agents/marketing/video_pipeline/image_generator.py
-
 import os
-from PIL import Image, ImageDraw, ImageFont
+import hashlib
+from typing import List
+from openai import OpenAI
 
-def generate_images_from_script(script_text: str) -> list:
+# ✅ إعداد عميل OpenAI
+client = OpenAI()
+
+# ✅ مجلد الحفظ
+OUTPUT_DIR = "generated_images"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+def _sanitize_filename(text: str) -> str:
+    """توليد اسم ملف فريد من النص باستخدام hash"""
+    return hashlib.md5(text.encode()).hexdigest()[:10]
+
+def generate_images_from_script(script_text: str, style: str = "cinematic", resolution: str = "1024x1024") -> List[str]:
     """
-    توليد صور تمثّل مشاهد من السكربت النصي.
-    (حالياً: توليد صور وهمية تحتوي على النص)
+    توليد صور لكل مشهد من السكربت باستخدام DALL·E أو نموذج vision قوي
     """
-    image_paths = []
     sentences = [s.strip() for s in script_text.split(".") if s.strip()]
-    
-    os.makedirs("generated_images", exist_ok=True)
+    image_paths = []
 
     for i, sentence in enumerate(sentences):
-        filename = f"generated_images/scene_{i+1}.png"
-        
-        img = Image.new('RGB', (1280, 720), color=(30, 30, 30))
-        draw = ImageDraw.Draw(img)
-        draw.text((50, 300), sentence, fill=(255, 255, 255))  # نرسم الجملة على الصورة
-        
-        img.save(filename)
-        image_paths.append(filename)
-    
+        prompt = f"{style} illustration of: {sentence}"
+        filename = f"{_sanitize_filename(sentence)}.png"
+        file_path = os.path.join(OUTPUT_DIR, filename)
+
+        # ✅ تجنب التكرار
+        if os.path.exists(file_path):
+            image_paths.append(file_path)
+            continue
+
+        try:
+            response = client.images.generate(
+                model="dall-e-3",
+                prompt=prompt,
+                size=resolution,
+                quality="standard",
+                n=1
+            )
+            image_url = response.data[0].url
+
+            # ✅ تحميل الصورة
+            import requests
+            image_data = requests.get(image_url).content
+            with open(file_path, "wb") as f:
+                f.write(image_data)
+
+            image_paths.append(file_path)
+
+        except Exception as e:
+            print(f"❌ Failed generating image for: {sentence}\n{e}")
+            continue
+
     return image_paths
