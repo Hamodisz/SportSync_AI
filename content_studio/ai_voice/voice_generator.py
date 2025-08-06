@@ -1,45 +1,35 @@
 # voice_generator.py
 
 import os
-import requests
 from pathlib import Path
+from gtts import gTTS
+import logging
 
-ELEVEN_API_KEY = "your-eleven-api-key-here"  # غيّرها لو عندك env
-
-VOICE_ID = "EXAVITQu4vr4xnSDxMaL"  # الصوت الافتراضي (يمكن تغييره)
+# 📁 تحديد مكان حفظ الصوت
 VOICE_OUTPUT = Path("content_studio/ai_voice/voices/final_voice.mp3")
 VOICE_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
 
-def generate_voice_from_script(script_text: str, voice_id=VOICE_ID) -> str:
+def generate_voice_from_script(script_text: str, lang: str = "en") -> str:
     """
-    يولد صوت من نص باستخدام ElevenLabs API ويحفظه كـ mp3
+    🎤 توليد صوت من نص باستخدام gTTS (مجاني بالكامل)
     """
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
-    headers = {
-        "xi-api-key": ELEVEN_API_KEY,
-        "Content-Type": "application/json"
-    }
-    data = {
-        "text": script_text,
-        "model_id": "eleven_monolingual_v1",
-        "voice_settings": {
-            "stability": 0.4,
-            "similarity_boost": 0.8
-        }
-    }
+    try:
+        logging.debug("🔊 بدء توليد الصوت باستخدام gTTS")
+        logging.debug(f"📜 النص:\n{script_text}")
+        logging.debug(f"🌍 اللغة: {lang}")
 
-    response = requests.post(url, headers=headers, json=data)
+        tts = gTTS(text=script_text, lang=lang)
+        tts.save(str(VOICE_OUTPUT))
 
-    if response.status_code == 200:
-        with open(VOICE_OUTPUT, "wb") as f:
-            f.write(response.content)
+        logging.debug(f"✅ تم حفظ الصوت في: {VOICE_OUTPUT}")
         return str(VOICE_OUTPUT)
-    else:
-        raise Exception(f"❌ خطأ في توليد الصوت: {response.status_code} - {response.text}")
 
-# مثال تشغيل مباشر
+    except Exception as e:
+        logging.error(f"❌ خطأ أثناء توليد الصوت: {e}")
+        return None
+
+# 🧪 اختبار مباشر
 if _name_ == "_main_":
-    from content_studio.generate_script.script_generator import generate_script
-    script = generate_script("Why do people quit sports?")
-    path = generate_voice_from_script(script)
-    print(f"✅ تم توليد الصوت في: {path}")
+    text = "مرحبًا بك في نظام سبورت سنك. هذا هو اختبار توليد الصوت."
+    path = generate_voice_from_script(text, lang="ar")
+    print(f"✅ الملف الناتج: {path}")
