@@ -1,11 +1,11 @@
 import streamlit as st
 import sys
 import os
+import pathlib
 from pathlib import Path
 
-# ✅ إصلاح اسم المتغير هنا
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(_file_)))
-sys.path.append(ROOT_DIR)
+# ✅ أكثر طريقة متوافقة مع بيئات مثل Render وStreamlit Cloud
+sys.path.append(str(pathlib.Path().resolve()))
 
 from agents.marketing.video_pipeline.generate_ai_video import generate_ai_video
 from content_studio.ai_video.video_composer import compose_video_from_assets
@@ -71,7 +71,7 @@ if submit:
         if not video_path:
             st.error("❌ فشل توليد الفيديو.")
             st.stop()
-        script = "..."  # placeholder فقط لأن كل شيء تولّد تلقائيًا
+        script = "..."  # فقط placeholder لأن كل شيء تولّد تلقائيًا
 
     if uploaded_images:
         for i, file in enumerate(uploaded_images):
