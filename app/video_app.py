@@ -4,7 +4,6 @@ import os
 import pathlib
 from pathlib import Path
 
-# ✅ توافق مع بيئات Streamlit Cloud وRender
 sys.path.append(str(pathlib.Path().resolve()))
 
 from agents.marketing.video_pipeline.generate_ai_video import generate_ai_video
@@ -23,16 +22,12 @@ with st.form("video_form"):
 
     quality = st.selectbox("🎬 درجة جودة الفيديو المطلوبة", [
         "عالية جدًا (احترافي ومؤثر)",
-        "متوسطة (واضح وبسيط)",
-        "منخفضة (سريعة أو أولية)"
+        "متوسطة (واضح وسهل)",
+        "خفيفة (سريعة ومباشرة)"
     ])
 
     audience = st.selectbox("🎯 من هو الجمهور المستهدف؟", [
-        "جمهور عام",
-        "رياضيين محترفين",
-        "طلاب أو متعلمين",
-        "أصحاب أعمال",
-        "فريق عمل داخلي"
+        "جمهور عام", "رياضيين", "روّاد أعمال", "طلاب", "مدربين", "مبتدئين", "محترفين"
     ])
 
     creativity = st.checkbox("🎨 هل تريد أن يكون الفيديو إبداعي وغير تقليدي؟", value=True)
@@ -40,9 +35,10 @@ with st.form("video_form"):
     lang = st.selectbox("🗣 اللغة", ["ar", "en"], index=0)
 
     use_custom_script = st.checkbox("✏ هل تريد كتابة السكربت بنفسك؟", value=False)
+
     custom_script = ""
     if use_custom_script:
-        custom_script = st.text_area("📝 اكتب السكربت الذي تريد تحويله إلى فيديو")
+        custom_script = st.text_area("📝 اكتب السكربت الذي تريد تحويله إلى فيديو", height=200)
 
     uploaded_images = st.file_uploader("🖼 ارفع صورك الخاصة (اختياري)", type=["png", "jpg"], accept_multiple_files=True)
 
@@ -54,21 +50,18 @@ with st.form("video_form"):
 if submit:
     st.info("🛠 جاري التحضير...")
 
-    # مجلد الصور
     IMAGES_DIR = Path("content_studio/ai_images/outputs/")
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     for file in IMAGES_DIR.glob("*"):
-        file.unlink()  # تنظيف الصور القديمة
+        file.unlink()
 
-    # مسار الصوت
     VOICE_PATH = Path("content_studio/ai_voice/voices/final_voice.mp3")
 
-    # بيانات المستخدم
     user_data = {
         "name": name,
         "traits": {
-            "quality_level": quality,
-            "target_audience": audience,
+            "quality": quality,
+            "audience": audience,
             "creative": creativity
         }
     }
@@ -84,9 +77,8 @@ if submit:
         if not video_path:
             st.error("❌ فشل توليد الفيديو.")
             st.stop()
-        script = "..."  # تم توليده تلقائيًا
+        script = "..."  # placeholder
 
-    # حفظ الصور المرفوعة (لو فيه)
     if uploaded_images:
         for i, file in enumerate(uploaded_images):
             img_path = IMAGES_DIR / f"user_image_{i+1}.png"
@@ -104,7 +96,7 @@ if submit:
         st.subheader("🎙 الصوت المولد:")
         st.audio(str(VOICE_PATH))
 
-    # تركيب الفيديو
+    # توليد الفيديو
     st.info("🎞 جاري تركيب الفيديو النهائي...")
     video_path = compose_video_from_assets(image_duration=image_duration)
 
