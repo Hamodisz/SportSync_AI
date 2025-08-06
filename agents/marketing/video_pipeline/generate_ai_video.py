@@ -21,11 +21,10 @@ def generate_ai_video(user_data: dict, lang: str = "en") -> str | None:
         audio_path = generate_voiceover(script, lang)
         logging.debug(f"🎙 Voiceover path: {audio_path}")
 
-        # 4. توليد الفيديو من الملفات الداخلية
+        # 4. توليد الفيديو من الملفات
         final_video_path = compose_video_from_assets()
         logging.debug(f"🎞 Final video path: {final_video_path}")
 
-        # تحقق فعلي
         if not final_video_path:
             raise ValueError("❌ compose_video_from_assets لم يرجع مسار فيديو صالح")
 
