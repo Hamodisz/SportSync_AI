@@ -5,7 +5,7 @@ from pathlib import Path
 from content_studio.generate_script.script_generator import generate_script
 from agents.marketing.visual_cue_generator import inject_visual_guidance
 from content_studio.ai_images.generate_images import generate_images_from_script
-from content_studio.ai_voice.voice_generator import generate_voice
+from content_studio.ai_voice.voice_generator import generate_voice_from_script
 from content_studio.ai_video.video_composer import compose_video_from_assets
 
 # --- إعداد ---
@@ -16,24 +16,22 @@ tone = "emotional"
 print("📝 Generating script...")
 raw_script = generate_script(topic=topic, tone=tone)
 
-# --- 2. حقن visual cues (لو تستخدمها في الصور) ---
+# --- 2. حقن visual cues ---
 print("🎬 Injecting visual cues...")
 scenes = raw_script.split("\n")
 enhanced_scenes = inject_visual_guidance(scenes)
 final_script = "\n".join(enhanced_scenes)
 
-# --- 3. توليد الصور للمشاهد ---
+# --- 3. توليد الصور ---
 print("🖼 Generating images...")
 generate_images_from_script(final_script, image_style="cinematic-realistic")
 
-# --- 4. توليد الصوت ---
+# --- 4. توليد الصوت (gTTS) ---
 print("🎤 Generating voiceover...")
-Path("content_studio/ai_voice/voices").mkdir(parents=True, exist_ok=True)
-generate_voice(final_script, output_path="content_studio/ai_voice/voices/final_voice.mp3")
+generate_voice_from_script(final_script)
 
 # --- 5. دمج الفيديو ---
 print("🎞 Composing video...")
-Path("content_studio/ai_video/final_videos").mkdir(parents=True, exist_ok=True)
 video_path = compose_video_from_assets(image_duration=4.0, resolution=(1080, 1080))
 
 if video_path:
