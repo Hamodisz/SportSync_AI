@@ -3,7 +3,7 @@ import sys
 import os
 from pathlib import Path
 
-# ✅ حل مؤكد لمشكلة Render: إضافة مجلد المشروع الجذري لمسار الاستيراد
+# ✅ إصلاح اسم المتغير هنا
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(_file_)))
 sys.path.append(ROOT_DIR)
 
