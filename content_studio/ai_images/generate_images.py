@@ -7,23 +7,17 @@ from pathlib import Path
 from PIL import Image
 from io import BytesIO
 
-# إعداد API (عدّل حسب بيئتك)
-client = openai.OpenAI(api_key="your-api-key-here")  # أو استخدم os.getenv("OPENAI_API_KEY")
+# إعداد API من البيئة
+client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 OUTPUT_DIR = Path("content_studio/ai_images/outputs/")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 def extract_scenes(script_text: str):
-    """
-    تقطع السكربت إلى مشاهد مستقلة باستخدام Scene #
-    """
     scenes = re.split(r"Scene\s*#\d+:?", script_text, flags=re.IGNORECASE)
     return [s.strip() for s in scenes if s.strip()]
 
 def generate_image_for_scene(scene_description: str, image_style: str = "realistic", index: int = 0):
-    """
-    يولد صورة واحدة باستخدام DALL·E بناءً على وصف مشهد
-    """
     full_prompt = f"{scene_description}. Style: {image_style}. Cinematic lighting."
 
     response = client.images.generate(
@@ -44,9 +38,6 @@ def generate_image_for_scene(scene_description: str, image_style: str = "realist
     return str(image_path)
 
 def generate_images_from_script(script_text: str, image_style: str = "realistic"):
-    """
-    يولد صورة لكل مشهد في السكربت ويحفظها
-    """
     scenes = extract_scenes(script_text)
     image_paths = []
 
@@ -57,8 +48,7 @@ def generate_images_from_script(script_text: str, image_style: str = "realistic"
 
     return image_paths
 
-
-# مثال تشغيل مباشر
+# ✅ تشغيل مباشر لتجربة السكربت يدويًا
 if _name_ == "_main_":
     from content_studio.generate_script.script_generator import generate_script
     script = generate_script("Why do people quit sports?", tone="emotional")
