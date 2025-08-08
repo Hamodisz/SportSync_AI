@@ -73,7 +73,7 @@ def optional_clean_images() -> None:
 # -----------------------------
 # نقطة التشغيل
 # -----------------------------
-if _name_ == "_main_":
+if __name__ == "_+main__":
     # 1) فحص ffmpeg + المجلدات + التشخيص
     check_ffmpeg()
     ensure_dirs()
