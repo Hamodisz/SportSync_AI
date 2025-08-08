@@ -1,61 +1,38 @@
 # content_studio/generate_script/script_generator.py
-# -- coding: utf-8 --
 
 import os
 import json
-from typing import List
-from openai import OpenAI
+import openai
 
-# ✅ تأكد من وجود مفتاح API
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    raise RuntimeError(
-        "OPENAI_API_KEY غير مُعرّف في المتغيرات البيئية. "
-        "ضِف المفتاح ثم أعد التشغيل."
-    )
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+def generate_script(topic: str, tone: str = "emotional", lang: str = "english") -> str:
+    if lang.lower() == "arabic":
+        prompt = f"""
+اكتب لي سكربت قصير على شكل مشاهد لواجهة إفتتاحية ومُلهمة عن: {topic}
+(السكربت يجب أن يحتوي على 6-4 مشاهد وكل مشهد في سطرين فقط)
 
-def _build_prompt(topic: str, tone: str, lang: str) -> str:
-    lang = (lang or "").lower()
-    if lang in ("ar", "arabic", "arab"):
-        return f"""اكتب سكربت قصير بصيغة مشاهد، مُلهِم وافتتاحي عن: {topic}
-- 4 إلى 6 مشاهد
-- كل مشهد سطرين كحد أقصى
-- لغة عربية واضحة ومؤثرة
-- مناسب للتحويل لفيديو قصير تحفيزي
-- اسلوب: {tone}"""
+خلي الرد مؤثر ويلمس المشاعر، ويكون مناسب لتحويله إلى فيديو تحفيزي قصير
+"""
     else:
-        return f"""Write a short video script as scenes about: {topic}
-- 4 to 6 scenes
-- 1–2 lines per scene
-- Visually expressive and easy to turn into a short video
-- Tone: {tone}"""
+        prompt = f"""
+Write a short video script in scene format about: {topic}
+Use a {tone} tone, make it deep, human, and emotionally engaging.
 
-def generate_script(topic: str, tone: str = "emotional", lang: str = "ar") -> str:
-    """
-    يولّد سكربت قصير بصيغة مشاهد باستخدام OpenAI Chat Completions.
-    """
-    prompt = _build_prompt(topic, tone, lang)
+The script should be 4 to 6 short scenes (1–2 lines each) in clear English.
+Make it visually expressive to convert into a short video later.
+"""
 
-    resp = client.chat.completions.create(
-        model="gpt-4o-mini",      # غيّره إلى gpt-4o إذا تبغى أعلى جودة
-        temperature=0.7,
+    response = openai.ChatCompletion.create(
+        model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
+        temperature=0.7
     )
 
-    content = resp.choices[0].message.content or ""
-    return content.strip()
+    return response.choices[0].message.content.strip()
 
-def generate_multiple_scripts(
-    topics: List[str],
-    tone: str = "emotional",
-    lang: str = "ar",
-    output_path: str = "data/video_scripts.json"
-) -> None:
-    """
-    يولّد عدة سكربتات ويحفظها في JSON.
-    """
+
+def generate_multiple_scripts(topics, tone="emotional", lang="english", output_path="data/video_scripts.json"):
     results = []
     for i, topic in enumerate(topics, 1):
         print(f"🎬 Generating script {i}/{len(topics)}: {topic}")
@@ -68,12 +45,15 @@ def generate_multiple_scripts(
 
     print(f"\n✅ All scripts saved to {output_path}")
 
+
 if _name_ == "_main_":
-    # مثال تشغيل مباشر
+    # تقدر تعدل المواضيع هنا حسب خطة اليوم
     topics = [
-        "قوة البداية الصغيرة في حياتك الرياضية",
-        "كيف تغيّر 10 دقائق يوميًا لياقتك",
-        "الانضباط أهم من الدافع اللحظي",
-        "لماذا الرياضة أذكى استثمار في ذاتك"
+        "The hidden power of staying silent",
+        "Why discipline is more loving than motivation",
+        "Your future self is begging you to change",
+        "What sport teaches you about life better than school",
+        "The most underrated muscle in your body"
     ]
-    generate_multiple_scripts(topics, tone="emotional", lang="ar")
+
+    generate_multiple_scripts(topics, tone="emotional", lang="english")
