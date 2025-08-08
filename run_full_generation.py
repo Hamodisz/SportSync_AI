@@ -9,9 +9,8 @@
 
 import os
 import sys
-import shutil
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 # ✅ اسمح بالاستيراد من المشروع كله
 sys.path.append(str(Path(_file_).parent.resolve()))
@@ -56,8 +55,10 @@ def preflight_quick_diagnose() -> None:
 
     missing = diag.get("tools_missing", [])
     if missing:
-        raise SystemExit(f"❌ مكونات ناقصة/مسارات خاطئة: {missing}\n"
-                         "↪ تأكد من مسارات ملفات: script_generator / image_generator / voice_generator / video_composer")
+        raise SystemExit(
+            f"❌ مكونات ناقصة/مسارات خاطئة: {missing}\n"
+            "↪ تأكد من مسارات ملفات: script_generator / image_generator / voice_generator / video_composer"
+        )
 
 def optional_clean_images() -> None:
     """تنظيف صور قديمة (اختياري)."""
@@ -79,14 +80,12 @@ if _name_ == "_main_":
     preflight_quick_diagnose()
     optional_clean_images()  # تقدر تعلّقها لو تبغى تحتفظ بالصور القديمة
 
-    # 2) إمّا نستخدم سكربت جاهز (override_script)
-    #    أو نشغّل من user_data لتوليد سكربت تلقائي
-    # ملاحظة: ابدأ بـ override_script للتأكد أن البايبلاين يعمل 100%
+    # 2) إمّا نستخدم سكربت جاهز (override_script) أو نولّد تلقائيًا من user_data
     override_script = """عنوان: إبدأ رياضتك اليوم
-المشهد 1: شروق هادئ ونص: "كل بداية خطوة"
-المشهد 2: مضمار جري ونص: "ابدأ بخطوة بسيطة"
-المشهد 3: ابتسامة ونص: "الاستمرارية أهم من الكمال"
-الخاتمة: جرّب 10 دقائق اليوم."
+المشهد 1: شروق هادئ — "كل بداية خطوة"
+المشهد 2: مضمار جري — "ابدأ بخطوة بسيطة"
+المشهد 3: ابتسامة — "الاستمرارية أهم من الكمال"
+الخاتمة: جرّب 10 دقائق اليوم.
 """
 
     # لو تبي تختبر توليد السكربت تلقائي بدون نص جاهز، خلّي override_script = None
@@ -107,7 +106,7 @@ if _name_ == "_main_":
         lang="ar",
         image_duration=4,
         override_script=override_script,  # غيّرها إلى None لتجربة توليد السكربت تلقائيًا
-        mute_if_no_voice=True,            # كمّل بدوّن صوت لو gTTS فشل/النت ضعيف
+        mute_if_no_voice=True,            # كمّل بدون صوت لو gTTS فشل/النت ضعيف
         skip_cleanup=True                 # ما ننظّف داخل core (نظّفنا قبل)
     )
 
