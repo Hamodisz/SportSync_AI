@@ -1,40 +1,123 @@
-# run_full_generation.py
+# -- coding: utf-8 --
+"""
+تشغيل بايبلاين الفيديو كامل مع فحص مسبق:
+- يتحقق من ffmpeg
+- يتأكد من وجود المجلدات الأساسية
+- يفحص توفر الدوال المطلوبة عبر quick_diagnose()
+- يشغّل core_engine لإنتاج الفيديو
+"""
 
 import os
+import sys
+import shutil
 from pathlib import Path
-from content_studio.generate_script.script_generator import generate_script
-from agents.marketing.visual_cue_generator import inject_visual_guidance
-from content_studio.ai_images.generate_images import generate_images_from_script
-from content_studio.ai_voice.voice_generator import generate_voice_from_script
-from content_studio.ai_video.video_composer import compose_video_from_assets
+import subprocess
 
-# --- إعداد ---
-topic = "Why do people quit sports?"
-tone = "emotional"
+# ✅ اسمح بالاستيراد من المشروع كله
+sys.path.append(str(Path(_file_).parent.resolve()))
 
-# --- 1. توليد السكربت ---
-print("📝 Generating script...")
-raw_script = generate_script(topic=topic, tone=tone)
+from core.core_engine import run_full_generation, quick_diagnose
 
-# --- 2. حقن visual cues ---
-print("🎬 Injecting visual cues...")
-scenes = raw_script.split("\n")
-enhanced_scenes = inject_visual_guidance(scenes)
-final_script = "\n".join(enhanced_scenes)
+# -----------------------------
+# إعداد المسارات الأساسية
+# -----------------------------
+IMAGES_DIR = Path("content_studio/ai_images/outputs/")
+VOICE_DIR  = Path("content_studio/ai_voice/voices/")
+VOICE_PATH = VOICE_DIR / "final_voice.mp3"
+FINAL_DIR  = Path("content_studio/ai_video/final_videos/")
 
-# --- 3. توليد الصور ---
-print("🖼 Generating images...")
-generate_images_from_script(final_script, image_style="cinematic-realistic")
+REQUIRED_DIRS = [IMAGES_DIR, VOICE_DIR, FINAL_DIR]
 
-# --- 4. توليد الصوت (gTTS) ---
-print("🎤 Generating voiceover...")
-generate_voice_from_script(final_script)
+# -----------------------------
+# فحوصات مسبقة (Preflight)
+# -----------------------------
+def check_ffmpeg() -> None:
+    """يتأكد أن ffmpeg متاح في PATH قبل تشغيل MoviePy."""
+    try:
+        out = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True)
+        if out.returncode != 0:
+            raise RuntimeError("ffmpeg موجود لكن يرجّع كود غير صفري.")
+        print("✅ ffmpeg متوفر.")
+    except FileNotFoundError:
+        raise SystemExit("❌ ffmpeg غير مثبت/غير موجود في PATH. ثبّته ثم أعد المحاولة.")
 
-# --- 5. دمج الفيديو ---
-print("🎞 Composing video...")
-video_path = compose_video_from_assets(image_duration=4.0, resolution=(1080, 1080))
+def ensure_dirs() -> None:
+    """ينشئ المجلدات الأساسية إذا كانت مفقودة."""
+    for d in REQUIRED_DIRS:
+        if not d.exists():
+            print(f"ℹ إنشاء المجلد: {d}")
+            d.mkdir(parents=True, exist_ok=True)
+    print("✅ المجلدات الأساسية جاهزة.")
 
-if video_path:
-    print(f"✅ الفيديو جاهز: {video_path}")
-else:
-    print("❌ فشل في التوليد.")
+def preflight_quick_diagnose() -> None:
+    """يعرض تشخيص سريع ويتحقق من توفر الأدوات."""
+    diag = quick_diagnose()
+    print("🔎 Quick Diagnose:", diag)
+
+    missing = diag.get("tools_missing", [])
+    if missing:
+        raise SystemExit(f"❌ مكونات ناقصة/مسارات خاطئة: {missing}\n"
+                         "↪ تأكد من مسارات ملفات: script_generator / image_generator / voice_generator / video_composer")
+
+def optional_clean_images() -> None:
+    """تنظيف صور قديمة (اختياري)."""
+    if IMAGES_DIR.exists():
+        for f in IMAGES_DIR.glob("*"):
+            try:
+                f.unlink()
+            except Exception:
+                pass
+    print("🧹 تم تنظيف صور الإخراج السابقة (إن وجدت).")
+
+# -----------------------------
+# نقطة التشغيل
+# -----------------------------
+if _name_ == "_main_":
+    # 1) فحص ffmpeg + المجلدات + التشخيص
+    check_ffmpeg()
+    ensure_dirs()
+    preflight_quick_diagnose()
+    optional_clean_images()  # تقدر تعلّقها لو تبغى تحتفظ بالصور القديمة
+
+    # 2) إمّا نستخدم سكربت جاهز (override_script)
+    #    أو نشغّل من user_data لتوليد سكربت تلقائي
+    # ملاحظة: ابدأ بـ override_script للتأكد أن البايبلاين يعمل 100%
+    override_script = """عنوان: إبدأ رياضتك اليوم
+المشهد 1: شروق هادئ ونص: "كل بداية خطوة"
+المشهد 2: مضمار جري ونص: "ابدأ بخطوة بسيطة"
+المشهد 3: ابتسامة ونص: "الاستمرارية أهم من الكمال"
+الخاتمة: جرّب 10 دقائق اليوم."
+"""
+
+    # لو تبي تختبر توليد السكربت تلقائي بدون نص جاهز، خلّي override_script = None
+    # override_script = None
+
+    user_data = {
+        "name": "Guest",
+        "traits": {
+            "quality_level": "جيدة",
+            "target_audience": "عام",
+            "creative": True
+        }
+    }
+
+    print("🚀 بدء إنتاج الفيديو...")
+    result = run_full_generation(
+        user_data=user_data,
+        lang="ar",
+        image_duration=4,
+        override_script=override_script,  # غيّرها إلى None لتجربة توليد السكربت تلقائيًا
+        mute_if_no_voice=True,            # كمّل بدوّن صوت لو gTTS فشل/النت ضعيف
+        skip_cleanup=True                 # ما ننظّف داخل core (نظّفنا قبل)
+    )
+
+    if result["error"]:
+        print("❌ خطأ أثناء الإنتاج:", result["error"])
+        sys.exit(1)
+
+    print("\n✅ تم الإنتاج بنجاح:")
+    print("📜 Script:\n", (result["script"] or "")[:200], "..." if result["script"] and len(result["script"]) > 200 else "")
+    print("🖼 Images:", result["images"])
+    print("🔊 Voice:", result["voice"])
+    print("🎞 Video:", result["video"])
+    print("\n📂 ستجد الملف داخل:", FINAL_DIR.resolve())
