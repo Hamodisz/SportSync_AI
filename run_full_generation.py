@@ -13,7 +13,7 @@ import subprocess
 from pathlib import Path
 
 # ✅ اسمح بالاستيراد من المشروع كله
-sys.path.append(str(Path(_file_).parent.resolve()))
+sys.path.append(str(Path(__file__).parent.resolve()))
 
 from core.core_engine import run_full_generation, quick_diagnose
 
