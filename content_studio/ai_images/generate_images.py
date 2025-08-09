@@ -11,20 +11,21 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 
-# ========= إعداد اللوجينغ =========
+# ========= Logging =========
 logging.basicConfig(
     level=logging.INFO,
     format="%(levelname)s | %(asctime)s | ai_images | %(message)s"
 )
 
-# ========= مسارات ثابتة =========
+# ========= Paths =========
 OUTPUT_DIR = Path("content_studio/ai_images/outputs/")
 SAMPLE_DIR = Path("generated_images")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# ========= اعتماديات اختيارية =========
+# ========= Optional deps / OpenAI client =========
 USE_OPENAI = False
 client = None
+
 try:
     from dotenv import load_dotenv  # type: ignore
     load_dotenv()
@@ -34,34 +35,38 @@ except Exception:
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 try:
-    # واجهة OpenAI الحديثة
     from openai import OpenAI  # type: ignore
     if OPENAI_API_KEY:
         client = OpenAI(api_key=OPENAI_API_KEY)
         USE_OPENAI = True
+        logging.info("OpenAI client configured.")
+    else:
+        logging.warning("OPENAI_API_KEY not set. Falling back to local generation.")
 except Exception as e:
     logging.warning(f"OpenAI client not available, will use fallbacks. ({e})")
     USE_OPENAI = False
     client = None
 
-# PIL للفولباك المحلي
+# Local fallback
 from PIL import Image, ImageDraw, ImageFont  # type: ignore
 
 
-# ========= أدوات مساعدة =========
+# ========= Helpers =========
 def extract_scenes(script_text: str) -> List[str]:
     """
-    استخراج المشاهد من سكربت عربي/إنجليزي:
-      - Scene #1: ... / Scene: ...
-      - مشهد 1: ... / مشهد: ...
-      - أو تقسيم على فواصل الأسطر الفارغة
+    Extract scenes from Arabic/English script.
+    Supports:
+      - Scene #1: ...
+      - مشهد 1: ...
+    Falls back to splitting on empty lines.
     """
-    chunks = re.split(r"(?:Scene\s*#?\d*[:\-]?\s*)|(?:مشهد\s*#?\d*[:\-]?\s*)",
-                      script_text, flags=re.IGNORECASE)
-    scenes = [c.strip() for c in chunks if c and c.strip()]
+    parts = re.split(r"(?:Scene\s*#?\d*[:\-]?\s*)|(?:مشهد\s*#?\d*[:\-]?\s*)",
+                     script_text, flags=re.IGNORECASE)
+    scenes = [p.strip() for p in parts if p and p.strip()]
     if not scenes:
         scenes = [p.strip() for p in re.split(r"\n\s*\n", script_text) if p.strip()]
-    # حد أقصى 6 مشاهد عشان الفيديو القصير
+
+    # Cap at 6 scenes for short videos
     return scenes[:6] if scenes else [script_text.strip()[:140]]
 
 
@@ -71,38 +76,38 @@ def _save_png_from_b64(b64_data: str, out_path: Path) -> None:
 
 
 def _copy_from_samples(idx: int) -> Optional[str]:
-    """نسخ صورة من generated_images كحل سريع إن وُجدت."""
+    """
+    Quick fallback: copy one of ./generated_images/.png|.jpg into outputs.
+    """
     if not SAMPLE_DIR.exists():
         return None
     candidates = sorted(list(SAMPLE_DIR.glob(".png")) + list(SAMPLE_DIR.glob(".jpg")))
     if not candidates:
         return None
+
     src = candidates[idx % len(candidates)]
-    dst = OUTPUT_DIR / f"scene_{idx+1}{src.suffix.lower()}"
-    # افتح واحفظ لضمان صحة الصيغة
-    Image.open(src).save(dst)
+    dst = OUTPUT_DIR / f"scene_{idx + 1}{src.suffix.lower()}"
+    Image.open(src).save(dst)  # ensure valid format
     return str(dst)
 
 
 def _make_text_image(text: str, idx: int, size=(1024, 1024)) -> str:
     """
-    توليد صورة نصّية محليًا (fallback نهائي).
-    مناسبة عندما لا يتوفر API ولا صور عينات.
+    Final offline fallback: render the scene text onto a simple poster image.
     """
     img = Image.new("RGB", size, (18, 20, 24))
     draw = ImageDraw.Draw(img)
 
-    # جرّب خط نظام، وإلا استخدم الافتراضي
     try:
         font = ImageFont.truetype("arial.ttf", 44)
     except Exception:
         font = ImageFont.load_default()
 
-    # لفّ النص ببساطة
+    # naive wrap
     words = text.split()
     lines, line = [], ""
     for w in words:
-        if len(line + " " + w) < 28:
+        if len((line + " " + w).strip()) < 28:
             line = (line + " " + w).strip()
         else:
             lines.append(line)
@@ -115,34 +120,35 @@ def _make_text_image(text: str, idx: int, size=(1024, 1024)) -> str:
         draw.text((60, y), ln, fill=(235, 235, 235), font=font)
         y += 60
 
-    path = OUTPUT_DIR / f"scene_{idx+1}.png"
+    path = OUTPUT_DIR / f"scene_{idx + 1}.png"
     img.save(path, format="PNG")
     return str(path)
 
 
 def _generate_openai_image(prompt: str, idx: int, size: str, retries: int = 3) -> str:
     """
-    توليد صورة عبر OpenAI Images API (gpt-image-1) مع إعادة المحاولة.
-    يرمي استثناء عند الفشل النهائي ليتم تفعيل الفولباك.
+    Generate an image via OpenAI Images API (gpt-image-1) with retries.
+    Raises on final failure so fallbacks trigger.
     """
     if not USE_OPENAI or client is None:
         raise RuntimeError("OpenAI not configured")
 
     style_suffix = "\nStyle: cinematic, realistic, dramatic lighting, high detail."
-    full_prompt = prompt.strip() + style_suffix
+    full_prompt = (prompt or "").strip() + style_suffix
 
     last_err: Optional[Exception] = None
     for attempt in range(1, retries + 1):
         try:
             resp = client.images.generate(
-                model="gpt-image-1",   # بدّلها لو حسابك يدعم نموذج صور آخر
+                model="gpt-image-1",
                 prompt=full_prompt,
                 size=size,
-                quality="standard",
+                # NOTE: allowed values (low|medium|high|auto). 'standard' causes 400.
+                quality="high",
                 n=1,
             )
             b64_img = resp.data[0].b64_json
-            out_path = OUTPUT_DIR / f"scene_{idx+1}.png"
+            out_path = OUTPUT_DIR / f"scene_{idx + 1}.png"
             _save_png_from_b64(b64_img, out_path)
             return str(out_path)
         except Exception as e:
@@ -154,7 +160,7 @@ def _generate_openai_image(prompt: str, idx: int, size: str, retries: int = 3) -
     raise RuntimeError(f"OpenAI image generation failed after {retries} attempts: {last_err}")
 
 
-# ========= الواجهات الرئيسية =========
+# ========= Public API =========
 def generate_image_for_scene(
     scene_description: str,
     index: int,
@@ -162,10 +168,9 @@ def generate_image_for_scene(
     size: str = "1024x1024",
 ) -> str:
     """
-    يولّد صورة واحدة لمشهد معين مع فولباكات آمنة.
-    الأولوية: OpenAI → عينات محلية → صورة نصّية محلية.
+    Generate one scene image with robust fallbacks:
+    OpenAI → sample images → local text poster.
     """
-    # لو عندك ستايل، أدمجه مع الوصف
     scene_prompt = f"{scene_description}. Style: {image_style}."
     try:
         if USE_OPENAI:
@@ -185,10 +190,9 @@ def generate_images_from_script(
     size: str = "1024x1024",
 ) -> List[str]:
     """
-    يحوّل السكربت إلى مجموعة صور مشاهد.
-    ينظّف مجلد الإخراج أولاً لضمان نتائج حديثة.
+    Turn a script into a list of scene images.
+    Cleans output folder first to ensure fresh results.
     """
-    # تنظيف الإخراج
     for f in OUTPUT_DIR.glob("*"):
         try:
             f.unlink()
@@ -199,7 +203,7 @@ def generate_images_from_script(
     paths: List[str] = []
 
     for i, scene in enumerate(scenes):
-        logging.info(f"🎨 Generating image for scene #{i+1}…")
+        logging.info(f"🎨 Generating image for scene #{i + 1}…")
         p = generate_image_for_scene(
             scene_description=scene,
             index=i,
@@ -207,22 +211,23 @@ def generate_images_from_script(
             size=size,
         )
         paths.append(p)
+        # tiny delay to avoid hammering APIs/filesystem
+        time.sleep(0.05)
 
     return paths
 
 
 def generate_images(script_text: str, lang: str = "ar") -> List[str]:
     """
-    واجهة يستدعيها بقية المشروع.
+    Entry-point used by the rest of the project.
     """
     style = "cinematic realistic, soft contrast, mood lighting, depth of field"
     return generate_images_from_script(script_text, image_style=style, size="1024x1024")
 
 
-# ========= اختبار سريع =========
+# ========= Quick self-test =========
 if _name_ == "_main_":
     try:
-        # اختبار يدوي سريع
         test_script = (
             "مشهد 1: لاعب يربط الحذاء قبل الجري.\n\n"
             "مشهد 2: قطرة عرق تسقط على الأرض.\n\n"
