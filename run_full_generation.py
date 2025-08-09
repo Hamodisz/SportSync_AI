@@ -12,8 +12,8 @@ import sys
 import subprocess
 from pathlib import Path
 
-# ✅ اسمح بالاستيراد من المشروع كله
-sys.path.append(str(Path(__file__).parent.resolve()))
+# ✅ اسمح بالاستيراد من المشروع كله (من جذر الملف الحالي)
+sys.path.append(str(Path(_file_).parent.resolve()))
 
 from core.core_engine import run_full_generation, quick_diagnose
 
@@ -51,7 +51,7 @@ def ensure_dirs() -> None:
 def preflight_quick_diagnose() -> None:
     """يعرض تشخيص سريع ويتحقق من توفر الأدوات."""
     diag = quick_diagnose()
-    print("🔎 Quick Diagnose:", diag)
+    print("🔎 Quick Diagnose:", diag, flush=True)
 
     missing = diag.get("tools_missing", [])
     if missing:
@@ -73,7 +73,13 @@ def optional_clean_images() -> None:
 # -----------------------------
 # نقطة التشغيل
 # -----------------------------
-if __name__ == "_+main__":
+if _name_ == "_main_":
+    print("🚀 RUN START", flush=True)
+
+    # 0) فحص متغير المفتاح (تنبيهي فقط — لا نوقف التنفيذ)
+    if not os.getenv("OPENAI_API_KEY"):
+        print("⚠ تنبيه: OPENAI_API_KEY غير مضبوط — لو تولد صور/نص من OpenAI قد يفشل.", flush=True)
+
     # 1) فحص ffmpeg + المجلدات + التشخيص
     check_ffmpeg()
     ensure_dirs()
@@ -81,7 +87,7 @@ if __name__ == "_+main__":
     optional_clean_images()  # تقدر تعلّقها لو تبغى تحتفظ بالصور القديمة
 
     # 2) إمّا نستخدم سكربت جاهز (override_script) أو نولّد تلقائيًا من user_data
-    override_script = """عنوان: إبدأ رياضتك اليوم
+    override_script = """عنوان: ابدأ رياضتك اليوم
 المشهد 1: شروق هادئ — "كل بداية خطوة"
 المشهد 2: مضمار جري — "ابدأ بخطوة بسيطة"
 المشهد 3: ابتسامة — "الاستمرارية أهم من الكمال"
@@ -100,23 +106,28 @@ if __name__ == "_+main__":
         }
     }
 
-    print("🚀 بدء إنتاج الفيديو...")
-    result = run_full_generation(
-        user_data=user_data,
-        lang="ar",
-        image_duration=4,
-        override_script=override_script,  # غيّرها إلى None لتجربة توليد السكربت تلقائيًا
-        mute_if_no_voice=True,            # كمّل بدون صوت لو gTTS فشل/النت ضعيف
-        skip_cleanup=True                 # ما ننظّف داخل core (نظّفنا قبل)
-    )
-
-    if result["error"]:
-        print("❌ خطأ أثناء الإنتاج:", result["error"])
+    print("🚀 بدء إنتاج الفيديو...", flush=True)
+    try:
+        result = run_full_generation(
+            user_data=user_data,
+            lang="ar",
+            image_duration=4,
+            override_script=override_script,  # غيّرها إلى None لتجربة توليد السكربت تلقائيًا
+            mute_if_no_voice=True,            # كمّل بدون صوت لو gTTS فشل/النت ضعيف
+            skip_cleanup=True                 # ما ننظّف داخل core (نظّفنا قبل)
+        )
+    except Exception as e:
+        print(f"💥 استثناء غير متوقع: {e}", flush=True)
         sys.exit(1)
 
-    print("\n✅ تم الإنتاج بنجاح:")
-    print("📜 Script:\n", (result["script"] or "")[:200], "..." if result["script"] and len(result["script"]) > 200 else "")
-    print("🖼 Images:", result["images"])
-    print("🔊 Voice:", result["voice"])
-    print("🎞 Video:", result["video"])
-    print("\n📂 ستجد الملف داخل:", FINAL_DIR.resolve())
+    if result.get("error"):
+        print("❌ خطأ أثناء الإنتاج:", result["error"], flush=True)
+        sys.exit(1)
+
+    print("\n✅ تم الإنتاج بنجاح:", flush=True)
+    print("📜 Script:\n", (result.get("script") or "")[:200],
+          "..." if result.get("script") and len(result["script"]) > 200 else "", flush=True)
+    print("🖼 Images:", result.get("images"), flush=True)
+    print("🔊 Voice:", result.get("voice"), flush=True)
+    print("🎞 Video:", result.get("video"), flush=True)
+    print("\n📂 ستجد الملف داخل:", FINAL_DIR.resolve(), flush=True)
