@@ -12,6 +12,21 @@ import sys
 import subprocess
 from pathlib import Path
 
+# ===== تحسينات خاصة بويندوز =====
+if os.name == "nt":
+    # تأكد أن الإخراج يدعم العربية
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+    # تغيير Code Page إلى UTF-8 (لا يضر لو كانت مضبوطة مسبقًا)
+    try:
+        os.system("chcp 65001 >NUL")
+    except Exception:
+        pass
+# ===============================
+
 # ✅ اسمح بالاستيراد من المشروع كله (من جذر الملف الحالي)
 sys.path.append(str(Path(_file_).parent.resolve()))
 
@@ -38,7 +53,10 @@ def check_ffmpeg() -> None:
             raise RuntimeError("ffmpeg موجود لكن يرجّع كود غير صفري.")
         print("✅ ffmpeg متوفر.")
     except FileNotFoundError:
-        raise SystemExit("❌ ffmpeg غير مثبت/غير موجود في PATH. ثبّته ثم أعد المحاولة.")
+        raise SystemExit(
+            "❌ ffmpeg غير مثبت/غير موجود في PATH على ويندوز.\n"
+            "↪ نزّله من https://ffmpeg.org/download.html وأضِف مجلد bin إلى PATH، ثم أعد التشغيل."
+        )
 
 def ensure_dirs() -> None:
     """ينشئ المجلدات الأساسية إذا كانت مفقودة."""
@@ -78,7 +96,7 @@ if _name_ == "_main_":
 
     # 0) فحص متغير المفتاح (تنبيهي فقط — لا نوقف التنفيذ)
     if not os.getenv("OPENAI_API_KEY"):
-        print("⚠ تنبيه: OPENAI_API_KEY غير مضبوط — لو تولد صور/نص من OpenAI قد يفشل.", flush=True)
+        print("⚠ تنبيه: OPENAI_API_KEY غير مضبوط — لو تولّد صور/نص من OpenAI قد يفشل.", flush=True)
 
     # 1) فحص ffmpeg + المجلدات + التشخيص
     check_ffmpeg()
