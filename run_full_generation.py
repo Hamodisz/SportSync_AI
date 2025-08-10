@@ -3,8 +3,9 @@
 تشغيل بايبلاين الفيديو كامل مع فحص مسبق:
 - يتحقق من ffmpeg
 - يتأكد من وجود المجلدات الأساسية
-- يفحص توفر الدوال المطلوبة عبر quick_diagnose()
-- يشغّل core_engine لإنتاج الفيديو
+- يفحص توفر الأدوات عبر quick_diagnose()
+- خيار لتوليد صور بديلة (Placeholders) لتجاوز خطوة توليد الصور السحابية
+- يشغّل core_engine لإنتاج الفيديو النهائي
 """
 
 import os
@@ -12,23 +13,8 @@ import sys
 import subprocess
 from pathlib import Path
 
-# ===== تحسينات خاصة بويندوز =====
-if os.name == "nt":
-    # تأكد أن الإخراج يدعم العربية
-    try:
-        sys.stdout.reconfigure(encoding="utf-8")
-        sys.stderr.reconfigure(encoding="utf-8")
-    except Exception:
-        pass
-    # تغيير Code Page إلى UTF-8 (لا يضر لو كانت مضبوطة مسبقًا)
-    try:
-        os.system("chcp 65001 >NUL")
-    except Exception:
-        pass
-# ===============================
-
-# ✅ اسمح بالاستيراد من المشروع كله (من جذر الملف الحالي)
-sys.path.append(str(Path(__file__).parent.resolve()))
+# اجعل جذر المشروع على مسار الاستيراد (من جذر هذا الملف)
+sys.path.append(str(Path(_file_).parent.resolve()))
 
 from core.core_engine import run_full_generation, quick_diagnose
 
@@ -53,10 +39,7 @@ def check_ffmpeg() -> None:
             raise RuntimeError("ffmpeg موجود لكن يرجّع كود غير صفري.")
         print("✅ ffmpeg متوفر.")
     except FileNotFoundError:
-        raise SystemExit(
-            "❌ ffmpeg غير مثبت/غير موجود في PATH على ويندوز.\n"
-            "↪ نزّله من https://ffmpeg.org/download.html وأضِف مجلد bin إلى PATH، ثم أعد التشغيل."
-        )
+        raise SystemExit("❌ ffmpeg غير مثبت/غير موجود في PATH. ثبّته ثم أعد المحاولة.")
 
 def ensure_dirs() -> None:
     """ينشئ المجلدات الأساسية إذا كانت مفقودة."""
@@ -89,22 +72,64 @@ def optional_clean_images() -> None:
     print("🧹 تم تنظيف صور الإخراج السابقة (إن وجدت).")
 
 # -----------------------------
+# (جديد) صور بديلة لاختبار البايبلاين بدون OpenAI Images
+# -----------------------------
+SEED_PLACEHOLDERS = True   # خلّيه True للاختبار. إذا فعّلت توليد الصور السحابي خليها False.
+
+def _seed_placeholder_images(n: int = 5, size=(1024, 1024)) -> None:
+    """ينشئ صور Placeholder محليًا داخل IMAGES_DIR."""
+    from PIL import Image, ImageDraw, ImageFont  # يعتمد على Pillow
+    IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+
+    # نظّف القديم
+    for f in IMAGES_DIR.glob("*"):
+        try:
+            f.unlink()
+        except Exception:
+            pass
+
+    for i in range(n):
+        img = Image.new("RGB", size, (20, 24, 28))
+        d = ImageDraw.Draw(img)
+        try:
+            font = ImageFont.truetype("arial.ttf", 64)
+        except Exception:
+            font = ImageFont.load_default()
+        text = f"Scene {i+1}\n(placeholder)"
+        # تمركز بسيط للنص
+        d.multiline_text(
+            (size[0] // 6, size[1] // 3),
+            text,
+            fill=(230, 230, 230),
+            font=font,
+            align="center"
+        )
+        (IMAGES_DIR / f"scene_{i+1}.png").parent.mkdir(parents=True, exist_ok=True)
+        img.save(IMAGES_DIR / f"scene_{i+1}.png")
+
+# -----------------------------
 # نقطة التشغيل
 # -----------------------------
-if __name__ == "__main__":
+if _name_ == "_main_":
     print("🚀 RUN START", flush=True)
-
-    # 0) فحص متغير المفتاح (تنبيهي فقط — لا نوقف التنفيذ)
-    if not os.getenv("OPENAI_API_KEY"):
-        print("⚠ تنبيه: OPENAI_API_KEY غير مضبوط — لو تولّد صور/نص من OpenAI قد يفشل.", flush=True)
 
     # 1) فحص ffmpeg + المجلدات + التشخيص
     check_ffmpeg()
     ensure_dirs()
     preflight_quick_diagnose()
-    optional_clean_images()  # تقدر تعلّقها لو تبغى تحتفظ بالصور القديمة
 
-    # 2) إمّا نستخدم سكربت جاهز (override_script) أو نولّد تلقائيًا من user_data
+    # 2) اختياري: نظّف صور قديمة
+    optional_clean_images()
+
+    # 3) (اختبار) ازرع صور Placeholder بدل توليد الصور السحابي
+    if SEED_PLACEHOLDERS:
+        print("🧪 Seeding placeholder images (skipping OpenAI images)…", flush=True)
+        try:
+            _seed_placeholder_images(n=5)  # غيّر العدد لو حاب
+        except Exception as e:
+            print(f"⚠ فشل إنشاء صور Placeholder: {e}. سنكمل على أي حال.", flush=True)
+
+    # 4) إمّا نستخدم سكربت جاهز (override_script) أو نولّد تلقائيًا من user_data
     override_script = """عنوان: ابدأ رياضتك اليوم
 المشهد 1: شروق هادئ — "كل بداية خطوة"
 المشهد 2: مضمار جري — "ابدأ بخطوة بسيطة"
@@ -112,7 +137,7 @@ if __name__ == "__main__":
 الخاتمة: جرّب 10 دقائق اليوم.
 """
 
-    # لو تبي تختبر توليد السكربت تلقائي بدون نص جاهز، خلّي override_script = None
+    # لو تبغى توليد تلقائي من دوال السكربت عندك، خلّي override_script = None
     # override_script = None
 
     user_data = {
@@ -124,15 +149,15 @@ if __name__ == "__main__":
         }
     }
 
-    print("🚀 بدء إنتاج الفيديو...", flush=True)
+    print("🎞 بدء إنتاج الفيديو...", flush=True)
     try:
         result = run_full_generation(
             user_data=user_data,
             lang="ar",
             image_duration=4,
             override_script=override_script,  # غيّرها إلى None لتجربة توليد السكربت تلقائيًا
-            mute_if_no_voice=True,            # كمّل بدون صوت لو gTTS فشل/النت ضعيف
-            skip_cleanup=True                 # ما ننظّف داخل core (نظّفنا قبل)
+            mute_if_no_voice=True,            # كمّل بدون صوت لو ما وُجد ملف صوت
+            skip_cleanup=True                 # لأننا نظّفنا الصور يدويًا فوق
         )
     except Exception as e:
         print(f"💥 استثناء غير متوقع: {e}", flush=True)
