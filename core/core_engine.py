@@ -1,221 +1,199 @@
-# core/core_engine.py
+# -- coding: utf-8 --
+"""
+content_studio/ai_images/generate_images.py
 
-from __future__ import annotations
+مولّد صور للمشاهد مع خيار تجاوز OpenAI تمامًا وإنشاء صور Placeholder محليًا.
+الدالة العامة التي يستدعيها المشروع هي: generate_images(script_text, lang="ar")
+
+افتراضيًا: نستخدم Placeholder (USE_IMAGE_PLACEHOLDERS=1).
+لتفعيل OpenAI لاحقًا: ضع USE_IMAGE_PLACEHOLDERS=0 ووفّر OPENAI_API_KEY وحساب/منظمة مُوثّقة.
+"""
+
 import os
+import re
+import base64
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional
-import inspect
+from typing import List, Optional
 
-# ========== logging (منع تكرار الإعداد) ==========
-if not logging.getLogger().handlers:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(levelname)s | %(asctime)s | core_engine | %(message)s"
-    )
+from PIL import Image, ImageDraw, ImageFont
 
-IMAGES_DIR = Path("content_studio/ai_images/outputs/")
-VOICE_PATH = Path("content_studio/ai_voice/voices/final_voice.mp3")
-FINAL_VIDS_DIR = Path("content_studio/ai_video/final_videos/")
+# ================== إعداد اللوجينغ ==================
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s | %(asctime)s | ai_images | %(message)s",
+)
 
-for p in (IMAGES_DIR, VOICE_PATH.parent, FINAL_VIDS_DIR):
-    p.mkdir(parents=True, exist_ok=True)
+# ================== إعدادات ومسارات ==================
+OUTPUT_DIR = Path("content_studio/ai_images/outputs/")
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# -------- محاولات الاستيراد المرنة --------
-_generate_script_fn = None
-_generate_images_fn = None
-_generate_voice_fn = None
-_compose_video_fn = None
+# ✅ افتراضيًا نفعل الـ Placeholder. يمكن قلبه بمتغير بيئة لاحقًا.
+SEED_PLACEHOLDERS: bool = os.getenv("USE_IMAGE_PLACEHOLDERS", "1").lower() in ("1", "true", "yes")
 
-# script
-try:
-    # content_studio
-    from content_studio.generate_script.script_generator import generate_script as _generate_script_fn
-except Exception:
+# إن أردت استخدام OpenAI Images لاحقًا، اضبط USE_IMAGE_PLACEHOLDERS=0
+# وسنحاول تهيئة OpenAI. إذا فشل نرجع تلقائيًا للـ Placeholder.
+client = None
+if not SEED_PLACEHOLDERS:
     try:
-        # agents
-        from agents.marketing.video_pipeline.script_writer import generate_script_from_traits as _generate_script_fn
-    except Exception:
-        pass
+        from dotenv import load_dotenv  # type: ignore
+        load_dotenv()
+        from openai import OpenAI  # type: ignore
 
-# images
-try:
-    from content_studio.ai_images.generate_images import generate_images as _generate_images_fn
-except Exception:
-    try:
-        from agents.marketing.video_pipeline.image_generator import generate_images as _generate_images_fn
-    except Exception:
-        pass
-
-# voice
-try:
-    from content_studio.ai_voice.voice_generator import generate_voice_from_script as _generate_voice_fn
-except Exception:
-    try:
-        from agents.marketing.video_pipeline.voice_generator import generate_voiceover as _generate_voice_fn
-    except Exception:
-        pass
-
-# compose
-try:
-    from content_studio.ai_video.video_composer import compose_video_from_assets as _compose_video_fn
-except Exception:
-    pass
-
-
-def _ensure_tools_available() -> List[str]:
-    missing = []
-    if _generate_script_fn is None:
-        missing.append("generate_script (script_generator / script_writer)")
-    if _generate_images_fn is None:
-        missing.append("generate_images (ai_images)")
-    if _generate_voice_fn is None:
-        missing.append("generate_voice (voice_generator)")
-    if _compose_video_fn is None:
-        missing.append("compose_video_from_assets (video_composer)")
-    return missing
-
-
-def _clean_images_output_dir():
-    if IMAGES_DIR.exists():
-        for f in IMAGES_DIR.glob("*"):
-            try:
-                f.unlink()
-            except Exception:
-                pass
-
-
-def _call_script_generator(user_data: Dict, lang: str) -> str:
-    """
-    يحاول أولاً دالة agents.generate_script_from_traits(user_data, lang)
-    وإن لم تتوفر يستعمل content_studio.generate_script(...) بتوقيعها.
-    """
-    if _generate_script_fn is None:
-        raise RuntimeError("No script generator available")
-
-    name = getattr(generate_script_fn, "name_", "")
-    if "generate_script_from_traits" in name:
-        return _generate_script_fn(user_data, lang)
-
-    # توقيع content_studio.generate_script
-    # عدّل القيم الافتراضية حسب مشروعك
-    return _generate_script_fn(
-        lang=lang,
-        audience=user_data.get("traits", {}).get("target_audience", "عام"),
-        quality=user_data.get("traits", {}).get("quality_level", "جيدة"),
-        tone="عام",
-        purpose="عام",
-        custom_prompt=""
-    )
-
-
-def _call_voice_generator(script: str, lang: str) -> Optional[str]:
-    """
-    يتعامل مع اختلاف التواقيع: بعض الدوال تأخذ (script) فقط،
-    وبعضها (script, lang).
-    """
-    if _generate_voice_fn is None:
-        return None
-
-    sig = inspect.signature(_generate_voice_fn)
-    params = list(sig.parameters.values())
-    try:
-        if len(params) >= 2:
-            return _generate_voice_fn(script, lang)
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            logging.warning("OPENAI_API_KEY غير مضبوط؛ سنستخدم صور Placeholder.")
+            SEED_PLACEHOLDERS = True
         else:
-            return _generate_voice_fn(script)
+            client = OpenAI(api_key=api_key)
+            logging.info("✅ OpenAI client جاهز.")
     except Exception as e:
-        logging.warning(f"⚠ فشل توليد الصوت: {e}")
-        return None
+        logging.warning(f"تعذّر تهيئة OpenAI ({e})؛ سنستخدم صور Placeholder.")
+        SEED_PLACEHOLDERS = True
+        client = None
 
 
-def run_full_generation(
-    user_data: Dict,
-    lang: str = "ar",
-    image_duration: int = 4,
-    override_script: Optional[str] = None,
-    mute_if_no_voice: bool = True,
-    skip_cleanup: bool = False,
-) -> Dict:
+# ================== أدوات مساعدة ==================
+def _wrap_lines(text: str, max_len: int = 26) -> List[str]:
+    """لفّ نص بسيط للسطر."""
+    words = text.split()
+    out, line = [], ""
+    for w in words:
+        if len((line + " " + w).strip()) <= max_len:
+            line = (line + " " + w).strip()
+        else:
+            out.append(line)
+            line = w
+    if line:
+        out.append(line)
+    return out
+
+
+def _draw_placeholder(text: str, idx: int, size=(1024, 1024)) -> str:
+    """إنشاء صورة نصّية محليًا (Placeholder) وتمييز رقم المشهد."""
+    img = Image.new("RGB", size, (20, 24, 28))
+    draw = ImageDraw.Draw(img)
+
+    # جرّب خط نظام، وإن فشل استخدم الافتراضي
+    try:
+        font_big = ImageFont.truetype("arial.ttf", 64)
+        font_body = ImageFont.truetype("arial.ttf", 40)
+    except Exception:
+        font_big = ImageFont.load_default()
+        font_body = ImageFont.load_default()
+
+    # عنوان بسيط
+    draw.text((40, 40), f"Scene {idx+1}", fill=(245, 245, 245), font=font_big)
+
+    # نص المشهد ملفوف
+    y = 140
+    for line in _wrap_lines(text, max_len=30)[:12]:
+        draw.text((40, y), line, fill=(220, 220, 220), font=font_body)
+        y += 52
+
+    out = OUTPUT_DIR / f"scene_{idx+1}.png"
+    img.save(out, format="PNG")
+    return str(out)
+
+
+def extract_scenes(script_text: str) -> List[str]:
     """
-    pipeline: Script -> Images -> Voice -> Video
-    Returns dict: {script, images[], voice, video, error}
+    استخراج المشاهد من سكربت عربي/إنجليزي:
+      - Scene #1: ... / Scene: ...
+      - مشهد 1: ... / مشهد: ...
+      - أو تقسيم على الأسطر الفارغة كخطة احتياطية.
     """
-    missing = _ensure_tools_available()
-    if missing:
-        msg = "المكوّنات الناقصة/مسارات خاطئة: " + ", ".join(missing)
-        logging.error(msg)
-        return {"script": None, "images": [], "voice": None, "video": None, "error": msg}
+    parts = re.split(
+        r"(?:Scene\s*#?\d*[:\-]?\s*)|(?:مشهد\s*#?\d*[:\-]?\s*)",
+        script_text,
+        flags=re.IGNORECASE,
+    )
+    scenes = [p.strip() for p in parts if p and p.strip()]
+    if not scenes:
+        scenes = [p.strip() for p in re.split(r"\n\s*\n", script_text) if p.strip()]
+    # فيديوهات قصيرة: حد أعلى 6 مشاهد
+    return scenes[:6] if scenes else [script_text.strip()[:140]]
+
+
+def _save_png_from_b64(b64_data: str, out_path: Path) -> None:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_bytes(base64.b64decode(b64_data))
+
+
+# ================== نواة توليد صورة لمشهد (OpenAI اختياري) ==================
+def _generate_openai_image(prompt: str, idx: int, size: str = "1024x1024") -> str:
+    """
+    توليد صورة عبر OpenAI (عند توافره). سيرفع استثناء لو فشل (نعود للـ Placeholder).
+    ملاحظة: يلزم حساب/منظمة مُوثّقة لنموذج gpt-image-1.
+    """
+    if client is None:
+        raise RuntimeError("OpenAI client غير جاهز")
+
+    style_suffix = "\nStyle: cinematic, realistic, dramatic lighting, high detail."
+    full_prompt = prompt.strip() + style_suffix
+
+    resp = client.images.generate(
+        model="gpt-image-1",
+        prompt=full_prompt,
+        size=size,
+        quality="standard",  # لا تغيّرها هنا
+        n=1,
+    )
+    b64_img = resp.data[0].b64_json
+    out_path = OUTPUT_DIR / f"scene_{idx+1}.png"
+    _save_png_from_b64(b64_img, out_path)
+    return str(out_path)
+
+
+# ================== واجهات رئيسية ==================
+def generate_image_for_scene(
+    scene_description: str,
+    index: int,
+    image_style: str = "cinematic realistic, dramatic lighting, high detail",
+    size: str = "1024x1024",
+) -> str:
+    """
+    يولّد صورة واحدة لمشهد.
+    الأولوية: Placeholder محلي إذا كان SEED_PLACEHOLDERS=True،
+    وإلا جرّب OpenAI ثم ارجع للـ Placeholder عند أي خطأ.
+    """
+    if SEED_PLACEHOLDERS:
+        w, h = [int(x) for x in size.split("x")]
+        return _draw_placeholder(scene_description, index, size=(w, h))
 
     try:
-        if not skip_cleanup:
-            _clean_images_output_dir()
-
-        # 1) Script
-        if override_script and override_script.strip():
-            script = override_script.strip()
-            logging.info("📝 override_script مستخدم.")
-        else:
-            logging.info("🧠 توليد السكربت...")
-            script = _call_script_generator(user_data, lang)
-        if not script or not str(script).strip():
-            raise ValueError("فشل توليد السكربت.")
-
-        # 2) Images
-        logging.info("🖼 توليد الصور...")
-        images = _generate_images_fn(script, lang)
-        img_count = len(list(IMAGES_DIR.glob("*.png")))
-        if not images and img_count == 0:
-            raise ValueError("لم يتم توليد أي صور (قائمة فارغة والمجلد فارغ).")
-        logging.info(f"📸 عدد الصور في المجلد: {img_count}")
-
-        # 3) Voice
-        logging.info("🎙 توليد الصوت...")
-        voice_path = _call_voice_generator(script, lang)
-        if voice_path and Path(voice_path).exists():
-            logging.info(f"🔊 ملف الصوت: {voice_path} (حجم: {Path(voice_path).stat().st_size} بايت)")
-        else:
-            msg = "لا يوجد صوت صالح، سيتم المتابعة بدون صوت."
-            if mute_if_no_voice:
-                logging.warning(f"⚠ {msg}")
-                voice_path = None
-            else:
-                raise ValueError(msg)
-
-        # 4) Video
-        logging.info("🎞 تركيب الفيديو...")
-        video_path = _compose_video_fn(image_duration=image_duration)
-        if not video_path or not Path(video_path).exists():
-            raise ValueError("فشل تركيب الفيديو النهائي.")
-        logging.info(f"✅ فيديو نهائي: {video_path}")
-
-        return {
-            "script": str(script),
-            "images": [str(p) for p in IMAGES_DIR.glob("*.png")],
-            "voice": str(voice_path) if voice_path else None,
-            "video": str(video_path),
-            "error": None
-        }
-
+        prompt = f"{scene_description}. Style: {image_style}."
+        return _generate_openai_image(prompt, idx=index, size=size)
     except Exception as e:
-        # تشخيص إضافي
-        diag = {
-            "images_dir_exists": IMAGES_DIR.exists(),
-            "images_count": len(list(IMAGES_DIR.glob('*.png'))),
-            "voice_exists": VOICE_PATH.exists(),
-            "voice_size": VOICE_PATH.stat().st_size if VOICE_PATH.exists() else 0,
-            "final_videos_dir_exists": FINAL_VIDS_DIR.exists(),
-        }
-        logging.error(f"🔥 خطأ أثناء التوليد: {e} | تشخيص: {diag}")
-        return {"script": None, "images": [], "voice": None, "video": None, "error": str(e)}
+        logging.warning(f"[Images] فشل OpenAI ({e}) — نرجع لـ Placeholder.")
+        w, h = [int(x) for x in size.split("x")]
+        return _draw_placeholder(scene_description, index, size=(w, h))
 
 
-def quick_diagnose() -> Dict:
-    return {
-        "images_dir_exists": IMAGES_DIR.exists(),
-        "images_count": len(list(IMAGES_DIR.glob("*.png"))),
-        "voice_exists": VOICE_PATH.exists(),
-        "voice_size": VOICE_PATH.stat().st_size if VOICE_PATH.exists() else 0,
-        "final_videos_dir_exists": FINAL_VIDS_DIR.exists(),
-        "tools_missing": _ensure_tools_available(),
-    }
+def generate_images_from_script(
+    script_text: str,
+    image_style: str = "cinematic realistic",
+    size: str = "1024x1024",
+) -> List[str]:
+    # تنظيف مجلد الإخراج
+    for f in OUTPUT_DIR.glob("*"):
+        try:
+            f.unlink()
+        except Exception:
+            pass
+
+    scenes = extract_scenes(script_text)
+    paths: List[str] = []
+    for i, scene in enumerate(scenes):
+        logging.info(f"🎨 Generating image for scene #{i+1}…")
+        p = generate_image_for_scene(scene_description=scene, index=i, image_style=image_style, size=size)
+        paths.append(p)
+    return paths
+
+
+def generate_images(script_text: str, lang: str = "ar") -> List[str]:
+    """
+    واجهة موحّدة يستدعيها core_engine.
+    """
+    style = "cinematic realistic, soft contrast, mood lighting, depth of field"
+    return generate_images_from_script(script_text, image_style=style, size="1024x1024")
