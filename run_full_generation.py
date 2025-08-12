@@ -110,16 +110,30 @@ def _seed_placeholder_images(n: int = 5, size=(1024, 1024)) -> None:
 # -----------------------------
 # نقطة التشغيل
 # -----------------------------
+# ... نفس الاستيرادات/الفحوصات عندك ...
+
 if __name__ == "__main__":
-    print("🚀 RUN START", flush=True)
+    # فحوصاتك المعتادة (ffmpeg, ensure_dirs, quick_diagnose, ...)
 
-    # 1) فحص ffmpeg + المجلدات + التشخيص
-    check_ffmpeg()
-    ensure_dirs()
-    preflight_quick_diagnose()
+    override_script = """Title: Start Your Sport Today
+Scene 1: A quiet sunrise — "Every beginning is one small step."
+Scene 2: Running track — "Start simple. Keep moving."
+Scene 3: A smile — "Consistency beats perfection."
+Closing: Try 10 minutes today.
+"""
 
-    # 2) اختياري: نظّف صور قديمة
-    optional_clean_images()
+    user_data = {"name": "Guest", "traits": {"tone": "emotional"}}
+
+    result = run_full_generation(
+        user_data=user_data,
+        lang="en",                # ⬅️ تشغيل كل شيء إنجليزي
+        image_duration=4,
+        override_script=override_script,
+        mute_if_no_voice=True,
+        skip_cleanup=True
+    )
+    print("Video:", result.get("video"))
+
 
     # 3) (اختبار) ازرع صور Placeholder بدل توليد الصور السحابي
     if SEED_PLACEHOLDERS:
