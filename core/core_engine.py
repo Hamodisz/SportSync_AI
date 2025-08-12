@@ -1,9 +1,5 @@
-# -*- coding: utf-8 -*-
-"""
-Core engine: Script -> Images -> (Voice) -> Video
-- يدعم حرق النص (captions) على الصور قبل التجميع
-- يعمل حتى لو ما عندك كومبوزر فيديو مخصص (Fallback بـ MoviePy)
-"""
+# -- coding: utf-8 --
+from _future_ import annotations
 
 import logging
 from pathlib import Path
@@ -50,6 +46,15 @@ try:
 except Exception:
     pass
 
+# ======== تركيب الفيديو (Fallback محلي باستخدام MoviePy) ========
+def _natural_key(p: Path):
+    """ترتيب طبيعي لملفات مثل scene_1, scene_2..."""
+    stem = p.stem
+    try:
+        n = int(stem.split("_")[-1])
+    except Exception:
+        n = 10**9
+    return (stem.split("_")[0], n, p.name)
 
 # --------- أدوات مساعدة للنصوص (captions) ----------
 def _extract_scenes(script_text: str) -> List[str]:
@@ -142,27 +147,20 @@ def _fallback_compose_video(
 ) -> str:
     """تصميم فيديو بسيط من الصور باستخدام MoviePy. يدعم حرق captions قبل التجميع."""
     from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
-
-    images = sorted(list(IMAGES_DIR.glob("*.png")) + list(IMAGES_DIR.glob("*.jpg")))
+    images = sorted(list(IMAGES_DIR.glob(".png")) + list(IMAGES_DIR.glob(".jpg")))
     if not images:
         raise ValueError("لا توجد صور في مجلد الإخراج.")
-
-    # لو فيه عناوين مشاهد، احرقها على نسخ مؤقتة
-    use_images = images
-    if captions:
-        logging.info("📝 Burning captions on images…")
-        use_images = _burn_captions_on_images(images, captions)
-
-    clips = [ImageClip(str(p)).set_duration(image_duration) for p in use_images]
+    clips = [ImageClip(str(p)).set_duration(image_duration) for p in images]
     video = concatenate_videoclips(clips, method="compose")
 
     if voice and Path(voice).exists():
         video = video.set_audio(AudioFileClip(str(voice)))
-
     out = FINAL_VIDS_DIR / "final_video.mp4"
-    FINAL_VIDS_DIR.mkdir(parents=True, exist_ok=True)
     video.write_videofile(str(out), fps=fps, codec="libx264", audio_codec="aac")
     return str(out)
+
+# نفرض الفولباك حتى لو وُجد كومبوزر خارجي (علشان نضمن يشتغل الآن)
+_compose_video_fn = _fallback_compose_video
 
 
 def _ensure_tools_available() -> List[str]:
@@ -234,10 +232,7 @@ def run_full_generation(
         voice_path = None
         if _generate_voice_fn:
             try:
-                if _generate_voice_fn.__code__.co_argcount >= 2:
-                    voice_path = _generate_voice_fn(script, "en" if lang.lower().startswith("en") else "ar")
-                else:
-                    voice_path = _generate_voice_fn(script)
+                voice_path = generate_voice_fn(script, lang) if _generate_voice_fn.code_.co_argcount >= 2 else _generate_voice_fn(script)
             except Exception as e:
                 logging.warning(f"تعذّر توليد الصوت: {e}")
                 if not mute_if_no_voice:
@@ -246,17 +241,16 @@ def run_full_generation(
         # 4) فيديو
         if _compose_video_fn:
             try:
-                # لو كومبوزرك يدعم تمرير captions
-                video_path = _compose_video_fn(image_duration=image_duration, voice_path=voice_path, captions=captions)
+                # وقّع دالتك إن كان مختلفاً
+                video_path = _compose_video_fn(image_duration=image_duration, voice_path=voice_path)
             except TypeError:
-                # خلاف ذلك نستخدم الفولباك الخاص بنا (فيه حرق captions)
-                video_path = _fallback_compose_video(image_duration=image_duration, voice=voice_path, captions=captions)
+                video_path = _compose_video_fn(image_duration=image_duration)
         else:
-            video_path = _fallback_compose_video(image_duration=image_duration, voice=voice_path, captions=captions)
+            video_path = _fallback_compose_video(image_duration=image_duration, voice=voice_path)
 
         return {
             "script": str(script),
-            "images": [str(p) for p in IMAGES_DIR.glob("*")],
+            "images": [str(p) for p in sorted(IMAGES_DIR.glob("*.png")) + sorted(IMAGES_DIR.glob("*.jpg"))],
             "voice": str(voice_path) if voice_path else None,
             "video": str(video_path),
             "error": None,
