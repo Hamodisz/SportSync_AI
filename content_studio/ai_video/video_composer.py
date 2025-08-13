@@ -1,41 +1,43 @@
+# -- coding: utf-8 --
+"""
+تركيب الفيديو من الصور (وإضافة صوت اختياري) باستخدام MoviePy.
+مهيأ لتقليل ضجيج ffmpeg على Render/Heroku وغيرها.
+"""
+
+import os
 from pathlib import Path
-from datetime import datetime
-from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
+from typing import Optional
 
-IMAGES_DIR = Path("generated_images/")  # ← حالياً يقرأ من generated_images/
-AUDIO_PATH = Path("content_studio/ai_voice/voices/final_voice.mp3")
-VIDEO_OUTPUT_DIR = Path("content_studio/ai_video/final_videos/")
-VIDEO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+# اخفض ضجيج ffmpeg في اللوق (imageio-ffmpeg)
+os.environ["IMAGEIO_FFMPEG_LOGLEVEL"] = "quiet"
 
-def compose_video_from_assets(image_duration=4.0, resolution=(1080, 1080)) -> str | None:
-    try:
-        # 1. التحقق من الصور
-       images = sorted(list(IMAGES_DIR.glob(".png")) + list(IMAGES_DIR.glob(".jpg")))
-        if not image_files:
-            raise Exception(f"❌ لا توجد صور داخل المجلد: {IMAGES_DIR}")
+IMAGES_DIR      = Path("content_studio/ai_images/outputs/")
+FINAL_VIDS_DIR  = Path("content_studio/ai_video/final_videos/")
+for p in (IMAGES_DIR, FINAL_VIDS_DIR):
+    p.mkdir(parents=True, exist_ok=True)
 
-        # 2. تجهيز المقاطع
-        clips = []
-        for image_file in image_files:
-            clip = ImageClip(str(image_file)).set_duration(image_duration)
-            clip = clip.resize(height=resolution[1])
-            clips.append(clip)
 
-        video = concatenate_videoclips(clips, method="compose")
+def compose_video_from_assets(image_duration: int = 4, voice_path: Optional[str] = None, fps: int = 24) -> str:
+    from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
 
-        # 3. دمج الصوت
-        if AUDIO_PATH.exists():
-            audio = AudioFileClip(str(AUDIO_PATH))
-            video = video.set_audio(audio)
-        else:
-            print(f"⚠ لم يتم العثور على ملف الصوت: {AUDIO_PATH} — سيتم توليد الفيديو بدون صوت")
+    images = sorted(list(IMAGES_DIR.glob(".png")) + list(IMAGES_DIR.glob(".jpg")))
+    if not images:
+        raise ValueError("لا توجد صور في مجلد الإخراج.")
 
-        # 4. حفظ الفيديو
-        output_path = VIDEO_OUTPUT_DIR / f"video_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
-        video.write_videofile(str(output_path), fps=24)
+    clips = [ImageClip(str(p)).set_duration(image_duration) for p in images]
+    video = concatenate_videoclips(clips, method="compose")
 
-        return str(output_path)
+    if voice_path and Path(voice_path).exists():
+        video = video.set_audio(AudioFileClip(str(voice_path)))
 
-    except Exception as e:
-        print("❌ فشل التوليد:", e)
-        return None
+    out = FINAL_VIDS_DIR / "final_video.mp4"
+    video.write_videofile(
+        str(out),
+        fps=fps,
+        codec="libx264",
+        audio_codec="aac",
+        threads=2,
+        logger=None,  # يوقف شريط التقدّم في اللوق
+        ffmpeg_params=["-preset", "veryfast", "-movflags", "+faststart"],
+    )
+    return str(out)
