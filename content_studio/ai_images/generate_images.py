@@ -2,106 +2,48 @@
 """
 content_studio/ai_images/generate_images.py
 
-مولّد صور للمشاهد مع خيار تجاوز OpenAI تمامًا وإنشاء صور Placeholder محليًا.
-الدالة العامة التي يستدعيها المشروع هي: generate_images(script_text, lang="ar")
-
-افتراضيًا: نستخدم Placeholder (USE_IMAGE_PLACEHOLDERS=1).
-لتفعيل OpenAI لاحقًا: ضع USE_IMAGE_PLACEHOLDERS=0 ووفّر OPENAI_API_KEY وحساب/منظمة مُوثّقة.
+توليد صور للمشاهد عبر Pexels API (مجاني) + فولباك Placeholder محلي.
+الدالة القياسية التي يستدعيها المشروع: generate_images(script_text, lang="ar")
 """
+
+from _future_ import annotations
 
 import os
 import re
-import base64
+import io
+import json
+import time
 import logging
 from pathlib import Path
 from typing import List, Optional
 
+import requests
 from PIL import Image, ImageDraw, ImageFont
 
-# ================== إعداد اللوجينغ ==================
+# ===== لوجينغ =====
 logging.basicConfig(
     level=logging.INFO,
     format="%(levelname)s | %(asctime)s | ai_images | %(message)s",
 )
 
-# ================== إعدادات ومسارات ==================
+# ===== مسارات =====
 OUTPUT_DIR = Path("content_studio/ai_images/outputs/")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# ✅ افتراضيًا نفعل الـ Placeholder. يمكن قلبه بمتغير بيئة لاحقًا.
-SEED_PLACEHOLDERS: bool = os.getenv("USE_IMAGE_PLACEHOLDERS", "1").lower() in ("1", "true", "yes")
+# ===== إعدادات Pexels =====
+PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "").strip()
+USE_PEXELS = bool(PEXELS_API_KEY)
 
-# إن أردت استخدام OpenAI Images لاحقًا، اضبط USE_IMAGE_PLACEHOLDERS=0
-# وسنحاول تهيئة OpenAI. إذا فشل نرجع تلقائيًا للـ Placeholder.
-client = None
-if not SEED_PLACEHOLDERS:
-    try:
-        from dotenv import load_dotenv  # type: ignore
-        load_dotenv()
-        from openai import OpenAI  # type: ignore
+# بناء رابط بسيط للإسناد (مطلوب ضمن إرشادات Pexels) — للتوثيق فقط
+ATTR_LOG = OUTPUT_DIR / "_attribution.json"
 
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            logging.warning("OPENAI_API_KEY غير مضبوط؛ سنستخدم صور Placeholder.")
-            SEED_PLACEHOLDERS = True
-        else:
-            client = OpenAI(api_key=api_key)
-            logging.info("✅ OpenAI client جاهز.")
-    except Exception as e:
-        logging.warning(f"تعذّر تهيئة OpenAI ({e})؛ سنستخدم صور Placeholder.")
-        SEED_PLACEHOLDERS = True
-        client = None
-
-
-# ================== أدوات مساعدة ==================
-def _wrap_lines(text: str, max_len: int = 26) -> List[str]:
-    """لفّ نص بسيط للسطر."""
-    words = text.split()
-    out, line = [], ""
-    for w in words:
-        if len((line + " " + w).strip()) <= max_len:
-            line = (line + " " + w).strip()
-        else:
-            out.append(line)
-            line = w
-    if line:
-        out.append(line)
-    return out
-
-
-def _draw_placeholder(text: str, idx: int, size=(1024, 1024)) -> str:
-    """إنشاء صورة نصّية محليًا (Placeholder) وتمييز رقم المشهد."""
-    img = Image.new("RGB", size, (20, 24, 28))
-    draw = ImageDraw.Draw(img)
-
-    # جرّب خط نظام، وإن فشل استخدم الافتراضي
-    try:
-        font_big = ImageFont.truetype("arial.ttf", 64)
-        font_body = ImageFont.truetype("arial.ttf", 40)
-    except Exception:
-        font_big = ImageFont.load_default()
-        font_body = ImageFont.load_default()
-
-    # عنوان بسيط
-    draw.text((40, 40), f"Scene {idx+1}", fill=(245, 245, 245), font=font_big)
-
-    # نص المشهد ملفوف
-    y = 140
-    for line in _wrap_lines(text, max_len=30)[:12]:
-        draw.text((40, y), line, fill=(220, 220, 220), font=font_body)
-        y += 52
-
-    out = OUTPUT_DIR / f"scene_{idx+1}.png"
-    img.save(out, format="PNG")
-    return str(out)
-
-
+# ===== أدوات مساعدة =====
 def extract_scenes(script_text: str) -> List[str]:
     """
-    استخراج المشاهد من سكربت عربي/إنجليزي:
+    يقسم السكربت إلى مشاهد. يقبل:
       - Scene #1: ... / Scene: ...
       - مشهد 1: ... / مشهد: ...
-      - أو تقسيم على الأسطر الفارغة كخطة احتياطية.
+      - وإلا يقسم على الأسطر الفارغة.
     """
     parts = re.split(
         r"(?:Scene\s*#?\d*[:\-]?\s*)|(?:مشهد\s*#?\d*[:\-]?\s*)",
@@ -114,86 +56,181 @@ def extract_scenes(script_text: str) -> List[str]:
     # فيديوهات قصيرة: حد أعلى 6 مشاهد
     return scenes[:6] if scenes else [script_text.strip()[:140]]
 
+def _wrap_lines(text: str, max_len: int = 28) -> List[str]:
+    words = text.split()
+    out, line = [], ""
+    for w in words:
+        nxt = (line + " " + w).strip()
+        if len(nxt) <= max_len:
+            line = nxt
+        else:
+            if line: out.append(line)
+            line = w
+    if line: out.append(line)
+    return out
 
-def _save_png_from_b64(b64_data: str, out_path: Path) -> None:
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_bytes(base64.b64decode(b64_data))
+def _center_crop_to_square(img: Image.Image, size: int = 1080) -> Image.Image:
+    """قص مركزي لمربع ثم تغيير الحجم."""
+    w, h = img.size
+    side = min(w, h)
+    left = (w - side) // 2
+    top = (h - side) // 2
+    img = img.crop((left, top, left + side, top + side))
+    return img.resize((size, size), Image.LANCZOS)
 
-
-# ================== نواة توليد صورة لمشهد (OpenAI اختياري) ==================
-def _generate_openai_image(prompt: str, idx: int, size: str = "1024x1024") -> str:
-    """
-    توليد صورة عبر OpenAI (عند توافره). سيرفع استثناء لو فشل (نعود للـ Placeholder).
-    ملاحظة: يلزم حساب/منظمة مُوثّقة لنموذج gpt-image-1.
-    """
-    if client is None:
-        raise RuntimeError("OpenAI client غير جاهز")
-
-    style_suffix = "\nStyle: cinematic, realistic, dramatic lighting, high detail."
-    full_prompt = prompt.strip() + style_suffix
-
-    resp = client.images.generate(
-        model="gpt-image-1",
-        prompt=full_prompt,
-        size=size,
-        quality="standard",  # لا تغيّرها هنا
-        n=1,
-    )
-    b64_img = resp.data[0].b64_json
-    out_path = OUTPUT_DIR / f"scene_{idx+1}.png"
-    _save_png_from_b64(b64_img, out_path)
-    return str(out_path)
-
-
-# ================== واجهات رئيسية ==================
-def generate_image_for_scene(
-    scene_description: str,
-    index: int,
-    image_style: str = "cinematic realistic, dramatic lighting, high detail",
-    size: str = "1024x1024",
-) -> str:
-    """
-    يولّد صورة واحدة لمشهد.
-    الأولوية: Placeholder محلي إذا كان SEED_PLACEHOLDERS=True،
-    وإلا جرّب OpenAI ثم ارجع للـ Placeholder عند أي خطأ.
-    """
-    if SEED_PLACEHOLDERS:
-        w, h = [int(x) for x in size.split("x")]
-        return _draw_placeholder(scene_description, index, size=(w, h))
-
+def _draw_placeholder(text: str, idx: int, size: int = 1080) -> str:
+    """إنشاء صورة نصّية محليًا (Fallback)"""
+    img = Image.new("RGB", (size, size), (20, 24, 28))
+    d = ImageDraw.Draw(img)
     try:
-        prompt = f"{scene_description}. Style: {image_style}."
-        return _generate_openai_image(prompt, idx=index, size=size)
+        font_title = ImageFont.truetype("arial.ttf", 64)
+        font_body  = ImageFont.truetype("arial.ttf", 40)
+    except Exception:
+        font_title = ImageFont.load_default()
+        font_body  = ImageFont.load_default()
+
+    d.text((40, 40), f"Scene {idx+1}", fill=(245, 245, 245), font=font_title)
+    y = 140
+    for ln in _wrap_lines(text, 30)[:12]:
+        d.text((40, y), ln, fill=(220, 220, 220), font=font_body)
+        y += 52
+
+    out = OUTPUT_DIR / f"scene_{idx+1}.png"
+    img.save(out, "PNG")
+    return str(out)
+
+# ===== Pexels =====
+def _pexels_search_image(query: str) -> Optional[dict]:
+    """
+    يبحث عن صورة واحدة مناسبة في Pexels ويرجع كائن الصورة (أو None).
+    نستخدم orientation=square ليتماشى مع الفيديو المربّع.
+    """
+    if not USE_PEXELS:
+        return None
+    url = "https://api.pexels.com/v1/search"
+    headers = {"Authorization": PEXELS_API_KEY}
+    params = {
+        "query": query,
+        "per_page": 1,
+        "orientation": "square",
+        # ممكن تضيف "size": "large" لو تحتاج دقة أعلى
+    }
+    try:
+        r = requests.get(url, headers=headers, params=params, timeout=15)
+        if r.status_code != 200:
+            logging.warning(f"[Pexels] HTTP {r.status_code}: {r.text[:200]}")
+            return None
+        data = r.json()
+        photos = data.get("photos", [])
+        if not photos:
+            return None
+        return photos[0]
     except Exception as e:
-        logging.warning(f"[Images] فشل OpenAI ({e}) — نرجع لـ Placeholder.")
-        w, h = [int(x) for x in size.split("x")]
-        return _draw_placeholder(scene_description, index, size=(w, h))
+        logging.warning(f"[Pexels] request failed: {e}")
+        return None
 
+def _download_pexels_photo(photo: dict, out_path: Path) -> bool:
+    """يحمل الصورة من Pexels ويحفظها كمربّع 1080x1080."""
+    # نختار landscape/original حسب المتاح
+    src = photo.get("src") or {}
+    cand_urls = [
+        src.get("original"),
+        src.get("landscape"),
+        src.get("large2x"),
+        src.get("large"),
+        src.get("portrait"),
+        src.get("medium"),
+    ]
+    file_url = next((u for u in cand_urls if u), None)
+    if not file_url:
+        return False
+    try:
+        rr = requests.get(file_url, timeout=30)
+        rr.raise_for_status()
+        img = Image.open(io.BytesIO(rr.content)).convert("RGB")
+        img = _center_crop_to_square(img, 1080)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        img.save(out_path, "PNG")
 
-def generate_images_from_script(
-    script_text: str,
-    image_style: str = "cinematic realistic",
-    size: str = "1024x1024",
-) -> List[str]:
-    # تنظيف مجلد الإخراج
-    for f in OUTPUT_DIR.glob("*"):
+        # اجمع إسناد بسيط
+        credit = {
+            "id": photo.get("id"),
+            "url": photo.get("url"),
+            "photographer": photo.get("photographer"),
+            "photographer_url": photo.get("photographer_url"),
+            "saved_as": str(out_path.name),
+        }
         try:
-            f.unlink()
+            old = []
+            if ATTR_LOG.exists():
+                old = json.loads(ATTR_LOG.read_text(encoding="utf-8"))
+            old.append(credit)
+            ATTR_LOG.write_text(json.dumps(old, ensure_ascii=False, indent=2), encoding="utf-8")
         except Exception:
             pass
+
+        return True
+    except Exception as e:
+        logging.warning(f"[Pexels] download failed: {e}")
+        return False
+
+def _keywords_from_scene(text: str) -> str:
+    """
+    تبسيط نص المشهد إلى كلمات مفتاحية للبحث.
+    أمثلة: "شروق هادئ على مضمار" → "sunrise running track calm"
+    """
+    # بدائي لكن فعّال كبداية
+    t = re.sub(r"[^\w\s\u0600-\u06FF]+", " ", text)  # احذف الرموز
+    t = re.sub(r"\s+", " ", t).strip()
+    # لو عربي، ما نلمس كثير — Pexels يدعم Queries عامة
+    # اختصر النص لعدد كلمات مناسب
+    words = t.split()[:8]
+    return " ".join(words) or "motivational sport"
+
+# ===== الواجهة الرئيسية =====
+def generate_image_for_scene(scene_description: str, index: int) -> str:
+    """
+    يولّد صورة واحدة لمشهد إما من Pexels أو Placeholder محلي.
+    """
+    # جرّب Pexels أولاً إن كان المفتاح متاح
+    if USE_PEXELS:
+        query = _keywords_from_scene(scene_description)
+        photo = _pexels_search_image(query)
+        if photo:
+            out_path = OUTPUT_DIR / f"scene_{index+1}.png"
+            if _download_pexels_photo(photo, out_path):
+                logging.info(f"[Pexels] scene #{index+1} → {out_path.name} | {photo.get('url')}")
+                return str(out_path)
+
+    # فولباك: Placeholder
+    logging.info(f"[Fallback] using placeholder for scene #{index+1}")
+    return _draw_placeholder(scene_description, index)
+
+def generate_images_from_script(script_text: str) -> List[str]:
+    # نظّف الإخراج
+    for f in OUTPUT_DIR.glob("*"):
+        try: f.unlink()
+        except Exception: pass
 
     scenes = extract_scenes(script_text)
     paths: List[str] = []
     for i, scene in enumerate(scenes):
-        logging.info(f"🎨 Generating image for scene #{i+1}…")
-        p = generate_image_for_scene(scene_description=scene, index=i, image_style=image_style, size=size)
+        p = generate_image_for_scene(scene, i)
         paths.append(p)
+        # خفّف الضغط على API المجانية
+        time.sleep(0.2)
     return paths
 
-
 def generate_images(script_text: str, lang: str = "ar") -> List[str]:
-    """
-    واجهة موحّدة يستدعيها core_engine.
-    """
-    style = "cinematic realistic, soft contrast, mood lighting, depth of field"
-    return generate_images_from_script(script_text, image_style=style, size="1024x1024")
+    """دالة قياسية يستدعيها core_engine."""
+    return generate_images_from_script(script_text)
+
+# اختبار يدوي سريع
+if _name_ == "_main_":
+    demo = (
+        "Scene 1: Sunrise over a running track — Every beginning is a step.\n\n"
+        "Scene 2: Laces tightening — Start with one simple move.\n\n"
+        "Scene 3: A calm smile — Consistency beats perfection."
+    )
+    out = generate_images(demo)
+    print("✅ Generated images:", out)
