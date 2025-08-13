@@ -7,7 +7,6 @@ from typing import List, Optional
 
 from PIL import Image, ImageDraw, ImageFont
 
-# مسار إخراج الصور (متوافق مع بقية المشروع)
 IMAGES_DIR = Path("content_studio/ai_images/outputs/")
 IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -27,9 +26,11 @@ def _wrap_lines(text: str, max_len: int = 30) -> List[str]:
     return out
 
 def _extract_scenes(script: str, limit: int = 12) -> List[str]:
-    # يدعم "Scene 1:" أو "مشهد 1:" أو فقرات
-    parts = re.split(r"(?:Scene\s*#?\d*[:\-]?\s*)|(?:مشهد\s*#?\d*[:\-]?\s*)",
-                     script, flags=re.IGNORECASE)
+    parts = re.split(
+        r"(?:Scene\s*#?\d*[:\-]?\s*)|(?:مشهد\s*#?\d*[:\-]?\s*)",
+        script,
+        flags=re.IGNORECASE,
+    )
     scenes = [p.strip() for p in parts if p and p.strip()]
     if not scenes:
         scenes = [p.strip() for p in re.split(r"\n\s*\n", script) if p.strip()]
@@ -38,7 +39,6 @@ def _extract_scenes(script: str, limit: int = 12) -> List[str]:
     return scenes[:limit]
 
 def _load_fonts() -> tuple[ImageFont.ImageFont, ImageFont.ImageFont]:
-    # نحاول خط DejaVu، وإلا نرجع للخط الافتراضي
     try:
         big = ImageFont.truetype("DejaVuSans.ttf", 64)
         body = ImageFont.truetype("DejaVuSans.ttf", 40)
@@ -47,16 +47,12 @@ def _load_fonts() -> tuple[ImageFont.ImageFont, ImageFont.ImageFont]:
         body = ImageFont.load_default()
     return big, body
 
-def _make_placeholder(text: str, idx: int,
-                      size: tuple[int, int] = (1080, 1080)) -> Path:
+def _make_placeholder(text: str, idx: int, size: tuple[int, int] = (1080, 1080)) -> Path:
     img = Image.new("RGB", size, (20, 24, 28))
     d = ImageDraw.Draw(img)
     font_big, font_body = _load_fonts()
 
-    # عنوان المشهد
     d.text((48, 48), f"Scene {idx+1}", fill=(245, 245, 245), font=font_big)
-
-    # نص مختصر داخل الصورة
     y = 160
     for ln in _wrap_lines(text, 30)[:12]:
         d.text((48, y), ln, fill=(220, 220, 220), font=font_body)
@@ -66,12 +62,7 @@ def _make_placeholder(text: str, idx: int,
     img.save(out, "PNG")
     return out
 
-def generate_images(script: str, lang: str = "ar",
-                    seed: Optional[int] = None) -> List[str]:
-    """
-    يولّد صور Placeholder من السكربت ويعيد مساراتها.
-    لا يعتمد على أي خدمة خارجية.
-    """
+def generate_images(script: str, lang: str = "ar", seed: Optional[int] = None) -> List[str]:
     # تنظيف قديم
     for f in IMAGES_DIR.glob("*"):
         try:
