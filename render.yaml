@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: sportsync-web
+    env: docker
+    plan: free
+    autoDeploy: true
+    envVars:
+      - key: USE_IMAGE_PLACEHOLDERS
+        value: "1"
+      # بعدين لو تبي صور حقيقية، فعّل OPENAI_API_KEY
+      - key: OPENAI_API_KEY
+        sync: false
+    disk:
+      name: app-data
+      mountPath: /app/content_studio
+      sizeGB: 5
+
+  - type: cron
+    name: sportsync-batch
+    env: docker
+    schedule: "0 * * * *"   # كل ساعة (عدّلها لاحقاً)
+    command: "python tools/batch_generate.py --count 4 --lang en"
+    envVars:
+      - key: USE_IMAGE_PLACEHOLDERS
+        value: "1"
+    disk:
+      name: batch-data
+      mountPath: /app/content_studio
+      sizeGB: 5
