@@ -1,6 +1,6 @@
 # content_studio/generators/script_templates.py
 # -- coding: utf-8 --
-from _future_ import annotations
+from __future__ import annotations
 import os
 from typing import Dict
 

@@ -1,9 +1,8 @@
 # -- coding: utf-8 --
-from _future_ import annotations
+from __future__ import annotations
 
 import os
 import logging
-from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Tuple
 
@@ -147,10 +146,10 @@ def compose_video_from_assets(
         # وإلا: بدون صوت
 
         # 5) التصدير
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        out_name = output_name or f"final_video_{ts}.mp4"
+        out_name = output_name or "final_video.mp4"
         out_path = VIDEO_OUTPUT_DIR / out_name
 
+        logging.info(f"🎞️ writing video to {out_path}")
         video.write_videofile(
             str(out_path),
             fps=fps,
@@ -159,8 +158,12 @@ def compose_video_from_assets(
             threads=2,
             preset="medium",
             ffmpeg_params=[
-                "-movflags", "+faststart",   # أفضل للتشغيل على الويب
-                "-pix_fmt", "yuv420p",       # توافق أوسع
+                "-movflags",
+                "+faststart",
+                # أفضل للتشغيل على الويب
+                "-pix_fmt",
+                "yuv420p",
+                # توافق أوسع
             ],
             verbose=False,
             logger=None,

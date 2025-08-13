@@ -1,6 +1,6 @@
 # core/personalizer.py
 # -- coding: utf-8 --
-from _future_ import annotations
+from __future__ import annotations
 from typing import Dict, List
 
 # أسئلة مبسطة (EN)؛ نقدر نضيف نسخة عربية لاحقاً
