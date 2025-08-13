@@ -147,7 +147,7 @@ def _fallback_compose_video(
 ) -> str:
     """تصميم فيديو بسيط من الصور باستخدام MoviePy. يدعم حرق captions قبل التجميع."""
     from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
-    images = sorted(list(IMAGES_DIR.glob(".png")) + list(IMAGES_DIR.glob(".jpg")))
+   images = sorted(list(IMAGES_DIR.glob(".png")) + list(IMAGES_DIR.glob(".jpg")))
     if not images:
         raise ValueError("لا توجد صور في مجلد الإخراج.")
     clips = [ImageClip(str(p)).set_duration(image_duration) for p in images]
@@ -230,13 +230,17 @@ def run_full_generation(
 
         # 3) صوت (اختياري)
         voice_path = None
-        if _generate_voice_fn:
-            try:
-                voice_path = generate_voice_fn(script, lang) if _generate_voice_fn.code_.co_argcount >= 2 else _generate_voice_fn(script)
-            except Exception as e:
-                logging.warning(f"تعذّر توليد الصوت: {e}")
-                if not mute_if_no_voice:
-                    raise
+       if _generate_voice_fn:
+    try:
+        # استخدم _code_ وليس code_
+        if generate_voice_fn.code_.co_argcount >= 2:
+            voice_path = _generate_voice_fn(script, lang)
+        else:
+            voice_path = _generate_voice_fn(script)
+    except Exception as e:
+        logging.warning(f"تعذّر توليد الصوت: {e}")
+        if not mute_if_no_voice:
+            raise
 
         # 4) فيديو
         if _compose_video_fn:
