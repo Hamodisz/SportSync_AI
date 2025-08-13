@@ -1,8 +1,10 @@
 --prefer-binary
 streamlit==1.35.0
-gTTS==2.5.1
 moviepy==1.0.3
 Pillow>=10.0.0
 imageio>=2.9.0
 imageio-ffmpeg>=0.4.5
-python-dotenv
+gTTS==2.5.1
+python-dotenv>=1.0.0
+arabic-reshaper>=3.0.0
+python-bidi>=0.4.2
