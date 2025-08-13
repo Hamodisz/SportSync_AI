@@ -46,8 +46,7 @@ def _ensure_tools_available() -> List[str]:
 def quick_diagnose() -> Dict:
     return {
         "images_dir_exists": IMAGES_DIR.exists(),
-        "images_count": len(list(IMAGES_DIR.glob("*.png")))
-        + len(list(IMAGES_DIR.glob("*.jpg"))),
+        "images_count": len(list(IMAGES_DIR.glob("*.png"))),
         "voice_exists": VOICE_PATH.exists(),
         "voice_size": VOICE_PATH.stat().st_size if VOICE_PATH.exists() else 0,
         "final_videos_dir_exists": FINAL_VIDS_DIR.exists(),
