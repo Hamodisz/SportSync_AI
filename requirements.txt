@@ -1,5 +1,6 @@
 --prefer-binary
 streamlit==1.35.0
+requests>=2.31.0
 moviepy==1.0.3
 Pillow>=10.0.0
 imageio>=2.9.0
