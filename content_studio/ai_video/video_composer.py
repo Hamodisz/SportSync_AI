@@ -10,7 +10,7 @@ VIDEO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 def compose_video_from_assets(image_duration=4.0, resolution=(1080, 1080)) -> str | None:
     try:
         # 1. التحقق من الصور
-        image_files = sorted([f for f in IMAGES_DIR.glob("*.png")])
+       images = sorted(list(IMAGES_DIR.glob(".png")) + list(IMAGES_DIR.glob(".jpg")))
         if not image_files:
             raise Exception(f"❌ لا توجد صور داخل المجلد: {IMAGES_DIR}")
 
