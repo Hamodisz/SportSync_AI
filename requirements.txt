@@ -1,8 +1,18 @@
+--prefer-binary
+
+# Web UI
 streamlit==1.35.0
-Pillow>=10.0.0
+
+# Video & media
 moviepy==1.0.3
-gTTS==2.5.1
+Pillow>=10.0.0
 imageio>=2.9.0
 imageio-ffmpeg>=0.4.5
+
+# Voice (gTTS) + أدوات مساعدة
+gTTS==2.5.1
+python-dotenv>=1.0.0
+tqdm>=4.66.0
+
+# اختياري للنص/الوكلاء لاحقًا
 openai>=1.6.1,<2
-python-dotenv
