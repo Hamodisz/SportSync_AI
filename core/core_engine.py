@@ -186,7 +186,7 @@ def run_full_generation(
         return {"script": None, "images": [], "voice": None, "video": None, "error": str(e)}
 
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     print("🚀 RUN START", flush=True)
     info = quick_diagnose()
     logging.info(f"quick_diagnose: {info}")
