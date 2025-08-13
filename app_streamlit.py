@@ -1,11 +1,23 @@
+# app_streamlit.py
 # -- coding: utf-8 --
-import os, re, base64, tempfile
+import os, re, base64
 from pathlib import Path
 import streamlit as st
+
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
-from gtts import gTTS
 
+# ========= OpenAI (اختياري للنصوص) =========
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+client = None
+if OPENAI_API_KEY:
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=OPENAI_API_KEY)
+    except Exception:
+        client = None
+
+# ========= مسارات =========
 ROOT       = Path(".")
 IMAGES_DIR = ROOT / "content_studio/ai_images/outputs"
 VOICE_DIR  = ROOT / "content_studio/ai_voice/voices"
@@ -13,8 +25,10 @@ FINAL_DIR  = ROOT / "content_studio/ai_video/final_videos"
 for p in (IMAGES_DIR, VOICE_DIR, FINAL_DIR):
     p.mkdir(parents=True, exist_ok=True)
 
+# ========= أدوات بسيطة =========
 def extract_scenes(txt: str):
-    parts = re.split(r"(?:Scene\s*#?\d*[:\-]?\s*)|(?:مشهد\s*#?\d*[:\-]?\s*)", txt, flags=re.IGNORECASE)
+    parts = re.split(r"(?:Scene\s*#?\d*[:\-]?\s*)|(?:مشهد\s*#?\d*[:\-]?\s*)",
+                     txt, flags=re.IGNORECASE)
     scenes = [p.strip() for p in parts if p and p.strip()]
     if not scenes:
         scenes = [p.strip() for p in re.split(r"\n\s*\n", txt) if p.strip()]
@@ -35,70 +49,113 @@ def make_placeholder(text, idx, size=(1024,1024)):
     img = Image.new("RGB", size, (20,24,28))
     d = ImageDraw.Draw(img)
     try:
-        # على معظم الصور الرسمية ما فيه خطوط TTF، لذلك خلّينا الافتراضي
-        font_big  = ImageFont.load_default()
-        font_body = ImageFont.load_default()
+        # خطوط متوفّرة غالبًا على Render / لينكس
+        font_big  = ImageFont.truetype("DejaVuSans.ttf", 64)
+        font_body = ImageFont.truetype("DejaVuSans.ttf", 40)
     except Exception:
         font_big  = ImageFont.load_default()
         font_body = ImageFont.load_default()
     d.text((40,40), f"Scene {idx+1}", fill=(245,245,245), font=font_big)
     y = 140
     for ln in wrap_lines(text, 30)[:12]:
-        d.text((40,y), ln, fill=(220,220,220), font=font_body); y += 24
+        d.text((40,y), ln, fill=(220,220,220), font=font_body); y += 52
     out = IMAGES_DIR / f"scene_{idx+1}.png"
     img.save(out, "PNG")
     return str(out)
 
-st.set_page_config(page_title="SportSync - Demo", page_icon="🎬", layout="centered")
-st.title("🎬 SportSync — Quick Video Demo")
-
-default_script = """Title: Start your sport today
-
-Scene 1: Sunrise over a quiet track — "Every beginning is a step."
-Scene 2: Shoes hitting the ground — "Start with one simple move."
-Scene 3: A calm smile — "Consistency beats perfection."
-Outro: Give it 10 minutes today.
-"""
-script = st.text_area("Script (EN/AR):", value=default_script, height=240)
-col1, col2, col3 = st.columns(3)
-with col1:
-    per_image = st.number_input("Seconds / image",  value=4, min_value=1, max_value=20, step=1)
-with col2:
-    fps = st.number_input("FPS", value=24, min_value=10, max_value=60, step=1)
-with col3:
-    use_voice = st.checkbox("Add voice (gTTS)", value=True)
-
-if st.button("Generate video"):
-    # نظّف الصور القديمة
+def clean_images():
     for f in IMAGES_DIR.glob("*"):
         try: f.unlink()
         except: pass
 
-    scenes = extract_scenes(script)
-    paths = [make_placeholder(s, i) for i, s in enumerate(scenes)]
-    st.write("✅ Images:", paths)
+def generate_script_with_openai(topic: str, tone: str, lang: str) -> str:
+    if not client:
+        raise RuntimeError("OpenAI client unavailable")
+    sys_lang = "Arabic" if lang == "ar" else "English"
+    prompt = f"""
+You are a short-video scriptwriter. Write a {sys_lang} micro script split into 4 scenes.
+Each scene should start with 'Scene X:' then 1 short vivid line.
+Topic: {topic}
+Tone: {tone}
+Keep it concise and cinematic.
+"""
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role":"user","content": prompt}],
+        temperature=0.8,
+        max_tokens=400,
+    )
+    return resp.choices[0].message.content.strip()
 
-    voice_path = None
-    if use_voice:
-        try:
-            VOICE_DIR.mkdir(parents=True, exist_ok=True)
-            voice_path = str(VOICE_DIR / "final_voice.mp3")
-            gTTS("\n".join(scenes), lang="en").save(voice_path)
-            st.write("✅ Voice:", voice_path)
-        except Exception as e:
-            st.warning(f"gTTS failed, muted video. ({e})")
-            voice_path = None
-
-    clips = [ImageClip(p).set_duration(per_image) for p in paths]
+def build_video(image_paths, voice_path, fps=24, seconds_per_image=4):
+    clips = [ImageClip(p).set_duration(seconds_per_image) for p in image_paths]
     video = concatenate_videoclips(clips, method="compose")
     if voice_path and Path(voice_path).exists():
         video = video.set_audio(AudioFileClip(voice_path))
+    out = FINAL_DIR / "final_video.mp4"
+    video.write_videofile(str(out), fps=fps, codec="libx264", audio_codec="aac")
+    return str(out)
 
-    FINAL_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = FINAL_DIR / "final_video.mp4"
-    video.write_videofile(str(out_path), fps=fps, codec="libx264", audio_codec="aac", verbose=False, logger=None)
-    st.success(f"Saved: {out_path}")
-    st.video(str(out_path))
+# ========= واجهة Streamlit =========
+st.set_page_config(page_title="SportSync Studio", page_icon="🎬", layout="centered")
+st.title("🎬 SportSync — Auto Shorts (OpenAI + Local)")
 
-    with open(out_path, "rb") as f:
-        st.download_button("⬇ Download MP4", f, file_name="final_video.mp4", mime="video/mp4")
+topic = st.text_input("Topic", "Start your sport today")
+tone  = st.selectbox("Tone", ["motivational","emotional","fun","serious"], index=0)
+lang  = st.selectbox("Language", ["en","ar"], index=0)
+sec_per_img = st.slider("Seconds per image", 2, 8, 4)
+use_voice = st.checkbox("Add AI voice (gTTS)", value=True)
+
+st.caption("If OPENAI_API_KEY is set, script will be generated by OpenAI. Otherwise a fallback script is used.")
+if st.button("Generate video"):
+    # 1) سكربت
+    try:
+        if client:
+            script = generate_script_with_openai(topic, tone, lang)
+        else:
+            script = (
+                "Scene 1: Sunrise over a quiet track — Every beginning is a step.\n\n"
+                "Scene 2: Shoes hitting the ground — Start with one simple move.\n\n"
+                "Scene 3: A calm smile — Consistency beats perfection.\n\n"
+                "Scene 4: Skyline fades — Give it 10 minutes today."
+            )
+        st.success("Script ready!")
+        st.code(script)
+    except Exception as e:
+        st.error(f"OpenAI failed, using fallback. ({e})")
+        script = (
+            "Scene 1: Sunrise over a quiet track — Every beginning is a step.\n\n"
+            "Scene 2: Shoes hitting the ground — Start with one simple move.\n\n"
+            "Scene 3: A calm smile — Consistency beats perfection.\n\n"
+            "Scene 4: Skyline fades — Give it 10 minutes today."
+        )
+
+    # 2) صور Placeholder
+    clean_images()
+    scenes = extract_scenes(script)
+    img_paths = [make_placeholder(s, i) for i, s in enumerate(scenes)]
+    st.write("Images:", img_paths)
+
+    # 3) صوت (gTTS) — مجاني
+    voice_path = None
+    if use_voice:
+        try:
+            from gtts import gTTS
+            VOICE_DIR.mkdir(parents=True, exist_ok=True)
+            voice_path = str(VOICE_DIR / "final_voice.mp3")
+            tts_text = "\n".join(scenes)
+            gTTS(tts_text, lang=("ar" if lang=="ar" else "en")).save(voice_path)
+            st.write("Voice:", voice_path)
+        except Exception as e:
+            st.warning(f"gTTS failed, continue muted: {e}")
+            voice_path = None
+
+    # 4) فيديو
+    try:
+        video_path = build_video(img_paths, voice_path, fps=24, seconds_per_image=sec_per_img)
+        st.success("Video ready!")
+        st.video(str(video_path))
+        with open(video_path, "rb") as f:
+            st.download_button("Download MP4", f, file_name="final_video.mp4", mime="video/mp4")
+    except Exception as e:
+        st.error(f"Failed to render video: {e}")
