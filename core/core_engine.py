@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -64,16 +65,30 @@ def _fallback_compose_video(
     if not images:
         raise ValueError("لا توجد صور في مجلد الإخراج.")
     clips = [ImageClip(str(p)).set_duration(image_duration) for p in images]
+    audio_clip = None
     video = concatenate_videoclips(clips, method="compose")
     if voice and Path(voice).exists():
-        video = video.set_audio(AudioFileClip(str(voice)))
+        audio_clip = AudioFileClip(str(voice))
+        video = video.set_audio(audio_clip)
     out = FINAL_VIDS_DIR / "final_video.mp4"
+    out.parent.mkdir(parents=True, exist_ok=True)
     logging.info("🎞️ writing video to %s", out)
     video.write_videofile(
         str(out), fps=fps, codec="libx264", audio_codec="aac", logger=None
     )
     logging.info("✅ video exported: %s", out)
-    return str(out)
+    video.close()
+    for c in clips:
+        try:
+            c.close()
+        except Exception:
+            pass
+    if audio_clip:
+        try:
+            audio_clip.close()
+        except Exception:
+            pass
+    return str(out.resolve())
 
 
 def run_full_generation(
@@ -83,10 +98,15 @@ def run_full_generation(
     override_script: Optional[str] = None,
     mute_if_no_voice: bool = True,
     skip_cleanup: bool = True,
-    use_stock_flag: bool = True,
-    use_openai_flag: bool = False,
+    use_stock_flag: Optional[bool] = None,
+    use_openai_flag: Optional[bool] = None,
 ) -> Dict:
     try:
+        if use_stock_flag is None:
+            use_stock_flag = os.getenv("USE_STOCK_IMAGES", "1") == "1"
+        if use_openai_flag is None:
+            use_openai_flag = os.getenv("USE_OPENAI_IMAGES", "0") == "1"
+
         if not skip_cleanup and IMAGES_DIR.exists():
             for f in IMAGES_DIR.glob("*"):
                 if f.suffix.lower() in {".png", ".jpg", ".jpeg"}:
@@ -159,7 +179,7 @@ def run_full_generation(
             "script": str(script),
             "images": images,
             "voice": voice_path,
-            "video": video_path,
+            "video": str(Path(video_path).resolve()) if video_path else None,
             "error": None,
         }
     except Exception as e:  # pragma: no cover - runtime safety

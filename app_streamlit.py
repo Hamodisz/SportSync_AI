@@ -59,6 +59,7 @@ with c1:
         os.environ["USE_STOCK_IMAGES"]  = "1" if use_stock else "0"
 
         with st.status("Generating images / voice / video...", expanded=True) as s:
+            s.write("Starting pipeline...")
             # user_data بسيط
             user_data = {"topic": "sports motivation", "traits": {"tone": "emotional"}}
 
@@ -70,6 +71,7 @@ with c1:
                 mute_if_no_voice=not add_voice,
                 skip_cleanup=False,
             )
+            s.write("Generation finished, verifying output...")
 
             if res.get("error"):
                 st.error(f"ERROR: {res['error']}")
@@ -85,21 +87,23 @@ with c1:
 
                 # عرض الفيديو + زر تنزيل
                 video_path = res.get("video")
-                if video_path and Path(video_path).exists():
+                p = Path(video_path) if video_path else None
+                if p and p.exists() and p.stat().st_size > 0:
                     st.success("Video is ready 🎉")
-                    st.video(str(video_path))
-
-                    # زر تنزيل
-                    vb = Path(video_path).read_bytes()
+                    st.video(str(p))
+                    vb = p.read_bytes()
                     st.download_button(
                         "Download MP4",
                         data=vb,
-                        file_name=Path(video_path).name,
+                        file_name=p.name,
                         mime="video/mp4",
                         use_container_width=True,
                     )
                 else:
-                    st.warning("Video file not found after generation.")
+                    final_dir = Path("content_studio/ai_video/final_videos")
+                    contents = [f.name for f in final_dir.glob("*")]
+                    st.error("Video file not found or empty after generation.")
+                    st.write("final_videos contents:", contents)
 
                 if add_voice and res.get("voice"):
                     st.caption(f"Voice: {res['voice']}")

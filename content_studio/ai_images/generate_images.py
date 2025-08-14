@@ -2,7 +2,12 @@
 # -- coding: utf-8 --
 from __future__ import annotations
 
-import io, re, time, hashlib
+import io
+import os
+import re
+import time
+import hashlib
+import logging
 from pathlib import Path
 from typing import List, Optional
 from urllib.parse import quote
@@ -14,6 +19,20 @@ IMAGES_DIR = Path("content_studio/ai_images/outputs")
 IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
 HEADERS = {"User-Agent": "SportSync/1.0 (+https://example.org)"}
+
+
+def _download_openai(prompt: str) -> Optional[bytes]:
+    """Generate an image using OpenAI and return the raw bytes."""
+    try:
+        from openai import OpenAI
+
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        resp = client.images.generate(prompt=prompt, size="1024x1024")
+        url = resp.data[0].url  # type: ignore[index]
+        return _http_get(url)
+    except Exception as e:  # pragma: no cover - network/API failures
+        logging.warning("OpenAI image fetch failed: %s", e)
+        return None
 
 # -------- helpers --------
 def _extract_scenes(text: str) -> List[str]:
@@ -32,10 +51,12 @@ def _http_get(url: str, timeout: int = 10, retries: int = 3) -> Optional[bytes]:
     for i in range(retries):
         try:
             r = requests.get(url, headers=HEADERS, timeout=timeout, allow_redirects=True)
+            if r.status_code in (403, 503):
+                logging.warning("HTTP %s while fetching %s", r.status_code, url)
             if r.ok and r.content:
                 return r.content
-        except Exception:
-            pass
+        except Exception as e:
+            logging.warning("HTTP error fetching %s: %s", url, e)
         time.sleep(1.2 * (i + 1))
     return None
 
@@ -69,20 +90,34 @@ def _download_picsum(seed: str) -> Optional[bytes]:
 def generate_images(
     script: str,
     lang: str = "en",
-    use_ai_images: bool = False,   # متجاهلة هنا
-    use_stock: bool = True,        # فعّل من الواجهة: Use stock photos (free)
+    use_ai_images: bool = False,
+    use_stock: bool = True,
     **kwargs,
 ) -> List[str]:
     # نظّف الإخراج
     for f in IMAGES_DIR.glob("*"):
-        try: f.unlink()
-        except: pass
+        try:
+            f.unlink()
+        except Exception:
+            pass
 
     scenes = _extract_scenes(script)
     out: List[str] = []
 
     for i, scene in enumerate(scenes, start=1):
         path = IMAGES_DIR / f"scene_{i}.png"
+        raw: Optional[bytes] = None
+
+        if use_ai_images:
+            raw = _download_openai(scene)
+            if raw:
+                try:
+                    Image.open(io.BytesIO(raw)).convert("RGB").save(path, "PNG")
+                    out.append(str(path))
+                    continue
+                except Exception as e:
+                    logging.warning("Failed saving OpenAI image: %s", e)
+
         if use_stock:
             raw = _download_picsum(_seed_from_text(scene))
             if raw:
@@ -90,9 +125,10 @@ def generate_images(
                     Image.open(io.BytesIO(raw)).convert("RGB").save(path, "PNG")
                     out.append(str(path))
                     continue
-                except Exception:
-                    pass
-        # فولباك
+                except Exception as e:
+                    logging.warning("Failed saving stock image: %s", e)
+
+        logging.warning("Falling back to placeholder for scene %s", i)
         _placeholder(path, scene)
         out.append(str(path))
 
