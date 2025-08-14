@@ -70,7 +70,6 @@ def compose_video_from_assets(
     voice_path: Optional[str] = None,
     music_path: Optional[str] = None,
     music_volume: float = 0.15,
-    output_name: Optional[str] = None,
     durations: Optional[List[float]] = None,        # مدد مختلفة لكل صورة (اختياري)
     aspect: Optional[str] = None,                   # "square" | "portrait" | "landscape"
     xfade: float = 0.5,                              # زمن تداخل بسيط بين الصور
@@ -91,6 +90,8 @@ def compose_video_from_assets(
     voice_clip = None
     music_clip = None
     video = None
+    clip_list: List[ImageClip] = []
+    music_raw = None
     try:
         # 1) تحضير الأبعاد
         target_res = resolution or _resolve_aspect(aspect)
@@ -102,7 +103,6 @@ def compose_video_from_assets(
             raise RuntimeError(f"لا توجد صور داخل: {IMAGES_DIR}")
 
         # 3) أنشئ مقاطع الصور مع Ken Burns + Crossfade
-        clip_list: List[ImageClip] = []
         per_image_durations = durations if durations and len(durations) == len(images) else None
 
         for i, p in enumerate(images):
@@ -130,8 +130,8 @@ def compose_video_from_assets(
 
         # موسيقى خلفية (لووب بطول الفيديو + خفض الصوت)
         if music_path and Path(music_path).exists():
-            raw_music = AudioFileClip(music_path)
-            music_clip = audio_loop(raw_music, duration=video.duration).volumex(music_volume)
+            music_raw = AudioFileClip(music_path)
+            music_clip = audio_loop(music_raw, duration=video.duration).volumex(music_volume)
             music_clip = music_clip.fx(afx.audio_fadein, 0.5).fx(afx.audio_fadeout, 0.5)
 
         if voice_clip and music_clip:
@@ -146,8 +146,8 @@ def compose_video_from_assets(
         # وإلا: بدون صوت
 
         # 5) التصدير
-        out_name = output_name or "final_video.mp4"
-        out_path = VIDEO_OUTPUT_DIR / out_name
+        out_path = VIDEO_OUTPUT_DIR / "final_video.mp4"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
 
         logging.info(f"🎞️ writing video to {out_path}")
         video.write_videofile(
@@ -173,7 +173,7 @@ def compose_video_from_assets(
             raise RuntimeError("تم التصدير ولكن الملف غير موجود.")
 
         logging.info(f"✅ Video exported: {out_path}")
-        return str(out_path)
+        return str(out_path.resolve())
 
     except Exception as e:
         logging.error(f"🔥 خطأ أثناء تركيب الفيديو: {e}")
@@ -181,16 +181,29 @@ def compose_video_from_assets(
 
     finally:
         # 6) تنظيف الموارد
+        for c in clip_list:
+            try:
+                c.close()
+            except Exception:
+                pass
         try:
-            if video: video.close()
+            if video:
+                video.close()
         except Exception:
             pass
         try:
-            if voice_clip: voice_clip.close()
+            if voice_clip:
+                voice_clip.close()
         except Exception:
             pass
         try:
-            if music_clip: music_clip.close()
+            if music_clip:
+                music_clip.close()
+        except Exception:
+            pass
+        try:
+            if music_raw:
+                music_raw.close()
         except Exception:
             pass
 
