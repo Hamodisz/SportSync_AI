@@ -1,197 +1,128 @@
-# -- coding: utf-8 --
-from __future__ import annotations
+# app_streamlit.py
+# Streamlit UI — يشغّل التوليد في الخلفية ويعرض الفيديو عند جهوزه
 
-import logging
-import os
+import os, json, time, threading, uuid
 from pathlib import Path
-from typing import Dict, List, Optional
+import streamlit as st
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(levelname)s | %(asctime)s | core_engine | %(message)s",
-)
+from core.core_engine import run_full_generation, quick_diagnose
 
-IMAGES_DIR = Path("content_studio/ai_images/outputs/")
+# ممرات الإخراج (نفس اللي في core)
+IMAGES_DIR = Path("content_studio/ai_images/outputs")
 VOICE_PATH = Path("content_studio/ai_voice/voices/final_voice.mp3")
-FINAL_VIDS_DIR = Path("content_studio/ai_video/final_videos/")
-for p in (IMAGES_DIR, VOICE_PATH.parent, FINAL_VIDS_DIR):
+FINAL_DIR  = Path("content_studio/ai_video/final_videos")
+for p in (IMAGES_DIR, VOICE_PATH.parent, FINAL_DIR):
     p.mkdir(parents=True, exist_ok=True)
 
+# إدارة أعمال الخلفية
+JOBS_DIR = Path(".jobs"); JOBS_DIR.mkdir(exist_ok=True)
+def _job_file(job_id: str) -> Path: return JOBS_DIR / f"{job_id}.json"
+def _save_status(job_id: str, **data):
+    _job_file(job_id).write_text(json.dumps({"job_id": job_id, **data}, ensure_ascii=False))
+def _load_status(job_id: str):
+    p = _job_file(job_id)
+    return json.loads(p.read_text()) if p.exists() else {"job_id": job_id, "state": "missing"}
 
-from content_studio.ai_images.generate_images import generate_images
-
-try:  # optional imports; engine should still run without them
-    from content_studio.ai_voice.voice_generator import (
-        generate_voice_from_script,
-    )
-except Exception:  # pragma: no cover
-    generate_voice_from_script = None  # type: ignore
-
-try:
-    from content_studio.ai_video.video_composer import (
-        compose_video_from_assets,
-    )
-except Exception:  # pragma: no cover
-    compose_video_from_assets = None  # type: ignore
-
-try:
-    from content_studio.generate_script.script_generator import generate_script
-except Exception:  # pragma: no cover
-    generate_script = None  # type: ignore
-
-
-def _ensure_tools_available() -> List[str]:
-    return []
-
-
-def quick_diagnose() -> Dict:
-    return {
-        "images_dir_exists": IMAGES_DIR.exists(),
-        "images_count": len(list(IMAGES_DIR.glob("*.png")))
-        + len(list(IMAGES_DIR.glob("*.jpg"))),
-        "voice_exists": VOICE_PATH.exists(),
-        "voice_size": VOICE_PATH.stat().st_size if VOICE_PATH.exists() else 0,
-        "final_videos_dir_exists": FINAL_VIDS_DIR.exists(),
-        "tools_missing": _ensure_tools_available(),
-    }
-
-
-def _fallback_compose_video(
-    image_duration: int = 4, fps: int = 30, voice: Optional[str] = None
-) -> str:
-    from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
-
-    images = sorted(list(IMAGES_DIR.glob("*.png")) + list(IMAGES_DIR.glob("*.jpg")))
-    if not images:
-        raise ValueError("لا توجد صور في مجلد الإخراج.")
-    clips = [ImageClip(str(p)).set_duration(image_duration) for p in images]
-    audio_clip = None
-    video = concatenate_videoclips(clips, method="compose")
-    if voice and Path(voice).exists():
-        audio_clip = AudioFileClip(str(voice))
-        video = video.set_audio(audio_clip)
-    out = FINAL_VIDS_DIR / "final_video.mp4"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    logging.info("🎞️ writing video to %s", out)
-    video.write_videofile(
-        str(out), fps=fps, codec="libx264", audio_codec="aac", logger=None
-    )
-    logging.info("✅ video exported: %s", out)
-    video.close()
-    for c in clips:
-        try:
-            c.close()
-        except Exception:
-            pass
-    if audio_clip:
-        try:
-            audio_clip.close()
-        except Exception:
-            pass
-    return str(out.resolve())
-
-
-def run_full_generation(
-    user_data: Dict,
-    lang: str = "ar",
-    image_duration: int = 4,
-    override_script: Optional[str] = None,
-    mute_if_no_voice: bool = True,
-    skip_cleanup: bool = True,
-    use_stock_flag: Optional[bool] = None,
-    use_openai_flag: Optional[bool] = None,
-) -> Dict:
+def _worker(job_id: str, params: dict):
     try:
-        if use_stock_flag is None:
-            use_stock_flag = os.getenv("USE_STOCK_IMAGES", "1") == "1"
-        if use_openai_flag is None:
-            use_openai_flag = os.getenv("USE_OPENAI_IMAGES", "0") == "1"
+        # توجيه خيارات الصور للصنعة الداخلية عبر متغيرات بيئية
+        os.environ["USE_STOCK"]  = "1" if params.get("use_stock") else "0"
+        os.environ["USE_OPENAI"] = "1" if params.get("use_openai") else "0"
 
-        if not skip_cleanup and IMAGES_DIR.exists():
-            for f in IMAGES_DIR.glob("*"):
-                if f.suffix.lower() in {".png", ".jpg", ".jpeg"}:
-                    try:
-                        f.unlink()
-                    except Exception:
-                        pass
-
-        # 1) script
-        if override_script and override_script.strip():
-            script = override_script.strip()
-            logging.info("📝 استخدمنا سكربت جاهز (override_script).")
+        _save_status(job_id, state="running", msg="Generating...")
+        result = run_full_generation(
+            user_data={"topic":"sports motivation","traits":{"tone":"emotional"}},
+            lang=params["lang"],
+            image_duration=int(params["secs"]),
+            override_script=params["script"],
+            mute_if_no_voice=not params.get("add_voice", False),
+            skip_cleanup=False,
+        )
+        if result.get("error"):
+            _save_status(job_id, state="error", error=result["error"], result=result)
         else:
-            if generate_script:
-                script = generate_script(
-                    topic=user_data.get("topic", "sports motivation"),
-                    tone=user_data.get("traits", {}).get("tone", "emotional"),
-                    lang="arabic" if lang == "ar" else "english",
-                )
-            else:
-                script = (
-                    "Scene 1: Start small.\n\n"
-                    "Scene 2: Keep going when no one sees you.\n\n"
-                    "Scene 3: Results come to those who don't stop."
-                )
+            _save_status(job_id, state="done", result=result)
+    except Exception as e:
+        _save_status(job_id, state="error", error=str(e))
 
-        # 2) images
-        try:
-            images = generate_images(
-                script,
-                lang=lang,
-                use_stock=use_stock_flag,
-                use_openai=use_openai_flag,
-            )
-        except Exception as e:
-            logging.warning("تعذّر توليد الصور: %s", e)
-            images = [
-                str(p)
-                for p in sorted(IMAGES_DIR.glob("*.png"))
-                + sorted(IMAGES_DIR.glob("*.jpg"))
-            ]
-        if not images:
-            raise RuntimeError("لم يتم توليد أي صور.")
+def start_job(params: dict) -> str:
+    job_id = uuid.uuid4().hex[:10]
+    _save_status(job_id, state="queued", params=params)
+    th = threading.Thread(target=_worker, args=(job_id, params), daemon=True)
+    th.start()
+    return job_id
 
-        # 3) voice (optional)
-        voice_path = None
-        if generate_voice_from_script:
-            try:
-                voice_path = generate_voice_from_script(script, lang)
-            except Exception as e:
-                logging.warning("تعذّر توليد الصوت: %s", e)
-                if not mute_if_no_voice:
-                    raise
+# -------- UI --------
+st.set_page_config(page_title="SportSync — Quick Video", layout="centered")
+st.title("SportSync — Video + Personalizer (V1.2)")
 
-        # 4) video
-        if compose_video_from_assets:
-            logging.info("🎬 composing video …")
-            try:
-                video_path = compose_video_from_assets(
-                    image_duration=image_duration, voice_path=voice_path
-                )
-            except TypeError:
-                video_path = compose_video_from_assets(image_duration=image_duration)
+DEFAULT_SCRIPT = """Title: Start your sport today
+
+Scene 1: Sunrise over a quiet track — "Every beginning is a step."
+Scene 2: Shoes hitting the ground — "Start with one simple move."
+Scene 3: A calm smile — "Consistency beats perfection."
+Outro: Give it 10 minutes today.
+"""
+
+lang  = st.selectbox("Language", ["en","ar"], index=0)
+script = st.text_area("Script", DEFAULT_SCRIPT, height=230)
+secs   = st.slider("Seconds per image", 2, 8, 4)
+
+col1, col2, col3 = st.columns(3)
+with col1:
+    add_voice   = st.checkbox("Add voice-over", value=False)
+with col2:
+    use_openai  = st.checkbox("Use AI images (OpenAI)", value=False)
+with col3:
+    use_stock   = st.checkbox("Use stock photos (free)", value=True)
+
+dbg = st.checkbox("Show debug (diagnose)", value=False)
+
+cA, cB = st.columns([1,1])
+go = cA.button("Generate video")
+diag = cB.button("Quick diagnose")
+
+if diag:
+    st.json(quick_diagnose())
+
+# زر “آخر فيديو” مفيد للاختبار
+if st.button("Show latest video"):
+    vids = sorted(FINAL_DIR.glob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if vids:
+        st.success(f"Latest: {vids[0]}")
+        st.video(str(vids[0]))
+        with open(vids[0], "rb") as f:
+            st.download_button("Download MP4", f, file_name=vids[0].name)
+    else:
+        st.info("لا توجد فيديوهات بعد.")
+
+# إطلاق العمل في الخلفية
+if go:
+    params = dict(lang=lang, script=script, secs=secs,
+                  add_voice=add_voice, use_openai=use_openai, use_stock=use_stock)
+    st.session_state["job_id"] = start_job(params)
+    st.info("بدأنا التوليد في الخلفية… انتظر ثواني وسيظهر التقدم هنا.")
+
+# متابعة حالة العمل
+job_id = st.session_state.get("job_id")
+if job_id:
+    st.write(f"Job: {job_id}")
+    status = _load_status(job_id)
+    state  = status.get("state")
+    if state in {"queued","running"}:
+        st.info("⏳ Generating images / voice / video…")
+        st.progress(0 if state=="queued" else 60, text="Working… (page auto-refresh)")
+        st.experimental_rerun()  # يُبقي الصفحة حيّة على Render
+    elif state == "done":
+        res = status.get("result", {})
+        st.success("✅ Done!")
+        if dbg: st.json(res)
+        video = res.get("video")
+        if video and Path(video).exists():
+            st.video(video)
+            with open(video, "rb") as f:
+                st.download_button("Download MP4", f, file_name=Path(video).name)
         else:
-            video_path = _fallback_compose_video(
-                image_duration=image_duration, voice=voice_path
-            )
-
-        return {
-            "script": str(script),
-            "images": images,
-            "voice": voice_path,
-            "video": str(Path(video_path).resolve()) if video_path else None,
-            "error": None,
-        }
-    except Exception as e:  # pragma: no cover - runtime safety
-        logging.error("🔥 فشل التشغيل: %s", e)
-        return {
-            "script": None,
-            "images": [],
-            "voice": None,
-            "video": None,
-            "error": str(e),
-        }
-
-
-__all__ = ["run_full_generation", "quick_diagnose"]
-
+            st.warning("الفيديو غير موجود على القرص بعد.")
+    elif state == "error":
+        st.error(f"ERROR: {status.get('error')}")
