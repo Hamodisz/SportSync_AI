@@ -1,151 +1,175 @@
 # core/core_engine.py
-from __future__ import annotations
-
-import logging, os
+# -- coding: utf-8 --
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Tuple
+import io, re, os, base64, logging, traceback
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(levelname)s | %(asctime)s | core_engine | %(message)s",
-)
+# فيديو/صور/صوت
+from PIL import Image, ImageDraw, ImageFont
+from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
+from gtts import gTTS
 
-IMAGES_DIR = Path("content_studio/ai_images/outputs/")
-VOICE_PATH = Path("content_studio/ai_voice/voices/final_voice.mp3")
-FINAL_VIDS_DIR = Path("content_studio/ai_video/final_videos/")
-for p in (IMAGES_DIR, VOICE_PATH.parent, FINAL_VIDS_DIR):
+# مسارات العمل (ثابتة داخل مشروع Render)
+ROOT = Path(".").resolve()
+IMAGES_DIR = ROOT / "content_studio" / "ai_images" / "outputs"
+VOICE_DIR  = ROOT / "content_studio" / "ai_voice" / "voices"
+FINAL_DIR  = ROOT / "content_studio" / "ai_video" / "final_videos"
+for p in (IMAGES_DIR, VOICE_DIR, FINAL_DIR):
     p.mkdir(parents=True, exist_ok=True)
 
-# ↓↓↓ لا يوجد أي import من core.core_engine هنا (حتى لا يحدث circular import)
-_generate_script_fn = None
-try:
-    from content_studio.generate_script.script_generator import generate_script as _generate_script_fn
-except Exception:
-    pass
+logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(asctime)s | %(name)s | %(message)s")
+log = logging.getLogger("core_engine")
 
-_generate_images_fn = None
-try:
-    from content_studio.ai_images.generate_images import generate_images as _generate_images_fn
-except Exception:
-    pass
+# -------- Utilities --------
+def _wrap(text: str, max_len: int = 30) -> List[str]:
+    words, line, out = text.split(), "", []
+    for w in words:
+        if len((line + " " + w).strip()) <= max_len:
+            line = (line + " " + w).strip()
+        else:
+            out.append(line); line = w
+    if line: out.append(line)
+    return out[:12]
 
-_generate_voice_fn = None
-try:
-    from content_studio.ai_voice.voice_generator import generate_voice_from_script as _generate_voice_fn
-except Exception:
-    pass
+def _placeholder(text: str, idx: int, size=(1024,1024)) -> Path:
+    img = Image.new("RGB", size, (20,24,28))
+    d = ImageDraw.Draw(img)
+    try:
+        font_big  = ImageFont.truetype("DejaVuSans.ttf", 64)
+        font_body = ImageFont.truetype("DejaVuSans.ttf", 40)
+    except:
+        font_big = ImageFont.load_default(); font_body = ImageFont.load_default()
+    d.text((40,40), f"Scene {idx+1}", fill=(245,245,245), font=font_big)
+    y = 140
+    for ln in _wrap(text, 30):
+        d.text((40,y), ln, fill=(220,220,220), font=font_body); y += 52
+    out = IMAGES_DIR / f"scene_{idx+1}.png"
+    img.save(out, "PNG")
+    return out
 
-_compose_video_fn = None
-try:
-    from content_studio.ai_video.video_composer import compose_video_from_assets as _compose_video_fn
-except Exception:
-    pass
+def _extract_scenes(script: str) -> List[str]:
+    parts = re.split(r"(?:Scene\s*#?\d*[:\-]?\s*)|(?:مشهد\s*#?\d*[:\-]?\s*)", script, flags=re.IGNORECASE)
+    scenes = [p.strip() for p in parts if p and p.strip()]
+    if not scenes:
+        scenes = [p.strip() for p in re.split(r"\n\s*\n", script) if p.strip()]
+    return scenes[:6] if scenes else [script.strip()[:140]]
 
-
-def _fallback_compose_video(image_duration: int = 4, fps: int = 30, voice: Optional[str] = None) -> str:
-    from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
-    images = sorted(list(IMAGES_DIR.glob(".png")) + list(IMAGES_DIR.glob(".jpg")))
-    if not images:
-        raise ValueError("لا توجد صور في مجلد الإخراج.")
-    clips = [ImageClip(str(p)).set_duration(image_duration) for p in images]
-    video = concatenate_videoclips(clips, method="compose")
-    if voice and Path(voice).exists():
-        video = video.set_audio(AudioFileClip(str(voice)))
-    out = FINAL_VIDS_DIR / "final_video.mp4"
-    video.write_videofile(str(out), fps=fps, codec="libx264", audio_codec="aac")
-    return str(out)
-
-
-def _ensure_tools_available() -> List[str]:
-    missing: List[str] = []
-    if _generate_images_fn is None:
-        missing.append("generate_images")
-    return missing
-
-
+# -------- Public: quick diagnose --------
 def quick_diagnose() -> Dict:
     return {
         "images_dir_exists": IMAGES_DIR.exists(),
-        "images_count": len(list(IMAGES_DIR.glob(".png"))) + len(list(IMAGES_DIR.glob(".jpg"))),
-        "voice_exists": VOICE_PATH.exists(),
-        "voice_size": VOICE_PATH.stat().st_size if VOICE_PATH.exists() else 0,
-        "final_videos_dir_exists": FINAL_VIDS_DIR.exists(),
-        "tools_missing": _ensure_tools_available(),
+        "images_count": len(list(IMAGES_DIR.glob("*.png"))),
+        "voice_exists": (VOICE_DIR / "final_voice.mp3").exists(),
+        "voice_size": (VOICE_DIR / "final_voice.mp3").stat().st_size if (VOICE_DIR / "final_voice.mp3").exists() else 0,
+        "final_videos_dir_exists": FINAL_DIR.exists(),
+        "tools_missing": [],
     }
 
+# -------- Image generation with guaranteed fallback --------
+def generate_images_from_script(script: str) -> List[Path]:
+    # امسح المخرجات القديمة
+    for f in IMAGES_DIR.glob("scene_*.png"):
+        try: f.unlink()
+        except: pass
 
-def run_full_generation(
-    user_data: Dict,
-    lang: str = "ar",
-    image_duration: int = 4,
-    override_script: Optional[str] = None,
-    mute_if_no_voice: bool = True,
-    skip_cleanup: bool = True,
-) -> Dict:
-    try:
-        if not skip_cleanup and IMAGES_DIR.exists():
-            for f in IMAGES_DIR.glob("*"):
-                try: f.unlink()
-                except Exception: pass
+    scenes = _extract_scenes(script)
+    out_paths: List[Path] = []
 
-        # 1) سكربت
-        if override_script and override_script.strip():
-            script = override_script.strip()
-            logging.info("📝 استخدمنا سكربت جاهز (override_script).")
-        else:
-            if _generate_script_fn:
-                script = _generate_script_fn(
-                    topic=user_data.get("topic","sports motivation"),
-                    tone=user_data.get("traits",{}).get("tone","emotional"),
-                    lang="arabic" if lang=="ar" else "english",
-                )
-            else:
-                script = ("Scene 1: Start.\n\nScene 2: Keep moving.\n\nScene 3: Results follow.")
-
-        # 2) صور
-        if _generate_images_fn is None:
-            raise RuntimeError("دالة generate_images غير متوفرة.")
+    # 1) حاول مصادر مجانية (قد تفشل على Render المجاني/503) — مُعطلة افتراضًا لتجنب التعليق
+    use_stock = False  # غيّرها لاحقًا من الواجهة إذا حبيت
+    if use_stock:
         try:
-            images = _generate_images_fn(
-                script, lang,
-                use_stock=os.getenv("USE_STOCK","0")=="1",
-                use_openai=os.getenv("USE_OPENAI","0")=="1"
-            )
-        except TypeError:
-            images = _generate_images_fn(script, lang)
-        if not images:
-            raise RuntimeError("لم يتم توليد أي صور.")
+            import requests
+            for i, s in enumerate(scenes):
+                # صور عامة بدون مفتاح API — قد ترجع 403/503، لذلك نحوط بplaceholder دائمًا
+                candidates = [
+                    f"https://picsum.photos/seed/scene{i+1}/1024/1024",
+                ]
+                got = False
+                for url in candidates:
+                    try:
+                        r = requests.get(url, timeout=10)
+                        if r.ok:
+                            p = IMAGES_DIR / f"scene_{i+1}.png"
+                            with open(p, "wb") as f:
+                                f.write(r.content)
+                            out_paths.append(p); got = True; break
+                    except Exception:
+                        pass
+                if not got:
+                    out_paths.append(_placeholder(s, i))
+        except Exception as e:
+            log.warning("Stock sources failed, using placeholders. %s", e)
+            out_paths = [_placeholder(s, i) for i,s in enumerate(scenes)]
+    else:
+        # 2) توليد محلي مؤكد
+        out_paths = [_placeholder(s, i) for i,s in enumerate(scenes)]
 
-        # 3) صوت (اختياري)
-        voice_path = None
-        if _generate_voice_fn:
-            try:
-                try:
-                    voice_path = _generate_voice_fn(script, lang)
-                except TypeError:
-                    voice_path = _generate_voice_fn(script)
-            except Exception as e:
-                logging.warning(f"تعذّر توليد الصوت: {e}")
-                if not mute_if_no_voice:
-                    raise
+    return out_paths
 
-        # 4) فيديو
-        if _compose_video_fn:
-            try:
-                video_path = _compose_video_fn(image_duration=image_duration, voice_path=voice_path)
-            except TypeError:
-                video_path = _compose_video_fn(image_duration=image_duration)
-        else:
-            video_path = _fallback_compose_video(image_duration=image_duration, voice=voice_path)
+# -------- Voice (optional) --------
+def generate_voice(script: str, lang: str = "en") -> Path:
+    VOICE_DIR.mkdir(parents=True, exist_ok=True)
+    out = VOICE_DIR / "final_voice.mp3"
+    try:
+        txt = re.sub(r"\s+", " ", script).strip()
+        if len(txt) > 4000:
+            txt = txt[:4000]
+        gTTS(txt, lang="ar" if lang.lower().startswith("ar") else "en").save(str(out))
+        return out
+    except Exception as e:
+        log.warning("gTTS failed, continue muted: %s", e)
+        if out.exists():
+            try: out.unlink()
+            except: pass
+        return Path("")
+
+# -------- Compose video --------
+def compose_video(image_paths: List[Path], voice_path: Path|None, seconds_per_image: int = 4) -> Path:
+    if not image_paths:
+        raise RuntimeError("لا توجد صور في الإخراج.")
+    FINAL_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = FINAL_DIR / "final_video.mp4"
+
+    clips = [ImageClip(str(p)).set_duration(max(1, seconds_per_image)) for p in image_paths]
+    video = concatenate_videoclips(clips, method="compose")
+
+    try:
+        if voice_path and voice_path.exists():
+            video = video.set_audio(AudioFileClip(str(voice_path)))
+    except Exception as e:
+        log.warning("Audio attach failed: %s", e)
+
+    # MoviePy → imageio-ffmpeg
+    video.write_videofile(str(out_path), fps=24, codec="libx264", audio_codec="aac", verbose=False, logger=None)
+    return out_path
+
+# -------- One-shot pipeline --------
+def run_full_generation(user_data: Dict) -> Dict:
+    """
+    user_data = {
+        "script": "...",
+        "lang": "en" or "ar",
+        "seconds_per_image": 4,
+        "add_voice": True/False
+    }
+    """
+    try:
+        script = user_data.get("script", "").strip()
+        lang   = user_data.get("lang", "en")
+        spi    = int(user_data.get("seconds_per_image", 4)) or 4
+        add_v  = bool(user_data.get("add_voice", False))
+
+        images = generate_images_from_script(script)
+        voice  = generate_voice(script, lang) if add_v else Path("")
+        video  = compose_video(images, voice if voice else None, seconds_per_image=spi)
 
         return {
-            "script": str(script),
-            "images": [str(p) for p in sorted(IMAGES_DIR.glob("*"))],
-            "voice": str(voice_path) if voice_path else None,
-            "video": str(video_path),
-            "error": None,
+            "ok": True,
+            "images": [str(p) for p in images],
+            "voice": str(voice) if voice else None,
+            "video": str(video)
         }
-
     except Exception as e:
-        logging.error(f"🔥 فشل التشغيل: {e}")
-        return {"script": None, "images": [], "voice": None, "video": None, "error": str(e)}
+        log.error("Pipeline failed: %s\n%s", e, traceback.format_exc())
+        return {"ok": False, "error": str(e), "debug": quick_diagnose()}
