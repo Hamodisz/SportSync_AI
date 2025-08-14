@@ -1,16 +1,19 @@
 # app_streamlit.py
-# coding: utf-8
-import os, json
-import streamlit as st
-from pathlib import Path
+# واجهة بسيطة تولّد صور/صوت/فيديو وتعرض النتيجة مع زر تنزيل
 
+from pathlib import Path
+import os
+import json
+import streamlit as st
+
+# استيراد المحرك
 from core.core_engine import run_full_generation, quick_diagnose
 
-# إعداد الصفحة
 st.set_page_config(page_title="SportSync — Quick Video", layout="centered")
+
 st.title("SportSync — Video + Personalizer (V1.1)")
 
-# خيارات بسيطة
+# -------- الإعدادات --------
 lang = st.selectbox("Language", ["en", "ar"], index=0)
 
 DEFAULT_SCRIPT = """Title: Start your sport today
@@ -20,61 +23,88 @@ Scene 2: Shoes hitting the ground — "Start with one simple move."
 Scene 3: A calm smile — "Consistency beats perfection."
 Outro: Give it 10 minutes today.
 """
-script = st.text_area("Script", value=DEFAULT_SCRIPT, height=220)
-secs = st.slider("Seconds per image", 2, 8, 4, 1)
-add_voice = st.checkbox("Add voice-over", value=False)
-use_ai = st.checkbox("Use AI images (OpenAI)", value=False)
-use_stock = st.checkbox("Use stock photos (free)", value=True)
-show_debug = st.checkbox("Show debug (diagnose)", value=True)
+
+script = st.text_area("Script", DEFAULT_SCRIPT, height=220)
+
+secs = st.slider("Seconds per image", 2, 8, 4)
 
 col1, col2 = st.columns(2)
-
 with col1:
+    add_voice = st.checkbox("Add voice-over", value=False)
+with col2:
+    show_debug = st.checkbox("Show debug (diagnose)", value=True)
+
+# اختيارات توليد الصور (بيئة/متغيرات بدون تغيير توقيع الدوال)
+use_openai = st.checkbox("Use AI images (OpenAI)", value=False)
+use_stock  = st.checkbox("Use stock photos (free)", value=True)
+
+st.divider()
+
+# -------- أزرار --------
+c1, c2 = st.columns(2)
+
+def show_diag():
+    d = quick_diagnose()
+    st.code(json.dumps(d, ensure_ascii=False, indent=2), language="json")
+
+with c2:
+    if st.button("Quick diagnose"):
+        show_diag()
+
+# -------- تنفيذ --------
+with c1:
     if st.button("Generate video", use_container_width=True):
-        try:
-            with st.spinner("Generating images / voice / video..."):
-                res = run_full_generation(
-                    user_data={"topic":"sports motivation","traits":{"tone":"emotional"}},
-                    lang=lang,
-                    image_duration=secs,
-                    override_script=script,
-                    mute_if_no_voice=not add_voice,
-                    skip_cleanup=False,   # ننظّف صور قديمة قبل كل تشغيل
-                    use_stock_flag=use_stock,
-                    use_openai_flag=use_ai,
-                )
+        # تمرير التفضيلات عبر متغيرات بيئية (تتقرأ داخل generate_images)
+        os.environ["USE_OPENAI_IMAGES"] = "1" if use_openai else "0"
+        os.environ["USE_STOCK_IMAGES"]  = "1" if use_stock else "0"
+
+        with st.status("Generating images / voice / video...", expanded=True) as s:
+            # user_data بسيط
+            user_data = {"topic": "sports motivation", "traits": {"tone": "emotional"}}
+
+            res = run_full_generation(
+                user_data=user_data,
+                lang=lang,
+                image_duration=int(secs),
+                override_script=script,
+                mute_if_no_voice=not add_voice,
+                skip_cleanup=False,
+            )
 
             if res.get("error"):
                 st.error(f"ERROR: {res['error']}")
                 if show_debug:
-                    st.code(json.dumps(quick_diagnose(), ensure_ascii=False, indent=2), language="json")
+                    show_diag()
+                s.update(label="Failed", state="error")
             else:
-                st.success("✅ Video ready!")
-                # عرض الصور الناتجة
-                st.write("Images:")
-                for p in res["images"]:
-                    if Path(p).exists():
-                        st.image(p, width=512)
+                # عرض الصور المصنوعة (إن وجدت)
+                images = sorted([str(p) for p in Path("content_studio/ai_images/outputs").glob("*")])
+                if images:
+                    st.caption("Images used:")
+                    st.image(images, use_column_width=True)
 
-                # عرض الفيديو كـ bytes لإزالة مشاكل المسارات
-                vp = res["video"]
-                if vp and Path(vp).exists():
-                    with open(vp, "rb") as f:
-                        st.video(f.read())
-                    st.download_button("Download MP4", data=open(vp, "rb").read(),
-                                       file_name="final_video.mp4", mime="video/mp4")
-                    st.write(f"Video path: {vp}")
+                # عرض الفيديو + زر تنزيل
+                video_path = res.get("video")
+                if video_path and Path(video_path).exists():
+                    st.success("Video is ready 🎉")
+                    st.video(str(video_path))
+
+                    # زر تنزيل
+                    vb = Path(video_path).read_bytes()
+                    st.download_button(
+                        "Download MP4",
+                        data=vb,
+                        file_name=Path(video_path).name,
+                        mime="video/mp4",
+                        use_container_width=True,
+                    )
                 else:
-                    st.warning("Video file not found after compose. Check logs.")
+                    st.warning("Video file not found after generation.")
+
+                if add_voice and res.get("voice"):
+                    st.caption(f"Voice: {res['voice']}")
 
                 if show_debug:
-                    st.code(json.dumps(quick_diagnose(), ensure_ascii=False, indent=2), language="json")
+                    show_diag()
 
-        except Exception as e:
-            st.error(f"Exception: {e}")
-            if show_debug:
-                st.exception(e)
-
-with col2:
-    if st.button("Quick diagnose", use_container_width=True):
-        st.code(json.dumps(quick_diagnose(), ensure_ascii=False, indent=2), language="json")
+                s.update(label="Done", state="complete")
