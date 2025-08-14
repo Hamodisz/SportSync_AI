@@ -23,7 +23,8 @@ Outro: Give it 10 minutes today.
 script = st.text_area("Script", value=DEFAULT_SCRIPT, height=220)
 secs = st.slider("Seconds per image", 2, 8, 4, 1)
 add_voice = st.checkbox("Add voice-over", value=False)
-use_ai = st.checkbox("Use AI images (OpenAI)", value=True)
+use_ai = st.checkbox("Use AI images (OpenAI)", value=False)
+use_stock = st.checkbox("Use stock photos (free)", value=True)
 show_debug = st.checkbox("Show debug (diagnose)", value=True)
 
 col1, col2 = st.columns(2)
@@ -39,7 +40,8 @@ with col1:
                     override_script=script,
                     mute_if_no_voice=not add_voice,
                     skip_cleanup=False,   # ننظّف صور قديمة قبل كل تشغيل
-                    use_ai_flag=use_ai,
+                    use_stock_flag=use_stock,
+                    use_openai_flag=use_ai,
                 )
 
             if res.get("error"):

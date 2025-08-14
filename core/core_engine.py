@@ -46,7 +46,8 @@ def _ensure_tools_available() -> List[str]:
 def quick_diagnose() -> Dict:
     return {
         "images_dir_exists": IMAGES_DIR.exists(),
-        "images_count": len(list(IMAGES_DIR.glob("*.png"))),
+        "images_count": len(list(IMAGES_DIR.glob("*.png")))
+        + len(list(IMAGES_DIR.glob("*.jpg"))),
         "voice_exists": VOICE_PATH.exists(),
         "voice_size": VOICE_PATH.stat().st_size if VOICE_PATH.exists() else 0,
         "final_videos_dir_exists": FINAL_VIDS_DIR.exists(),
@@ -59,7 +60,7 @@ def _fallback_compose_video(
 ) -> str:
     from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
 
-    images = sorted(IMAGES_DIR.glob("*.png"))
+    images = sorted(list(IMAGES_DIR.glob("*.png")) + list(IMAGES_DIR.glob("*.jpg")))
     if not images:
         raise ValueError("لا توجد صور في مجلد الإخراج.")
     clips = [ImageClip(str(p)).set_duration(image_duration) for p in images]
@@ -82,15 +83,17 @@ def run_full_generation(
     override_script: Optional[str] = None,
     mute_if_no_voice: bool = True,
     skip_cleanup: bool = True,
-    use_ai_flag: bool = True,
+    use_stock_flag: bool = True,
+    use_openai_flag: bool = False,
 ) -> Dict:
     try:
         if not skip_cleanup and IMAGES_DIR.exists():
-            for f in IMAGES_DIR.glob("*.png"):
-                try:
-                    f.unlink()
-                except Exception:
-                    pass
+            for f in IMAGES_DIR.glob("*"):
+                if f.suffix.lower() in {".png", ".jpg", ".jpeg"}:
+                    try:
+                        f.unlink()
+                    except Exception:
+                        pass
 
         # 1) script
         if override_script and override_script.strip():
@@ -111,7 +114,20 @@ def run_full_generation(
                 )
 
         # 2) images
-        images = generate_images(script, lang=lang, use_ai=use_ai_flag)
+        try:
+            images = generate_images(
+                script,
+                lang=lang,
+                use_stock=use_stock_flag,
+                use_openai=use_openai_flag,
+            )
+        except Exception as e:
+            logging.warning("تعذّر توليد الصور: %s", e)
+            images = [
+                str(p)
+                for p in sorted(IMAGES_DIR.glob("*.png"))
+                + sorted(IMAGES_DIR.glob("*.jpg"))
+            ]
         if not images:
             raise RuntimeError("لم يتم توليد أي صور.")
 
