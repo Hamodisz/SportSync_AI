@@ -1,135 +1,103 @@
 # content_studio/ai_images/generate_images.py
-# -- coding: utf-8 --
-from __future__ import annotations
+# توليد صور: يجرّب OpenAI (اختياري) -> صور ستوك مجانية -> Placeholder محلي
 
-import io
-import os
-import re
-import time
-import hashlib
-import logging
+import os, io, textwrap, random, time
 from pathlib import Path
-from typing import List, Optional
-from urllib.parse import quote
-
+from typing import List
 import requests
 from PIL import Image, ImageDraw, ImageFont
 
-IMAGES_DIR = Path("content_studio/ai_images/outputs")
-IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+OUT_DIR = Path("content_studio/ai_images/outputs"); OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-HEADERS = {"User-Agent": "SportSync/1.0 (+https://example.org)"}
-
-
-def _download_openai(prompt: str) -> Optional[bytes]:
-    """Generate an image using OpenAI and return the raw bytes."""
-    try:
-        from openai import OpenAI
-
-        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        resp = client.images.generate(prompt=prompt, size="1024x1024")
-        url = resp.data[0].url  # type: ignore[index]
-        return _http_get(url)
-    except Exception as e:  # pragma: no cover - network/API failures
-        logging.warning("OpenAI image fetch failed: %s", e)
-        return None
-
-# -------- helpers --------
-def _extract_scenes(text: str) -> List[str]:
-    parts = re.split(r"(?:Scene\s*#?\d*[:\-]?\s*)|(?:مشهد\s*#?\d*[:\-]?\s*)",
-                     text, flags=re.IGNORECASE)
-    scenes = [p.strip() for p in parts if p and p.strip()]
-    if not scenes:
-        scenes = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
-    return scenes[:6] if scenes else [text.strip()[:140]]
-
-def _seed_from_text(s: str) -> str:
-    # seed ثابت من نص المشهد (لتكرار نفس الصورة للمشهد نفسه)
-    return hashlib.sha1(s.encode("utf-8")).hexdigest()[:16]
-
-def _http_get(url: str, timeout: int = 10, retries: int = 3) -> Optional[bytes]:
-    for i in range(retries):
-        try:
-            r = requests.get(url, headers=HEADERS, timeout=timeout, allow_redirects=True)
-            if r.status_code in (403, 503):
-                logging.warning("HTTP %s while fetching %s", r.status_code, url)
-            if r.ok and r.content:
-                return r.content
-        except Exception as e:
-            logging.warning("HTTP error fetching %s: %s", url, e)
-        time.sleep(1.2 * (i + 1))
-    return None
-
-def _placeholder(path: Path, text: str, size=(1024, 1024)) -> None:
-    img = Image.new("RGB", size, (22,24,28))
+def _placeholder(text: str, idx: int, size=(1024,1024)) -> Path:
+    img = Image.new("RGB", size, (20,24,28))
     d = ImageDraw.Draw(img)
     try:
-        title = ImageFont.truetype("DejaVuSans.ttf", 64)
-        body  = ImageFont.truetype("DejaVuSans.ttf", 38)
+        font_big = ImageFont.truetype("DejaVuSans.ttf", 64)
+        font_body = ImageFont.truetype("DejaVuSans.ttf", 40)
+    except:
+        font_big = ImageFont.load_default(); font_body = ImageFont.load_default()
+    d.text((40,40), f"Scene {idx+1}", fill=(245,245,245), font=font_big)
+    y = 140
+    for ln in textwrap.wrap(text, width=28)[:10]:
+        d.text((40,y), ln, fill=(220,220,220), font=font_body); y += 52
+    out = OUT_DIR / f"scene_{idx+1}.png"; img.save(out, "PNG"); return out
+
+def _split_scenes(script: str) -> List[str]:
+    parts = [p.strip() for p in script.replace("\r","").split("\n") if p.strip()]
+    # خذ الأسطر التي تبدو كوصف مشهد
+    scenes = []
+    buf = []
+    for line in parts:
+        if line.lower().startswith(("scene","مشهد","outro","title")) and buf:
+            scenes.append(" ".join(buf)); buf=[line]
+        else:
+            buf.append(line)
+    if buf: scenes.append(" ".join(buf))
+    return scenes[:4] if scenes else [script.strip()[:140]]
+
+def _try_openai(prompt: str) -> bytes | None:
+    if os.getenv("USE_OPENAI","0") != "1": return None
+    key = os.getenv("OPENAI_API_KEY"); 
+    if not key: return None
+    try:
+        # Images API (DALL·E-style)
+        r = requests.post(
+            "https://api.openai.com/v1/images/generations",
+            headers={"Authorization": f"Bearer {key}"},
+            json={"model":"gpt-image-1","prompt": prompt,"size":"1024x1024"},
+            timeout=60,
+        )
+        if r.status_code != 200: return None
+        b64 = r.json()["data"][0]["b64_json"]
+        return io.BytesIO(base64.b64decode(b64)).getvalue()
     except Exception:
-        title = ImageFont.load_default()
-        body  = ImageFont.load_default()
-    d.text((40,40), "Placeholder", fill=(245,245,245), font=title)
-    y=140
-    line=""; lines=[]
-    for w in text.split():
-        if len((line+" "+w).strip())<=28: line=(line+" "+w).strip()
-        else: lines.append(line); line=w
-    if line: lines.append(line)
-    for ln in lines[:10]:
-        d.text((40,y), ln, fill=(220,220,220), font=body); y+=48
-    img.save(path, "PNG")
+        return None
 
-# -------- single free source (Picsum) --------
-def _download_picsum(seed: str) -> Optional[bytes]:
-    # صور حقيقية عشوائية بدون API
-    url = f"https://picsum.photos/seed/{quote(seed)}/1024"
-    return _http_get(url)
+STOCK_SOURCES = [
+    "https://picsum.photos/seed/{seed}/1024",
+    "https://loremflickr.com/1024/1024/{query}",
+    "https://source.unsplash.com/1024x1024/?{query}",
+]
 
-# -------- main --------
-def generate_images(
-    script: str,
-    lang: str = "en",
-    use_ai_images: bool = False,
-    use_stock: bool = True,
-    **kwargs,
-) -> List[str]:
-    # نظّف الإخراج
-    for f in IMAGES_DIR.glob("*"):
+def _try_stock(query: str) -> bytes | None:
+    for url in STOCK_SOURCES:
+        u = url.format(query=query, seed=random.randint(1,999999))
         try:
-            f.unlink()
+            r = requests.get(u, timeout=25)
+            if r.status_code == 200 and r.content:
+                return r.content
         except Exception:
             pass
+    return None
 
-    scenes = _extract_scenes(script)
-    out: List[str] = []
+def generate_images(script: str, lang: str, use_stock: bool = True, use_openai: bool = False) -> List[str]:
+    # تنظيف قديم
+    for f in OUT_DIR.glob("*"):
+        try: f.unlink()
+        except Exception: pass
 
-    for i, scene in enumerate(scenes, start=1):
-        path = IMAGES_DIR / f"scene_{i}.png"
-        raw: Optional[bytes] = None
+    scenes = _split_scenes(script) or ["Start…", "Keep moving…", "Results…", "Outro…"]
+    outs: List[str] = []
 
-        if use_ai_images:
-            raw = _download_openai(scene)
-            if raw:
-                try:
-                    Image.open(io.BytesIO(raw)).convert("RGB").save(path, "PNG")
-                    out.append(str(path))
-                    continue
-                except Exception as e:
-                    logging.warning("Failed saving OpenAI image: %s", e)
+    for i, sc in enumerate(scenes):
+        img_bytes = None
+        if use_openai:
+            img_bytes = _try_openai(sc)
+        if img_bytes is None and use_stock:
+            q = "running track" if "run" in sc.lower() else "sport fitness"
+            img_bytes = _try_stock(q)
 
-        if use_stock:
-            raw = _download_picsum(_seed_from_text(scene))
-            if raw:
-                try:
-                    Image.open(io.BytesIO(raw)).convert("RGB").save(path, "PNG")
-                    out.append(str(path))
-                    continue
-                except Exception as e:
-                    logging.warning("Failed saving stock image: %s", e)
+        if img_bytes:
+            try:
+                out = OUT_DIR / f"scene_{i+1}.png"
+                Image.open(io.BytesIO(img_bytes)).convert("RGB").save(out, "PNG")
+                outs.append(str(out)); continue
+            except Exception:
+                pass
 
-        logging.warning("Falling back to placeholder for scene %s", i)
-        _placeholder(path, scene)
-        out.append(str(path))
+        # Placeholder كحل أخير
+        out = _placeholder(sc, i); outs.append(str(out))
+        time.sleep(0.05)
 
-    return out
+    return outs
