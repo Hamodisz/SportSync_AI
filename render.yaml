@@ -9,3 +9,9 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
+      - key: PEXELS_API_KEY
+        value: ""
+      - key: UNSPLASH_ACCESS_KEY
+        value: ""
+      - key: PIXABAY_API_KEY
+        value: ""
