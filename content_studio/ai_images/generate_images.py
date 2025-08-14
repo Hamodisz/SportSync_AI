@@ -1,6 +1,6 @@
 # content_studio/ai_images/generate_images.py
 # -- coding: utf-8 --
-from _future_ import annotations
+from __future__ import annotations
 
 import io
 import time
