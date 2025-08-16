@@ -13,4 +13,4 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 COPY . /app
 
 EXPOSE 10001
-CMD ["streamlit", "run", "app/quiz_app.py", "--server.port", "10001", "--server.address", "0.0.0.0"]
+CMD ["bash","-lc","streamlit run quiz_app.py --server.port ${PORT:-10000} --server.address 0.0.0.0"]
