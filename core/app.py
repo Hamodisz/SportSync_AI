@@ -110,4 +110,4 @@ if st.button("🔍 اعرض التوصيات" if is_arabic else "🔍 Show Recom
 # -------------------
 if st.button("🔄 أعد الاختبار من البداية" if is_arabic else "🔄 Restart the test"):
     st.session_state.clear()
-    st.experimental_rerun()
+    st.rerun()
