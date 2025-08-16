@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -e
 export PYTHONUNBUFFERED=1
-exec streamlit run app_streamlit.py --server.port="${PORT:-10000}" --server.address=0.0.0.0 --server.headless=true
+pip install --no-cache-dir -r requirements.txt
+streamlit run app_streamlit.py --server.port ${PORT:-10000} --server.address 0.0.0.0
