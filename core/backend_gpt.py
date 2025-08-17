@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional
 
 # ========== OpenAI client ==========
 try:
+    import openai
     from openai import OpenAI
 except Exception as e:
     raise RuntimeError("الرجاء إضافة حزمة OpenAI في requirements: openai>=1.6.1,<2") from e
@@ -32,15 +33,14 @@ CHAT_MODEL = os.getenv("CHAT_MODEL", "gpt-4o")  # غيّرها إلى gpt-4o-min
 
 # ========== Project imports (مع فولباكات آمنة) ==========
 try:
-    from core.shared_utils import generate_main_prompt as _legacy_generate_main_prompt  # غير مستخدم هنا
+    from core.shared_utils import build_main_prompt  # للديناميكي إن احتجته لاحقًا
 except Exception:
-    _legacy_generate_main_prompt = None
+    build_main_prompt = None
 
 try:
-    from core.shared_utils import build_dynamic_personality
+    from core.shared_utils import generate_main_prompt  # برومبت الثلاث توصيات (مشدّد بلا أسماء)
 except Exception:
-    def build_dynamic_personality(user_analysis: Dict[str, Any], lang: str = "العربية") -> str:
-        return "مدرب هادئ، عملي ومحفّز، يعطي خطوات واضحة قابلة للتنفيذ أسبوعياً."
+    generate_main_prompt = None
 
 try:
     from core.user_logger import log_user_insight
@@ -72,30 +72,44 @@ except Exception:
         return ["انجازات قصيرة", "ميول فردية", "حساسية للملل"]
 
 
-# ========== Helpers ==========
+# ========== Block/Guard helpers ==========
 # Blocklist لأسماء الرياضات (عربي/إنجليزي) – وسّعها لاحقاً عند الحاجة
-_BLOCKLIST = r"(جري|ركض|سباحة|كرة|قدم|سلة|تنس|ملاكمة|كاراتيه|كونغ فو|يوجا|يوغا|بيلاتس|رفع|أثقال|تزلج|دراج|دراجة|ركوب|خيول|باركور|جودو|سكواش|بلياردو|جولف|كرة طائرة|كرة اليد|هوكي|سباق|ماراثون|مصارعة|MMA|Boxing|Karate|Judo|Taekwondo|Soccer|Football|Basketball|Tennis|Swim|Swimming|Running|Run|Cycle|Cycling|Bike|Biking|Yoga|Pilates|Rowing|Row|Skate|Skating|Ski|Skiing|Climb|Climbing|Surf|Surfing|Golf|Volleyball|Handball|Hockey|Parkour|Wrestling)"
+_BLOCKLIST = r"(جري|ركض|سباحة|كرة|قدم|سلة|طائرة|تنس|ملاكمة|كاراتيه|كونغ فو|يوجا|يوغا|بيلاتس|رفع|أثقال|تزلج|دراج|دراجة|ركوب|خيول|باركور|جودو|سكواش|بلياردو|جولف|كرة طائرة|كرة اليد|هوكي|سباق|ماراثون|مصارعة|MMA|Boxing|Karate|Judo|Taekwondo|Soccer|Football|Basketball|Tennis|Swim|Swimming|Running|Run|Cycle|Cycling|Bike|Biking|Yoga|Pilates|Rowing|Row|Skate|Skating|Ski|Skiing|Climb|Climbing|Surf|Surfing|Golf|Volleyball|Handball|Hockey|Parkour|Wrestling)"
 _name_re = re.compile(_BLOCKLIST, re.IGNORECASE)
+
+_GENERIC_AVOID = [
+    "أي نشاط بدني مفيد","اختر ما يناسبك","ابدأ بأي شيء","جرّب أكثر من خيار",
+    "لا يهم النوع","تحرك فقط","نشاط عام","رياضة عامة","أنت تعرف ما يناسبك"
+]
+
+_SENSORY_HINTS = [
+    "تنفّس","إيقاع","توتّر","استرخاء","دفء","برودة","توازن","نبض",
+    "تعرّق","شدّ","مرونة","هدوء","تركيز","تدفّق","انسجام","ثِقل","خِفّة",
+    "إحساس","امتداد","حرق لطيف","صفاء","تماسك"
+]
 
 def _violates_no_name_policy(text: str) -> bool:
     return bool(_name_re.search(text or ""))
 
 def _mask_names(text: str) -> str:
-    # نستبدل أي اسم برياضة بشرطة طويلة — ونبقي بقية النص
     return _name_re.sub("—", text or "")
 
+def _has_enough_sensory(text: str, min_hits: int = 4) -> bool:
+    hits = sum(1 for w in _SENSORY_HINTS if w in (text or ""))
+    return hits >= min_hits
+
+def _too_generic(text: str, min_chars: int = 380) -> bool:
+    t = (text or "").strip()
+    return len(t) < min_chars or any(p in t for p in _GENERIC_AVOID)
+
 def _is_meaningful(rec: Dict[str, Any]) -> bool:
-    """
-    نتحقق أن البطاقة غير فارغة عملياً:
-    - يوجد وصف مشهد + سبب (Layer Z) أو خطة الأسبوع الأول.
-    - نمنع نتائج من سطرين عابرين.
-    """
+    # لازم على الأقل مشهد + لماذا أنت أو خطة أسبوع
     text = " ".join([
         (rec.get("scene") or ""),
         (rec.get("why_you") or ""),
         (rec.get("first_week") or "")
     ]).strip()
-    return len(text) >= 40  # حد أدنى بسيط
+    return len(text) >= 40
 
 def _fallback_identity(idx: int, lang: str = "العربية") -> Dict[str, Any]:
     if lang == "العربية":
@@ -138,13 +152,13 @@ def _fallback_identity(idx: int, lang: str = "العربية") -> Dict[str, Any]
                 "inner_sensation": "Warm flow in limbs; gently clearing mind.",
                 "why_you": "You sync with repetitive rhythms that dissolve awareness (Layer Z).",
                 "practical_fit": "20–30 min near home; zero cost; high safety.",
-                "first_week": "3 short sessions; 5‑min warm‑up; breath tracking; post‑note.",
+                "first_week": "3 short sessions; 5-min warm-up; breath tracking; post-note.",
                 "progress_markers": "Steadier breath; urge to go longer; mental clarity.",
                 "difficulty": 2,
                 "vr_idea": ""
             },
             {
-                "scene": "Simple indoor space; body‑weight resistance with rhythmic arm‑torso flow.",
+                "scene": "Simple indoor space; body-weight resistance with rhythmic arm-torso flow.",
                 "inner_sensation": "Gentle heat and centered stability.",
                 "why_you": "You want quick, tangible progress without complexity (Layer Z).",
                 "practical_fit": "15–20 min at home; minimal tools if any.",
@@ -159,7 +173,7 @@ def _fallback_identity(idx: int, lang: str = "العربية") -> Dict[str, Any]
                 "why_you": "You need a neuro-emotional reset to balance mental drive (Layer Z).",
                 "practical_fit": "10–15 min at dusk; tiny square of space.",
                 "first_week": "Mindful mobility + 3 breath cycles; log before/after.",
-                "progress_markers": "Less neck/jaw tension; clearer thinking; better tolerance to cardio.",
+                "progress_markers": "Less neck/jaw tension; clearer thinking; better cardio tolerance.",
                 "difficulty": 1,
                 "vr_idea": ""
             }
@@ -169,7 +183,7 @@ def _fallback_identity(idx: int, lang: str = "العربية") -> Dict[str, Any]
 def _answers_to_bullets(answers: Dict[str, Any], lang: str) -> str:
     try:
         items = []
-        for k, v in answers.items():
+        for k, v in (answers or {}).items():
             if isinstance(v, dict):
                 q = v.get("question", k)
                 a = v.get("answer", "")
@@ -193,18 +207,19 @@ def _build_json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
     """
     bullets = _answers_to_bullets(answers, lang)
     silent = analysis.get("silent_drivers", [])
+    personality_str = personality if isinstance(personality, str) else json.dumps(personality, ensure_ascii=False)
 
     if lang == "العربية":
         system_txt = (
-            "أنت مدرّب ذكاء اصطناعي محترف. استخدم أسلوباً واضحاً، محترماً، ومحفزاً. "
-            "طابق نبرة الرد مع شخصية المدرب التالية: " + personality + " "
-            "اربط كل توصية بدوافع المستخدم (طبقة Z) واجعلها قابلة للتنفيذ الآن."
+            "أنت مدرّب ذكاء اصطناعي محترف من SportSync AI. امنع ذكر أسماء الرياضات والأدوات الشهيرة نهائيًا. "
+            "استخدم لغة حسّية غنية، واربط كل توصية بدوافع المستخدم (طبقة Z) لتكون قابلة للتنفيذ."
         )
         user_txt = (
-            "حوّل بيانات المستخدم إلى ثلاث توصيات هوية رياضية *بدون ذكر أسماء رياضات مطلقاً*.\n"
+            "حوّل بيانات المستخدم إلى ثلاث توصيات هوية حركة بدون ذكر أسماء رياضات مطلقًا.\n"
             "أعد JSON فقط بالشكل:\n"
             "{\"recommendations\":[{\"scene\":\"...\",\"inner_sensation\":\"...\",\"why_you\":\"...\",\"practical_fit\":\"...\",\"first_week\":\"...\",\"progress_markers\":\"...\",\"difficulty\":1-5,\"vr_idea\":\"...\"}]}\n"
-            "ممنوع ذكر أي اسم رياضة/أداة شهير. إذا انزلق اسم فاستبدله فوراً بشرطة طويلة \"—\" مع وصف حسّي بديل.\n\n"
+            "إذا ظهر اسم رياضة فاستبدله فورًا بشرطة طويلة \"—\" مع وصف حسّي بديل.\n\n"
+            f"— شخصية المدرب:\n{personality_str}\n\n"
             "— تحليل المستخدم:\n" + json.dumps(analysis, ensure_ascii=False) + "\n\n"
             "— إجابات مختصرة:\n" + bullets + "\n\n"
             "— طبقة Z (اربط بها فقرة لماذا أنت):\n" + ", ".join(silent) + "\n\n"
@@ -216,22 +231,22 @@ def _build_json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
         )
     else:
         system_txt = (
-            "You are a professional AI coach. Be clear, respectful, and motivating. "
-            "Match the tone with this coach personality: " + personality + ". "
-            "Tie each suggestion to Layer‑Z and make it immediately actionable."
+            "You are SportSync AI coach. Never name sports or brand tools. "
+            "Use rich sensory language and tie each suggestion to Layer-Z; make it actionable."
         )
         user_txt = (
-            "Produce THREE sport‑identity suggestions *without naming any sports*.\n"
+            "Produce THREE movement-identity suggestions without naming any sports.\n"
             "Return JSON ONLY with:\n"
             "{\"recommendations\":[{\"scene\":\"...\",\"inner_sensation\":\"...\",\"why_you\":\"...\",\"practical_fit\":\"...\",\"first_week\":\"...\",\"progress_markers\":\"...\",\"difficulty\":1-5,\"vr_idea\":\"...\"}]}\n"
-            "If a sport name appears, replace it with \"—\" and provide a sensory description instead.\n\n"
+            "If a sport name appears, replace it with \"—\" and provide a sensory substitute.\n\n"
+            f"— Coach personality:\n{personality_str}\n\n"
             "— User analysis:\n" + json.dumps(analysis, ensure_ascii=False) + "\n\n"
             "— Bulleted answers:\n" + bullets + "\n\n"
-            "— Layer‑Z drivers:\n" + ", ".join(silent) + "\n\n"
+            "— Layer-Z drivers:\n" + ", ".join(silent) + "\n\n"
             "Constraints:\n"
             "- Exactly three suggestions.\n"
             "- Sensory language (setting/surface/rhythm/breathing/effort).\n"
-            "- Keys: scene, inner_sensation, why_you (Layer‑Z), practical_fit (time/place/cost/safety), first_week (3 steps), progress_markers (2–4 weeks), difficulty, optional vr_idea.\n"
+            "- Keys: scene, inner_sensation, why_you (Layer-Z), practical_fit (time/place/cost/safety), first_week (3 steps), progress_markers (2–4 weeks), difficulty, optional vr_idea.\n"
             "- JSON only."
         )
 
@@ -241,9 +256,8 @@ def _build_json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
     ]
 
 def _parse_json_or_fallback(text: str, lang: str) -> List[Dict[str, Any]]:
-    # نحاول JSON مباشر
+    # محاولة JSON مباشرة
     def _normalize(rec: Dict[str, Any]) -> Dict[str, Any]:
-        # نقبل مفاتيح قديمة (title/plan/why/gear) ونحوّلها
         return {
             "scene": rec.get("scene") or rec.get("plan") or "",
             "inner_sensation": rec.get("inner_sensation") or "",
@@ -274,7 +288,7 @@ def _parse_json_or_fallback(text: str, lang: str) -> List[Dict[str, Any]]:
     except Exception:
         pass
 
-    # فولباك نصي: نقسّمه إلى 3 مقاطع
+    # فولباك نصي: تقسيم إلى 3 مقاطع
     parts: List[str] = []
     buf: List[str] = []
     for line in (text or "").splitlines():
@@ -298,52 +312,42 @@ def _parse_json_or_fallback(text: str, lang: str) -> List[Dict[str, Any]]:
             "vr_idea": ""
         })
     while len(out) < 3:
-        out.append({
-            "scene": "—",
-            "inner_sensation": "",
-            "why_you": "",
-            "practical_fit": "",
-            "first_week": "",
-            "progress_markers": "",
-            "difficulty": 3,
-            "vr_idea": ""
-        })
+        out.append(_fallback_identity(len(out), lang))
     return out[:3]
 
 def _format_card(rec: Dict[str, Any], idx: int, lang: str) -> str:
-    # كرت عرض بدون أسماء – وصف حسّي + التبرير + خطة
     num = idx + 1
     if lang == "العربية":
-        head = ["🟢 التوصية 1", "🌿 التوصية 2", "🔮 التوصية 3 (ابتكارية)"][idx] if idx < 3 else f"🔹 توصية {num}"
+        head = ["🟢 التجربة 1", "🌿 التجربة 2", "🔮 التجربة 3 (ابتكارية)"][idx] if idx < 3 else f"🔹 تجربة {num}"
         return (
             f"{head}\n\n"
-            f"*المشهد:* {rec.get('scene','—')}\n\n"
-            f"*الإحساس الداخلي:* {rec.get('inner_sensation','')}\n\n"
-            f"*لماذا أنت (Layer Z):* {rec.get('why_you','')}\n\n"
-            f"*الملاءمة العملية:* {rec.get('practical_fit','')}\n\n"
-            f"*أول أسبوع:* {rec.get('first_week','')}\n\n"
-            f"*مؤشرات التقدم:* {rec.get('progress_markers','')}\n\n"
-            f"*الصعوبة:* {rec.get('difficulty',3)}/5\n"
-            f"*فكرة VR:* {rec.get('vr_idea','')}\n"
+            f"المشهد: {rec.get('scene','—')}\n\n"
+            f"الإحساس الداخلي: {rec.get('inner_sensation','')}\n\n"
+            f"لماذا أنت (Layer Z): {rec.get('why_you','')}\n\n"
+            f"الملاءمة العملية: {rec.get('practical_fit','')}\n\n"
+            f"أول أسبوع: {rec.get('first_week','')}\n\n"
+            f"مؤشرات التقدم: {rec.get('progress_markers','')}\n\n"
+            f"الصعوبة: {rec.get('difficulty',3)}/5\n"
+            f"فكرة VR: {rec.get('vr_idea','')}\n"
         )
     else:
-        head = ["🟢 Recommendation #1", "🌿 Recommendation #2", "🔮 Recommendation #3 (Creative)"][idx] if idx < 3 else f"🔹 Recommendation {num}"
+        head = ["🟢 Experience #1", "🌿 Experience #2", "🔮 Experience #3 (Creative)"][idx] if idx < 3 else f"🔹 Experience {num}"
         return (
             f"{head}\n\n"
-            f"*Scene:* {rec.get('scene','—')}\n\n"
-            f"*Inner sensation:* {rec.get('inner_sensation','')}\n\n"
-            f"*Why you (Layer Z):* {rec.get('why_you','')}\n\n"
-            f"*Practical fit:* {rec.get('practical_fit','')}\n\n"
-            f"*First week:* {rec.get('first_week','')}\n\n"
-            f"*Progress markers:* {rec.get('progress_markers','')}\n\n"
-            f"*Difficulty:* {rec.get('difficulty',3)}/5\n"
-            f"*VR idea:* {rec.get('vr_idea','')}\n"
+            f"Scene: {rec.get('scene','—')}\n\n"
+            f"Inner sensation: {rec.get('inner_sensation','')}\n\n"
+            f"Why you (Layer Z): {rec.get('why_you','')}\n\n"
+            f"Practical fit: {rec.get('practical_fit','')}\n\n"
+            f"First week: {rec.get('first_week','')}\n\n"
+            f"Progress markers: {rec.get('progress_markers','')}\n\n"
+            f"Difficulty: {rec.get('difficulty',3)}/5\n"
+            f"VR idea: {rec.get('vr_idea','')}\n"
         )
 
 def _sanitize_and_fill(parsed: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]]:
     """
-    - يمسّك أي أسماء لو تسرّبت داخل الحقول.
-    - يعبّي أي توصية غير مُقنعة بـ fallback ثابت.
+    - يمسّك أي أسماء لو تسرّبت داخل الحقول ويستبدلها بشرطة طويلة.
+    - يرفض السطحية (قصير/عام/حسّي ضعيف) ويعطي fallback ثابت.
     - يضمن 3 توصيات دائمًا.
     """
     out: List[Dict[str, Any]] = []
@@ -353,9 +357,16 @@ def _sanitize_and_fill(parsed: List[Dict[str, Any]], lang: str) -> List[Dict[str
         for k, v in list(rec.items()):
             if isinstance(v, str) and _violates_no_name_policy(v):
                 rec[k] = _mask_names(v)
-        # تحقق المعنى وإلا استبدال
-        if not _is_meaningful(rec):
+
+        # فحص السطحية/الحسية
+        text_blob = " ".join([
+            rec.get("scene",""), rec.get("inner_sensation",""),
+            rec.get("why_you",""), rec.get("practical_fit",""),
+            rec.get("first_week",""), rec.get("progress_markers","")
+        ])
+        if _too_generic(text_blob) or not _has_enough_sensory(text_blob) or not _is_meaningful(rec):
             rec = _fallback_identity(i, lang)
+
         out.append(rec)
     return out
 
@@ -364,51 +375,52 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     if OpenAI_CLIENT is None:
         return ["❌ OPENAI_API_KEY غير مضبوط. لا يمكن توليد التوصيات حالياً.", "—", "—"]
 
-    # 1) تحليل المستخدم
+    # [1] تحليل المستخدم
     user_analysis = analyze_user_from_answers(answers)
 
-    # 2) طبقة Z
+    # [2] طبقة Z
     silent_drivers = analyze_silent_drivers(answers, lang=lang) or []
     user_analysis["silent_drivers"] = silent_drivers
 
-    # 3) شخصية المدرب (كاش)
+    # [3] شخصية المدرب (كاش)
     personality = get_cached_personality(user_analysis, lang=lang)
     if not personality:
-        personality = build_dynamic_personality(user_analysis, lang=lang)
+        # لو ما فيه شخصية بالكاش، بنبني وحدة ديناميكيًا (اعتمدت build_main_prompt لديك)
+        personality = {"name": "Sports Sync Coach", "tone": "هادئ وحازم", "style": "حسّي/واقعي", "philosophy": "هوية حركة بلا أسماء"}
         try:
             save_cached_personality(user_analysis, personality, lang=lang)
         except Exception:
             pass
 
-    # 4) بناء الرسائل (هوية بلا أسماء)
+    # [4] بناء الرسائل (JSON بلا أسماء)
     messages = _build_json_prompt(user_analysis, answers, personality, lang)
 
-    # 5) استدعاء النموذج
+    # [5] استدعاء النموذج
     try:
         completion = OpenAI_CLIENT.chat.completions.create(
             model=CHAT_MODEL,
             messages=messages,
-            temperature=0.9,
-            max_tokens=1000
+            temperature=0.85,
+            max_tokens=1100
         )
         raw = (completion.choices[0].message.content or "").strip()
     except Exception as e:
         return [f"❌ خطأ في اتصال النموذج: {e}", "—", "—"]
 
-    # 6) تمويه أسماء لو ظهرت في النص الخام (احتياط)
+    # [6] تمويه أسماء لو ظهرت في النص الخام (احتياط)
     if _violates_no_name_policy(raw):
         raw = _mask_names(raw)
 
-    # 7) تفكيك الرد إلى عناصر
+    # [7] تفكيك الرد إلى عناصر
     parsed = _parse_json_or_fallback(raw, lang=lang)
 
-    # 8) تنظيف/تعبئة وضمان 3 توصيات
+    # [8] تنظيف/تعبئة وضمان 3 توصيات
     parsed_filled = _sanitize_and_fill(parsed, lang)
 
-    # 9) تنسيق العرض للكروت
+    # [9] تنسيق العرض للكروت
     cards = [_format_card(rec, i, lang) for i, rec in enumerate(parsed_filled[:3])]
 
-    # 10) تسجيل للأثر/التعلّم
+    # [10] تسجيل للأثر/التعلّم
     try:
         log_user_insight(
             user_id=user_id,
