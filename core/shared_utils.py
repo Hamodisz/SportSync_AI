@@ -1,5 +1,39 @@
 # core/shared_utils.py
 
+# =========================================================
+# قيود مشتركة لمنع السطحية ومنع ذكر أسماء الرياضات
+# =========================================================
+
+# قائمة كلمات/أسماء رياضية شائعة تُذكر فقط داخل البرومبت كعناصر "ممنوع استخدامها".
+# (مجرد توجيه للموديل – الفلترة الحقيقية تتم في backend إن رغبت)
+_BANNED_SPORT_TERMS_AR = [
+    "كرة","قدم","سلة","طائرة","تنس","سباحة","سبح","ركض","جري","مقاومة",
+    "أثقال","رفع أثقال","كمال أجسام","ملاكمة","بوكس","كيك بوكس","جوجيتسو",
+    "تايكواندو","يوغا","بيلاتس","دراج","دراجة","دراجة ثابتة","تزلج","تجديف",
+    "سكواش","بادمنتون","كروس فت","باركور","تايت بو","سكوبا","غوص","فروسية"
+]
+_BANNED_SPORT_TERMS_EN = [
+    "football","soccer","basketball","volleyball","tennis","swimming","run",
+    "running","jogging","strength","resistance","weights","weightlifting",
+    "bodybuilding","boxing","kickboxing","mma","bjj","jiu jitsu","taekwondo",
+    "yoga","pilates","cycling","bike","biking","row","rowing","ski","skating",
+    "crossfit","parkour","scuba","equestrian","horse riding"
+]
+
+# عبارات عامة تدل على السطحية (نذكرها للموديل ليتجنّبها)
+_GENERIC_AVOID = [
+    "أي نشاط بدني مفيد","اختر ما يناسبك","ابدأ بأي شيء","جرّب أكثر من خيار",
+    "لا يهم النوع","تحرك فقط","نشاط عام","رياضة عامة","أنت تعرف ما يناسبك"
+]
+
+# مفردات حسّية نريد كثافة منها (لتذكير الموديل داخل البرومبت)
+_SENSORY_TOKENS_AR = [
+    "تنفّس","إيقاع","توتّر","استرخاء","دفء","برودة","توازن","نبض",
+    "تعرّق","شدّ","مرونة","هدوء","تركيز","تدفّق","انسجام","ثِقل","خِفّة",
+    "إحساس","موجة","امتداد","حرق لطيف","صفاء","تماسك"
+]
+
+
 # ------------------------------
 # [1] دالة توصية أعمق - للديناميكي (بدون أسماء)
 # ------------------------------
@@ -12,6 +46,11 @@ def build_main_prompt(analysis, answers, personality, previous_recommendation, r
       - اعطِ خطة أسبوع أول + مؤشرات تقدم (2–4 أسابيع).
       - إذا انزلق اسم رياضة، استبدله بشرطة طويلة "—" وقدّم وصفاً حسّياً مكانه.
     """
+    banned_ar = "، ".join(_BANNED_SPORT_TERMS_AR)
+    banned_en = ", ".join(_BANNED_SPORT_TERMS_EN)
+    avoid = "، ".join(_GENERIC_AVOID)
+    sensory = "، ".join(_SENSORY_TOKENS_AR)
+
     if lang == "العربية":
         prompt = f"""👤 تحليل شخصية المستخدم:
 {analysis}
@@ -31,8 +70,12 @@ def build_main_prompt(analysis, answers, personality, previous_recommendation, r
 
 📝 إجابات المستخدم:
 """
-        for k, v in answers.items():
+        for k, v in (answers or {}).items():
             prompt += f"- {k}: {v}\n"
+
+        prev1 = previous_recommendation[0] if previous_recommendation and len(previous_recommendation) > 0 else "—"
+        prev2 = previous_recommendation[1] if previous_recommendation and len(previous_recommendation) > 1 else "—"
+        prev3 = previous_recommendation[2] if previous_recommendation and len(previous_recommendation) > 2 else "—"
 
         prompt += f"""
 
@@ -40,19 +83,26 @@ def build_main_prompt(analysis, answers, personality, previous_recommendation, r
 {ratings}
 
 📌 التوصيات الثلاثة التي قُدمت سابقًا:
-1. {previous_recommendation[0] if len(previous_recommendation) > 0 else "—"}
-2. {previous_recommendation[1] if len(previous_recommendation) > 1 else "—"}
-3. {previous_recommendation[2] if len(previous_recommendation) > 2 else "—"}
+1. {prev1}
+2. {prev2}
+3. {prev3}
 
-⚠ قواعد صارمة:
-- لا تذكر أسماء رياضات (مثل: جري، سباحة، كرة… إلخ). إن انزلق اسم، استبدله فورًا بـ "—" وقدّم وصفًا حسّيًا بديلًا.
-- استخدم لغة حسّية تصف: المكان/السطح/الإيقاع/التنفس/نوع الجهد.
-- اربط التوصية مباشرةً بـ Layer Z (لماذا أنت؟).
+⚠ قواعد صارمة (لا تكسرها):
+- ممنوع ذكر أسماء رياضات نهائيًا. قائمة محظورة للأمثلة: [{banned_ar}] / [{banned_en}]
+- إن انزلق اسم، استبدله فورًا بـ "—" وقدّم وصفًا حسّيًا بديلاً.
+- تجنّب العبارات السطحية مثل: {avoid}
+- استخدم لغة حسّية غنيّة (تذكير بالمفردات: {sensory})
+- اربط التوصية مباشرةً بـ Layer Z (لماذا أنت؟ ما الذي يذيب وعيك؟ ما الدافع الداخلي؟)
 - اعطِ خطة للأسبوع الأول (٣ خطوات عملية واضحة).
 - اعطِ مؤشرات تقدّم محسوسة خلال 2–4 أسابيع.
 
+✅ SELF‑CHECK (قبل الإخراج):
+- لا توجد أي أسماء رياضات أو أدوات شهيرة حرفيًا.
+- طول التوصية ≥ 6 جمل مفيدة.
+- مذكور: (المشهد، الإحساس الداخلي، لماذا أنت/Layer Z، الملاءمة العملية، أول أسبوع، مؤشرات التقدم).
+
 🎯 المطلوب الآن:
-بناءً على كل ما سبق، أعطني *توصية أعمق وأصدق* بصيغة مقطع واحد بهذا القالب (من غير أسماء رياضات):
+بناءً على كل ما سبق، أعطني توصية أعمق وأصدق بصيغة مقطع واحد بهذا القالب (من غير أسماء رياضات):
 • المشهد: ...
 • الإحساس الداخلي: ...
 • لماذا أنت (Layer Z): ...
@@ -63,6 +113,9 @@ def build_main_prompt(analysis, answers, personality, previous_recommendation, r
 - كن ذكيًا، واقعيًا، وعاطفيًا. لا تكرر مضمون التوصيات السابقة، ولا تلمّح لأسمائها.
 """
     else:
+        # English version mirrors the same constraints
+        banned = ", ".join(_BANNED_SPORT_TERMS_EN)
+        avoid_en = ", ".join(_GENERIC_AVOID)
         prompt = f"""👤 User Personality Analysis:
 {analysis}
 """
@@ -81,8 +134,12 @@ Philosophy: {personality.get("philosophy")}
 
 📝 User's Questionnaire Answers:
 """
-        for k, v in answers.items():
+        for k, v in (answers or {}).items():
             prompt += f"- {k}: {v}\n"
+
+        prev1 = previous_recommendation[0] if previous_recommendation and len(previous_recommendation) > 0 else "—"
+        prev2 = previous_recommendation[1] if previous_recommendation and len(previous_recommendation) > 1 else "—"
+        prev3 = previous_recommendation[2] if previous_recommendation and len(previous_recommendation) > 2 else "—"
 
         prompt += f"""
 
@@ -90,16 +147,23 @@ Philosophy: {personality.get("philosophy")}
 {ratings}
 
 📌 Previous Three Recommendations:
-1. {previous_recommendation[0] if len(previous_recommendation) > 0 else "—"}
-2. {previous_recommendation[1] if len(previous_recommendation) > 1 else "—"}
-3. {previous_recommendation[2] if len(previous_recommendation) > 2 else "—"}
+1. {prev1}
+2. {prev2}
+3. {prev3}
 
-⚠ Hard Rules:
-- Do NOT name any sports. If a sport name slips, replace it with "—" and provide a sensory description instead.
-- Use sensory language: setting/surface/rhythm/breathing/type of effort.
-- Explicitly tie the rationale to Layer Z (Why you?).
+⚠ Hard Rules (do not break):
+- Do NOT name any sports. Banned examples: [{banned}]
+- If a sport name slips, replace it with "—" and provide a sensory substitute.
+- Avoid generic phrases: {avoid_en}
+- Use rich sensory language (setting/surface/rhythm/breathing/type of effort).
+- Tie rationale to Layer Z (why you? flow trigger? inner driver).
 - Provide a First Week plan (3 concrete steps).
-- Provide progress markers to notice within 2–4 weeks.
+- Provide progress markers within 2–4 weeks.
+
+✅ SELF‑CHECK before output:
+- Zero sport/tool brand names.
+- Length ≥ 6 meaningful sentences.
+- Includes: Scene, Inner Sensation, Why you (Layer Z), Practical Fit, First Week, Progress Markers.
 
 🎯 Your task:
 Return ONE deeper recommendation (no sport names) using this template:
@@ -120,9 +184,13 @@ Be smart, realistic, and emotionally resonant. Do not repeat or allude to prior 
 # ------------------------------
 def generate_main_prompt(analysis, answers, personality, lang="العربية"):
     """
-    تُستخدم لتوليد 3 توصيات رئيسية. تم تحويلها لوضع "هوية بلا أسماء".
-    على الواجهة سيتم تنسيق المخرجات، لكن هنا نفرض اللغة والقواعد.
+    تُستخدم لتوليد 3 توصيات رئيسية بوضع "هوية بلا أسماء".
     """
+    banned_ar = "، ".join(_BANNED_SPORT_TERMS_AR)
+    banned_en = ", ".join(_BANNED_SPORT_TERMS_EN)
+    avoid = "، ".join(_GENERIC_AVOID)
+    sensory = "، ".join(_SENSORY_TOKENS_AR)
+
     if lang == "العربية":
         prompt = f"""🧠 تحليل المستخدم:
 {analysis}
@@ -141,16 +209,23 @@ def generate_main_prompt(analysis, answers, personality, lang="العربية"):
 
 📝 إجابات المستخدم على الاستبيان:
 """
-        for k, v in answers.items():
+        for k, v in (answers or {}).items():
             prompt += f"- {k}: {v}\n"
 
-        prompt += """
+        prompt += f"""
 
 ⚠ قواعد صارمة:
-- لا تذكر أسماء رياضات أبدًا. إن انزلق اسم، استبدله بـ "—" مع وصف حسّي بديل.
-- استخدم لغة حسّية: المكان/السطح/الإيقاع/التنفس/نوع الجهد.
-- اربط كل توصية بـ Layer Z.
-- قدّم 3 توصيات دائمًا بهذا القالب:
+- ممنوع ذكر أسماء رياضات نهائيًا. أمثلة محظورة: [{banned_ar}] / [{banned_en}]
+- إن انزلق اسم، استبدله بـ "—" مع وصف حسّي بديل.
+- تجنّب العبارات السطحية مثل: {avoid}
+- زِد الكثافة الحسّية (تذكير بالمفردات: {sensory})
+- اربط كل توصية بـ Layer Z بوضوح.
+
+✅ SELF‑CHECK قبل الإخراج:
+- لا توجد أسماء رياضات أو أدوات شهيرة.
+- لكل توصية ≥ 6 جمل مفيدة، وتحتوي العناصر الستة المطلوبة.
+
+🎯 أعطني ثلاث «تجارب حركة» بالضبط:
 
 1) الهوية الأساسية:
    • المشهد: ...
@@ -177,6 +252,9 @@ def generate_main_prompt(analysis, answers, personality, lang="العربية"):
    • مؤشرات التقدم: ...
 """
     else:
+        banned = ", ".join(_BANNED_SPORT_TERMS_EN)
+        avoid_en = ", ".join(_GENERIC_AVOID)
+
         prompt = f"""🧠 User Analysis:
 {analysis}
 """
@@ -194,16 +272,23 @@ Philosophy: {personality.get("philosophy")}
 
 📝 User Questionnaire Answers:
 """
-        for k, v in answers.items():
+        for k, v in (answers or {}).items():
             prompt += f"- {k}: {v}\n"
 
-        prompt += """
+        prompt += f"""
 
 ⚠ Hard Rules:
-- Absolutely NO sport names. If a sport name appears, replace it with "—" and describe the experience instead.
-- Use sensory language: setting/surface/rhythm/breathing/type of effort.
-- Tie each suggestion to Layer Z.
-- Return exactly three suggestions using this template:
+- Absolutely NO sport names. Banned examples: [{banned}]
+- If any slips, replace with "—" and describe the experience instead.
+- Avoid generic phrases: {avoid_en}
+- Increase sensory density (setting/surface/rhythm/breathing/effort).
+- Tie each suggestion explicitly to Layer Z.
+
+✅ SELF‑CHECK before output:
+- No sport/tool names.
+- Each suggestion ≥ 6 useful sentences and includes all six items.
+
+🎯 Return exactly three «movement experiences»:
 
 1) Core Identity:
    • Scene: ...
