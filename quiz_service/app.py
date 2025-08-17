@@ -3,7 +3,7 @@ import os, sys, json
 import streamlit as st
 
 # أضف مجلد المشروع للجسر مع core/ و analysis/
-HERE = os.path.dirname(_file_)
+HERE = os.path.dirname(__fil_e_)
 PROJECT_ROOT = os.path.abspath(os.path.join(HERE, ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.append(PROJECT_ROOT)
