@@ -1,48 +1,41 @@
 # -- coding: utf-8 --
-import os, sys, csv, json
-from uuid import uuid4
-from datetime import datetime
+import os, sys, json
 from pathlib import Path
 import streamlit as st
 
-# ---------------------------
-# مسارات مرنة (تشتغل محليًا وعلى Render)
-# ---------------------------
+# =========================
+# مسارات مرنة (محلي + Render)
+# =========================
 try:
     HERE = Path(_file_).resolve().parent
 except NameError:
     HERE = Path.cwd()
 
-ROOT = HERE.parent if HERE.name == "quiz_service" else HERE
+ROOT = HERE.parent if HERE.name in ("quiz_service",) else HERE
+for p in (ROOT, ROOT / "core", ROOT / "analysis"):
+    sp = str(p.resolve())
+    if sp not in sys.path:
+        sys.path.insert(0, sp)
 
-# أضف الجذر فقط لتفادي خطأ core كـ باكدج
-root_str = str(ROOT.resolve())
-if root_str not in sys.path:
-    sys.path.insert(0, root_str)
-# لو تبغى تحليل فقط، ممكن تضيف analysis اختيارياً
-ana_str = str((ROOT / "analysis").resolve())
-if ana_str not in sys.path:
-    sys.path.insert(0, ana_str)
-
-# ---------------------------
-# استيرادات مرنة من مشروعك
-# ---------------------------
+# =========================
+# استيرادات مع بدائل آمنة
+# =========================
 try:
     from core.backend_gpt import generate_sport_recommendation
 except Exception:
     def generate_sport_recommendation(answers, lang="العربية"):
-        # Fallback مبسّط
         return [
             "🏃‍♂ الجري الخفيف 3 مرات أسبوعيًا / Light jogging 3x per week",
             "🏋 تمارين مقاومة منزلية 20 دقيقة / 20-min home resistance",
-            "🧘 يوغا + تنفّس / Yoga + breathing"
+            "🧘 يوجا + تنفّس / Yoga + breathing",
         ]
 
 try:
     from core.dynamic_chat import start_dynamic_chat
 except Exception:
     def start_dynamic_chat(**kwargs):
-        return "فهمت رغبتك. نقدر نخفف الشدة ونزيد التدرّج أسبوعيًا. هل يناسبك؟"
+        user_msg = kwargs.get("user_message", "")
+        return f"فهمت: {user_msg}\nسنعدّل الخطة تدريجيًا ونراعي تفضيلاتك خطوة بخطوة."
 
 try:
     from analysis.layer_z_engine import analyze_silent_drivers_combined as analyze_silent_drivers
@@ -50,81 +43,53 @@ except Exception:
     def analyze_silent_drivers(answers, lang="العربية"):
         return ["تحفيز قصير المدى", "إنجازات سريعة", "تفضيل تدريبات فردية"]
 
-# ---------------------------
-# إعداد الصفحة
-# ---------------------------
+# =========================
+# تهيئة الصفحة + لغة
+# =========================
 st.set_page_config(page_title="SportSync — Quiz", page_icon="🎯", layout="centered")
-
-# معرف الجلسة
-if "session_id" not in st.session_state:
-    st.session_state["session_id"] = uuid4().hex[:12]
-SESSION_ID = st.session_state["session_id"]
-
-# ملف سجل الجلسات
-DATA_DIR = ROOT / "data"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-LOG_PATH = DATA_DIR / "quiz_sessions.csv"
-
-def save_session_csv(*, session_id, lang, answers, recs, ratings=None, chat_history=None, z_signals=None):
-    headers = [
-        "ts_utc","session_id","lang",
-        "answers_json","rec1","rec2","rec3",
-        "ratings_json","z_signals_json","chat_history_json"
-    ]
-    row = [
-        datetime.utcnow().isoformat(timespec="seconds")+"Z",
-        session_id,
-        lang,
-        json.dumps(answers, ensure_ascii=False),
-        recs[0] if len(recs)>0 else "",
-        recs[1] if len(recs)>1 else "",
-        recs[2] if len(recs)>2 else "",
-        json.dumps(ratings or [], ensure_ascii=False),
-        json.dumps(z_signals or [], ensure_ascii=False),
-        json.dumps(chat_history or [], ensure_ascii=False),
-    ]
-    new_file = not LOG_PATH.exists()
-    with LOG_PATH.open("a", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        if new_file: w.writerow(headers)
-        w.writerow(row)
-
-# ---------------------------
-# اختيار اللغة + تحميل الأسئلة
-# ---------------------------
 lang = st.sidebar.radio("🌐 اختر اللغة / Choose Language", ["العربية", "English"], index=0)
 is_ar = (lang == "العربية")
 
+def T(ar, en):
+    return ar if is_ar else en
+
+# =========================
+# تحميل الأسئلة (متوافق مع multiple_choices + allow_custom)
+# =========================
 QUESTIONS_DIR = (ROOT / "questions")
 if not QUESTIONS_DIR.exists():
     QUESTIONS_DIR = HERE / "questions"
 
-q_file = QUESTIONS_DIR / ("arabic_questions.json" if is_ar else "english_questions.json")
-if not q_file.exists():
-    st.error("❌ لم يتم العثور على ملف الأسئلة.")
+ar_path = QUESTIONS_DIR / "arabic_questions.json"
+en_path = QUESTIONS_DIR / "english_questions.json"
+q_path = ar_path if is_ar or not en_path.exists() else en_path
+
+if not q_path.exists():
+    st.error(T("❌ لم يتم العثور على ملف الأسئلة.", "❌ Questions file not found."))
     st.stop()
 
-with q_file.open("r", encoding="utf-8") as f:
+with q_path.open("r", encoding="utf-8") as f:
     questions = json.load(f)
 
-# ---------------------------
-# واجهة
-# ---------------------------
-st.title("🎯 توصيتك الرياضية الذكية" if is_ar else "🎯 Your Smart Sport Recommendation")
-st.caption(f"Session: {SESSION_ID}")
+# =========================
+# واجهة الأسئلة
+# =========================
+st.title(T("🎯 توصيتك الرياضية الذكية", "🎯 Your Smart Sport Recommendation"))
 
 answers = {}
 for q in questions:
     q_key = q.get("key", f"q_{len(answers)+1}")
-    text = q["question_ar"] if is_ar else q["question_en"]
-    q_type = q.get("type", "text")
-    options = q.get("options", [])
-    allow_custom = q.get("allow_custom", False)
+    text_ar = q.get("question_ar", "")
+    text_en = q.get("question_en", text_ar)  # لو مافيه إنجليزي نعرض العربي
+    text = text_ar if is_ar else text_en
 
-    if q_type == "multiselect":
-        sel = st.multiselect(text, options, key=q_key)
+    choices = q.get("multiple_choices")
+    allow_custom = bool(q.get("allow_custom", False))
+
+    if choices and isinstance(choices, list):
+        sel = st.multiselect(text, choices, key=q_key)
         if allow_custom:
-            custom = st.text_input(("✏ إجابتك الخاصة (اختياري)" if is_ar else "✏ Your own answer (optional)"),
+            custom = st.text_input(T("✏ إجابتك الخاصة (اختياري)", "✏ Your own answer (optional)"),
                                    key=f"{q_key}_custom")
             if custom:
                 sel.append(custom)
@@ -135,115 +100,108 @@ for q in questions:
 
 st.divider()
 
-col1, col2 = st.columns([1,1])
-go  = col1.button("🔍 اعرض التوصيات" if is_ar else "🔍 Show Recommendations")
-rst = col2.button("🔄 إعادة الاختبار" if is_ar else "🔄 Restart")
+# =========================
+# أزرار التحكم
+# =========================
+col1, col2 = st.columns([1, 1])
+go  = col1.button(T("🔍 اعرض التوصيات", "🔍 Show Recommendations"))
+rst = col2.button(T("🔄 إعادة الاختبار", "🔄 Restart"))
 
 if rst:
     st.session_state.clear()
     st.rerun()
 
-# مساحة للمخرجات
-if "recs" not in st.session_state:
-    st.session_state["recs"] = []
-if "z_signals" not in st.session_state:
-    st.session_state["z_signals"] = []
-if "chat_history" not in st.session_state:
-    st.session_state["chat_history"] = []
+# حالة عامة
+st.session_state.setdefault("recs", [])
+st.session_state.setdefault("ratings", [4, 4, 4])
+st.session_state.setdefault("chat_open", False)
+st.session_state.setdefault("chat_history", [])
 
+# =========================
+# توليد التوصيات + Layer Z
+# =========================
 if go:
     user_id = "web_user"
 
-    # توصيات
     try:
-        recs = generate_sport_recommendation(answers, lang=lang)
+        st.session_state["recs"] = generate_sport_recommendation(answers, lang=lang)[:3]
     except Exception as e:
-        st.error(("خطأ أثناء توليد التوصيات: " if is_ar else "Error generating recommendations: ") + str(e))
-        recs = []
+        st.error(T("خطأ أثناء توليد التوصيات: ", "Error generating recommendations: ") + str(e))
+        st.session_state["recs"] = []
 
-    # Layer Z
     try:
         z = analyze_silent_drivers(answers, lang=lang)
     except Exception:
         z = []
 
-    st.session_state["recs"] = recs[:3]
-    st.session_state["z_signals"] = z
+    if z:
+        st.subheader(T("🧭 ما يحركك دون أن تدري", "🧭 Your Silent Drivers"))
+        for item in z:
+            st.write("• " + str(item))
+        st.divider()
 
-# عرض النتائج إن وجدت
+# =========================
+# عرض التوصيات (ثلاثة) + التقييم
+# =========================
 recs = st.session_state.get("recs", [])
-z = st.session_state.get("z_signals", [])
-
-if z:
-    st.subheader("🧭 ما يحركك دون أن تدري" if is_ar else "🧭 Your Silent Drivers")
-    for item in z:
-        st.write("• " + str(item))
-    st.divider()
-
 if recs:
-    star_keys = []
-    for i, rec in enumerate(recs):
-        if is_ar:
-            head = ["🟢 التوصية رقم 1", "🌿 التوصية رقم 2", "🔮 التوصية رقم 3 (ابتكارية)"][i] if i < 3 else f"🔹 توصية {i+1}"
-        else:
-            head = ["🟢 Recommendation #1","🌿 Recommendation #2","🔮 Recommendation #3 (Creative)"][i] if i < 3 else f"🔹 Recommendation {i+1}"
-        st.subheader(head)
+    headers_ar = ["🟢 التوصية رقم 1", "🌿 التوصية رقم 2", "🔮 التوصية رقم 3 (ابتكارية)"]
+    headers_en = ["🟢 Recommendation #1", "🌿 Recommendation #2", "🔮 Recommendation #3 (Creative)"]
+
+    for i, rec in enumerate(recs[:3]):
+        st.subheader(headers_ar[i] if is_ar else headers_en[i])
         st.write(rec)
-        rk = f"rating_{i}"
-        star_keys.append(rk)
-        st.slider("⭐ " + ("قيّم التوصية" if is_ar else "Rate this"), 1, 5, 4, key=rk)
-
-    c1, c2 = st.columns([1,1])
-
-    if c1.button("💾 حفظ تقييمي" if is_ar else "💾 Save my ratings"):
-        ratings = [int(st.session_state.get(k, 3)) for k in star_keys]
-        try:
-            save_session_csv(
-                session_id=SESSION_ID, lang=lang,
-                answers=answers, recs=recs, ratings=ratings,
-                chat_history=st.session_state.get("chat_history", []),
-                z_signals=z
-            )
-            st.success("تم حفظ الجلسة ✅" if is_ar else "Session saved ✅")
-        except Exception as e:
-            st.error(("تعذّر حفظ الجلسة: " if is_ar else "Failed to save session: ") + str(e))
-
-    # زر "ما أعجبتني التوصية"
-    if c2.button("😕 ما أعجبتني التوصية" if is_ar else "😕 I don’t like these"):
-        st.session_state["show_chat"] = True
+        st.session_state["ratings"][i] = st.slider(
+            "⭐ " + T("قيّم هذه التوصية", "Rate this recommendation"),
+            1, 5, value=st.session_state["ratings"][i], key=f"rating_{i}"
+        )
 
     st.divider()
+    # زر فتح المحادثة الديناميكية للي ماعجبتهم التوصية
+    if st.button(T("🙅‍♂ لم تعجبني التوصيات — افتح محادثة", "🙅‍♂ Not satisfied — open chat")):
+        st.session_state["chat_open"] = True
 
-    # محادثة ديناميكية
-    if st.session_state.get("show_chat"):
-        st.subheader("🧠 تحدث مع المدرب الذكي" if is_ar else "🧠 Talk to the AI Coach")
+# =========================
+# واجهة محادثة شبيهة بالشات (chat UI)
+# =========================
+if st.session_state.get("chat_open", False):
+    st.subheader(T("🧠 محادثة المدرب الذكي", "🧠 AI Coach Chat"))
 
-        # عرض تاريخ المحادثة
-        for role, msg in st.session_state["chat_history"]:
-            if role == "user":
-                st.markdown(f"🧍‍♂:** {msg}")
-            else:
-                st.markdown(f"🤖:** {msg}")
+    # عرض المحادثة السابقة
+    for msg in st.session_state["chat_history"]:
+        with st.chat_message("user" if msg["role"] == "user" else "assistant"):
+            st.write(msg["content"])
 
-        user_msg = st.text_input("💬 اكتب ردك أو سؤالك..." if is_ar else "💬 Type your response or question...", key="chat_input")
-        if st.button("إرسال" if is_ar else "Send", key="send_btn"):
-            if user_msg.strip():
-                st.session_state["chat_history"].append(("user", user_msg))
-                ratings = [int(st.session_state.get(f"rating_{i}", 3)) for i in range(len(recs))]
-                try:
-                    reply = start_dynamic_chat(
-                        answers=answers,
-                        previous_recommendation=recs,
-                        ratings=ratings,
-                        user_id=SESSION_ID,
-                        lang=lang,
-                        chat_history=[m for _, m in st.session_state["chat_history"]],
-                        user_message=user_msg
-                    )
-                except Exception:
-                    reply = "تم! سنعدّل الخطة تدريجيًا حسب ملاحظتك." if is_ar else "Got it! We'll adjust the plan gradually."
-                st.session_state["chat_history"].append(("assistant", reply))
-                st.rerun()
+    # إدخال رسالة جديدة
+    user_msg = st.chat_input(
+        T("اكتب ما الذي لم يعجبك أو ما الذي تريد تعديله…", "Tell me what you didn’t like or what to adjust…")
+    )
 
-# ذيل الصفحة
-st.caption("🚀 Powered by SportSync AI")
+    if user_msg:
+        # أضف رسالة المستخدم
+        st.session_state["chat_history"].append({"role": "user", "content": user_msg})
+
+        # حضّر المُدخلات للمدرب
+        ratings = [st.session_state.get(f"rating_{i}", st.session_state["ratings"][i]) for i in range(3)]
+        try:
+            reply = start_dynamic_chat(
+                answers=answers,
+                previous_recommendation=recs[:3],
+                ratings=ratings,
+                user_id="web_user",
+                lang=lang,
+                chat_history=st.session_state["chat_history"],
+                user_message=user_msg
+            )
+        except Exception:
+            reply = T("تم! سنعدّل الخطة بالتدريج حسب ملاحظتك.",
+                      "Got it! We’ll adjust the plan gradually based on your feedback.")
+
+        # أضف رد المساعد واعرضه
+        st.session_state["chat_history"].append({"role": "assistant", "content": reply})
+        with st.chat_message("assistant"):
+            st.write(reply)
+
+    st.caption("💬 " + T("يمكنك المتابعة بالدردشة حتى تصل للتوصية المناسبة.", "Keep chatting until the plan feels right."))
+
+st.caption("🚀 Powered by SportSync AI – Your identity deserves its own sport.")
