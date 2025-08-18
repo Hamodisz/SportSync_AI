@@ -25,9 +25,9 @@ try:
 except Exception:
     def generate_sport_recommendation(answers, lang="العربية"):
         return [
-            "🏃‍♂ الجري الخفيف 3 مرات أسبوعيًا / Light jogging 3x per week",
-            "🏋 تمارين مقاومة منزلية 20 دقيقة / 20-min home resistance",
-            "🧘 يوجا + تنفّس / Yoga + breathing",
+            "❌ OPENAI_API_KEY غير مضبوط في خدمة الـ Quiz.",
+            "—",
+            "—",
         ]
 
 try:
@@ -57,17 +57,22 @@ T = (lambda ar, en: ar if is_ar else en)
 
 # 🧪 Diagnostics (اختياري يظهر في الشريط الجانبي)
 try:
-    from core.memory_cache import get_cache_stats
+    from core.memory_cache import get_cache_stats, clear_cache
     with st.sidebar.expander("🧪 Diagnostics"):
         stats = get_cache_stats()
+        st.write("Model:", os.getenv("CHAT_MODEL", "gpt-4o"))
+        st.write("OPENAI key set:", bool(os.getenv("OPENAI_API_KEY")))
         st.write("Cache hits:", stats.get("hits"))
         st.write("Cache misses:", stats.get("misses"))
         st.write("Cache size:", stats.get("size"))
         st.write("Last action:", stats.get("last_action"))
         st.write("Last get (ms):", stats.get("last_get_ms"))
+        if st.button("🧹 Clear cache"):
+            clear_cache()
+            st.rerun()
 except Exception:
     pass
-    
+
 # =========================
 # تحميل الأسئلة (متوافق مع multiple_choices + allow_custom)
 # =========================
