@@ -59,6 +59,20 @@ except Exception:
         def analyze_silent_drivers(answers: Dict[str, Any], lang: str = "العربية") -> List[str]:
             return ["إنجازات قصيرة", "نفور من التكرار", "تفضيل تحدّي ذهني"]
 
+# (جديد) مُشفِّر الإجابات (اختياري): لو موجود نستفيد منه، لو لا نتجاهله
+def _extract_profile(answers: Dict[str, Any], lang: str) -> Optional[Dict[str, Any]]:
+    prof = answers.get("_profile_")
+    if prof and isinstance(prof, dict):
+        return prof
+    # محاولة توليد سريعة إن توفر الموديول
+    try:
+        from core.answers_encoder import encode_answers  # type: ignore
+        prof = encode_answers(answers, lang=lang)
+        answers["_profile_"] = prof  # نحتفظ به للاستخدام اللاحق
+        return prof
+    except Exception:
+        return None
+
 # ========= Rules & helpers =========
 _BLOCKLIST = r"(جري|ركض|سباحة|كرة|قدم|سلة|طائرة|تنس|ملاكمة|كاراتيه|كونغ فو|يوجا|يوغا|بيلاتس|رفع|أثقال|تزلج|دراج|دراجة|ركوب|خيول|باركور|جودو|سكواش|بلياردو|جولف|كرة طائرة|كرة اليد|هوكي|سباق|ماراثون|مصارعة|MMA|Boxing|Karate|Judo|Taekwondo|Soccer|Football|Basketball|Tennis|Swim|Swimming|Running|Run|Cycle|Cycling|Bike|Biking|Yoga|Pilates|Rowing|Row|Skate|Skating|Ski|Skiing|Climb|Climbing|Surf|Surfing|Golf|Volleyball|Handball|Hockey|Parkour|Wrestling)"
 _name_re = re.compile(_BLOCKLIST, re.IGNORECASE)
@@ -79,6 +93,8 @@ def _violates(t: str) -> bool:   return bool(_name_re.search(t or ""))
 def _answers_to_bullets(answers: Dict[str, Any]) -> str:
     out = []
     for k, v in (answers or {}).items():
+        if k == "_profile_":
+            continue
         if isinstance(v, dict):
             q, a = v.get("question", k), v.get("answer", "")
         else:
@@ -169,6 +185,14 @@ def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
     silent = analysis.get("silent_drivers", [])
     persona = personality if isinstance(personality, str) else json.dumps(personality, ensure_ascii=False)
 
+    # (جديد) حوافز البروفايل المُشفَّر إن وُجد
+    profile = answers.get("_profile_")
+    profile_hints = ""
+    profile_prefs = {}
+    if isinstance(profile, dict):
+        profile_hints = profile.get("hints_for_prompt", "")
+        profile_prefs = profile.get("preferences", {})
+
     if lang == "العربية":
         sys = (
             "أنت مدرّب SportSync AI. امنع ذكر أسماء الرياضات/الأدوات. "
@@ -181,10 +205,11 @@ def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
             "\"first_week\":\"...\",\"progress_markers\":\"...\",\"difficulty\":1-5,\"vr_idea\":\"...\"}]}\n"
             "لو ظهر اسم رياضة استبدله بـ \"—\" مع بديل حسّي.\n\n"
             f"— شخصية المدرب:\n{persona}\n\n"
-            "— تحليل المستخدم:\n" + json.dumps(analysis, ensure_ascii=False) + "\n\n"
+            "— تحليل المستخدم (طبقة Z مضمنة):\n" + json.dumps(analysis, ensure_ascii=False) + "\n\n"
             "— إجابات موجزة:\n" + bullets + "\n\n"
-            "— محركات Z:\n" + ", ".join(silent) + "\n\n"
-            "قيود: 3 توصيات بالضبط، مشهد/إحساس/لماذا أنت/ملاءمة/أسبوع أول/مؤشرات/صعوبة/فكرة VR."
+            + ("— تلميحات بروفايل مُشفَّر:\n" + profile_hints + "\n\n" if profile_hints else "")
+            + ("— تفضيلات مستنتجة:\n" + json.dumps(profile_prefs, ensure_ascii=False) + "\n\n" if profile_prefs else "") +
+            "قيود: 3 توصيات بالضبط، مشهد/إحساس/لماذا أنت/ملاءمة (مكان/زمن/تكلفة/أمان)/أسبوع أول (3 خطوات محددة)/مؤشرات (2–4 أسابيع)/صعوبة/فكرة VR."
         )
     else:
         sys = (
@@ -195,9 +220,10 @@ def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
             "Return JSON ONLY with keys: scene, inner_sensation, why_you, practical_fit, first_week, progress_markers, difficulty(1-5), vr_idea.\n"
             "If a sport name appears, replace with '—' and add a sensory substitute.\n\n"
             f"— Coach persona:\n{persona}\n\n"
-            "— User analysis:\n" + json.dumps(analysis, ensure_ascii=False) + "\n\n"
+            "— User analysis (Layer-Z included):\n" + json.dumps(analysis, ensure_ascii=False) + "\n\n"
             "— Bulleted answers:\n" + bullets + "\n\n"
-            "— Layer-Z drivers:\n" + ", ".join(silent)
+            + ("— Encoded profile hints:\n" + profile_hints + "\n\n" if profile_hints else "")
+            + ("— Derived preferences:\n" + json.dumps(profile_prefs, ensure_ascii=False) + "\n\n" if profile_prefs else "")
         )
     return [{"role": "system", "content": sys}, {"role": "user", "content": usr}]
 
@@ -260,10 +286,21 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     if OpenAI_CLIENT is None:
         return ["❌ OPENAI_API_KEY غير مضبوط في خدمة الـ Quiz.", "—", "—"]
 
+    # تحليل المستخدم + طبقة Z
     analysis = analyze_user_from_answers(answers)
     silent = analyze_silent_drivers(answers, lang=lang) or []
     analysis["silent_drivers"] = silent
 
+    # (جديد) التقاط بروفايل الترميز إن وُجد (أو توليده)
+    profile = _extract_profile(answers, lang)
+    if profile:
+        analysis["encoded_profile"] = {
+            "scores": profile.get("scores", {}),
+            "preferences": profile.get("preferences", {}),
+            "hints_for_prompt": profile.get("hints_for_prompt", "")
+        }
+
+    # شخصية المدرب من الكاش
     persona = get_cached_personality(analysis, lang=lang)
     if not persona:
         persona = {"name":"SportSync Coach","tone":"حازم-هادئ","style":"حسّي واقعي","philosophy":"هوية حركة بلا أسماء"}
@@ -285,14 +322,14 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     parsed = _parse_json(raw1) or []
     cleaned = _sanitize_fill(parsed, lang)
 
-    # هل مرّ بوابة الجودة؟ (لو أي واحدة سقطت للفولباك نحاول تحسين مرة ثانية)
+    # فحص الجودة ومحاولة إصلاح ثانية
     need_repair = any(_too_generic(" ".join([c.get("scene",""),c.get("why_you","")])) for c in cleaned)
     if need_repair:
         repair_prompt = {
             "role":"user",
             "content":(
                 "إعادة صياغة التوصيات السابقة بجودة أعلى (بدون أسماء رياضات): "
-                "املأ فجوات why_you/first_week بمزيد من الدقة الحسية والربط بـ Layer-Z. "
+                "املأ فجوات why_you/first_week بمزيد من الدقة الحسية والربط بـ Layer-Z و preferences/profile. "
                 "أعد JSON فقط بنفس البنية السابقة."
             )
         }
@@ -305,7 +342,6 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
             if _violates(raw2): raw2 = _mask_names(raw2)
             parsed2 = _parse_json(raw2) or []
             cleaned2 = _sanitize_fill(parsed2, lang)
-            # استخدم الأفضل (الأطول حسّيًا)
             def score(r: Dict[str,Any]) -> int:
                 txt = " ".join([r.get("scene",""), r.get("inner_sensation",""), r.get("why_you",""), r.get("first_week","")])
                 return len(txt)
@@ -320,8 +356,12 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         log_user_insight(
             user_id=user_id,
             content={
-                "language": lang, "answers": answers, "analysis": analysis,
-                "silent_drivers": silent, "recommendations": cleaned
+                "language": lang,
+                "answers": {k:v for k,v in answers.items() if k!="_profile_"},
+                "analysis": analysis,
+                "silent_drivers": silent,
+                "encoded_profile": profile,
+                "recommendations": cleaned
             },
             event_type="initial_recommendation"
         )
