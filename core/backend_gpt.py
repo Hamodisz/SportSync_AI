@@ -6,7 +6,7 @@ core/backend_gpt.py
 يحاول مرتين قبل السقوط للـ fallback. يدعم العربية/English.
 """
 
-from _future_ import annotations
+from __future__ import annotations
 
 import os, json, re
 from typing import Any, Dict, List, Optional
