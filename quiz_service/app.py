@@ -55,6 +55,19 @@ lang = st.sidebar.radio("🌐 اختر اللغة / Choose Language", ["العر
 is_ar = (lang == "العربية")
 T = (lambda ar, en: ar if is_ar else en)
 
+# 🧪 Diagnostics (اختياري يظهر في الشريط الجانبي)
+try:
+    from core.memory_cache import get_cache_stats
+    with st.sidebar.expander("🧪 Diagnostics"):
+        stats = get_cache_stats()
+        st.write("Cache hits:", stats.get("hits"))
+        st.write("Cache misses:", stats.get("misses"))
+        st.write("Cache size:", stats.get("size"))
+        st.write("Last action:", stats.get("last_action"))
+        st.write("Last get (ms):", stats.get("last_get_ms"))
+except Exception:
+    pass
+    
 # =========================
 # تحميل الأسئلة (متوافق مع multiple_choices + allow_custom)
 # =========================
