@@ -2,236 +2,232 @@
 """
 core/answers_encoder.py
 -----------------------
-طبقة ترميز تحول إجابات نموذج الأسئلة إلى بروفايل منظّم يُسهّل على الذكاء
-اختيار التوصيات. لا تعتمد على شكل أسئلة ثابت 100% — تعمل باللغتين وعبر
-مطابقة كلمات مفتاحية + قواعد بسيطة.
+طبقة ترميز (Encoder) لتحويل إجابات الكويز إلى بروفايل مضغوط قابل للاستخدام
+في البرومبت والتحليل السريع.
 
-الاستخدام السريع:
+- تعمل مع هيكل إجاباتك الحالي:
+  answers = { "q1": {"question": "...", "answer": ["...", "..."]}, ... }
+- تدعم العربية والإنجليزية تلقائيًا.
+- تعطي درجات 0-10 لأبعاد: adrenaline, tactical, solo, social, novelty, mastery,
+  sensory_seeking, discipline, structure, outdoor, indoor, risk_tolerance, equipment_affinity
+- وتستنتج تفضيلات عملية: time_block, budget_hint, environment_pref
+- ترجع كائن بروفايل + إشارات نصية قصيرة تلائم البرومبت.
+
+طريقة الاستخدام النموذجية داخل backend_gpt.py:
     from core.answers_encoder import encode_answers
-    profile = encode_answers(answers, lang="العربية")
-    # ضعه مع الإجابات ليمر إلى الباكند:
-    answers["_profile_"] = profile
+    profile = encode_answers(answers, lang)
+    analysis["encoded_profile"] = profile
 """
 
 from _future_ import annotations
 import re
-from typing import Dict, List, Any, Tuple
+from typing import Dict, Any, List, Union
 
-# كلمات مفتاحية → تصنيفات (عربي/إنجليزي)
-KEYWORDS: Dict[str, List[str]] = {
+_ARABIC_RE = re.compile(r"[\u0600-\u06FF]")
+
+def _is_arabic_text(s: str) -> bool:
+    return bool(_ARABIC_RE.search(s or ""))
+
+def _tolist(x: Union[str, List[str], None]) -> List[str]:
+    if x is None: return []
+    if isinstance(x, list): return [str(i) for i in x]
+    return [str(x)]
+
+# -----------------------------
+# معاجم كلمات بسيطة (ar/en)
+# -----------------------------
+KW = {
     "adrenaline": [
-        "خطر","مخاطرة","اندفاع","سرعة","قتال","قتالي","اشتباك","قفز","طيران","باركور",
-        "adrenaline","risk","danger","fast","speed","combat","fight","mma","parkour","extreme"
+        # AR
+        "مجازفة","خطر","اندفاع","أدرينالين","سرعة","قتال","انقضاض","مواجهة",
+        # EN
+        "adrenaline","thrill","risk","danger","rush","fast","combat","spar","chase","parkour","extreme"
     ],
     "tactical": [
-        "تكتيك","تخطيط","خطة","كمين","تحليل","استراتيجية",
-        "tactic","tactical","strategy","strategic","analyze","plan"
-    ],
-    "mindful": [
-        "هدوء","تنفس","تأمل","انتباه","وعي","صفاء","استرخاء",
-        "calm","breath","breathing","meditation","mindful","focus","relax"
-    ],
-    "social": [
-        "فريق","مجموعة","ناس","شريك","تنافس جماعي",
-        "team","group","people","partner","club","league"
+        "تكتيك","تخطيط","تمويه","استراتيجية","ذكاء",
+        "tactic","tactical","strategy","stealth","plan","analyze","analysis","mind game"
     ],
     "solo": [
-        "لوحدي","انفرادي","فردي","خصوصية",
-        "solo","alone","individual","privacy"
+        "لوحدي","فردي","انفرادي","وحيد",
+        "solo","alone","individual"
+    ],
+    "social": [
+        "مجموعة","فريق","جماعي","مع ناس","صديق","شريك",
+        "group","team","with people","partner","buddy","coach"
     ],
     "novelty": [
-        "جديد","غريب","اكتشاف","تجربة","تجارب","ابتكار",
-        "new","novel","explore","discovery","experiment","innovate","weird"
+        "اكتشاف","تجربة جديدة","شيء جديد","غير معتاد","ملل من التكرار",
+        "novel","novelty","new","discovery","explore","bored","variety","change"
     ],
-    "routine": [
-        "روتين","ثابت","عادة","انضباط","تكرار",
-        "routine","discipline","habit","repeat","consistency"
+    "mastery": [
+        "إتقان","عمق","صقل","ثبات","روتين","تحسين تدريجي",
+        "mastery","master","depth","polish","drill","routine","incremental"
     ],
-    "competition": [
-        "تنافس","بطولة","نقاط","فوز","خسارة","خصم",
-        "compete","competitive","tournament","rank","score","win","lose","opponent"
+    "sensory": [
+        "تنفّس","إيقاع","توتر","استرخاء","دفء","برودة","توازن","نبض","عرق","شد","مرونة","هدوء","تركيز","تدفّق","انسجام","ثقل","خفة",
+        "breath","breathing","rhythm","tension","relax","warmth","cold","balance","pulse","sweat","stretch","calm","focus","flow","harmony","heavy","light"
+    ],
+    "discipline": [
+        "انضباط","التزام","خطة","روتين","جدول",
+        "discipline","consistency","commitment","plan","schedule","routine"
+    ],
+    "structure": [
+        "خطة واضحة","برنامج","تعليمات","مراحل","قياس",
+        "structured","program","instructions","phases","measure"
     ],
     "outdoor": [
-        "خارجي","خارج","هواء طلق","طبيعة","جبل","بحر","شاطئ","مضمار",
-        "outdoor","outside","trail","mountain","beach","park","track","nature"
+        "خارج","هواء طلق","مسار","طبيعة","شمس","مضمار",
+        "outdoor","outside","trail","nature","sun","track","park"
     ],
     "indoor": [
-        "داخلي","بيت","منزل","صالة","نادي","غرفة",
-        "indoor","home","gym","room","hall"
+        "داخل","بيت","صالة","نادي","غرفة",
+        "indoor","home","gym","room","studio"
     ],
-    "strength": [
-        "قوة","رفع","مقاومة","عضلات","أثقال","بار",
-        "strength","lift","resistance","muscle","weights","barbell","dumbbell"
+    "risk": [
+        "خطر","مخاطرة","اندفاع","سريع",
+        "risk","danger","rush","fast","aggressive"
     ],
-    "endurance": [
-        "تحمل","إيقاع","نَفَس","مسافة","زمن طويل",
-        "endurance","aerobic","long","pace","cardio","distance"
-    ],
-    "mobility": [
-        "مرونة","إطالة","مفاصل","توازن","حركة واعية",
-        "mobility","flexibility","stretch","joint","balance","range"
-    ],
-    "creativity": [
-        "إبداع","تصميم","ارتجال","فن","تعبير",
-        "creative","creativity","improv","design","art","express"
-    ],
-    "risk_high": [
-        "خطر","مخاطرة","قفز","قتال","سلاح","high risk","danger","extreme","combat"
-    ],
-    "risk_low": [
-        "آمن","بدون خطر","خفيف","low risk","safe","safety","gentle"
-    ],
-    "time_short": [
-        "10","١٠","15","١٥","20","٢٠","قصير","سريع","دقائق قليلة",
-        "short","10min","15min","20min","quick"
+    "equipment": [
+        "أداة","معدات","جهاز","الكترونية","سلاح",
+        "equipment","gear","device","gadget","tool","weapon"
     ],
     "budget_low": [
-        "صفر","مجاني","بدون تكلفة","بسيط","منزل",
-        "free","zero","cheap","low budget","no equipment","home"
+        "صفر","مجاني","ميزانية قليلة","بدون تكلفة","قليل",
+        "free","zero","low budget","cheap","no cost","minimal"
+    ],
+    "time_short": [
+        "10","15","20","قصير","سريع",
+        "short","10 min","15 min","20 min","quick"
+    ],
+    "calm_restore": [
+        "هدوء","تنفّس","استعادة","صفاء","إعادة ضبط","راحة",
+        "calm","breath","restore","reset","mindful","relax","recovery"
+    ],
+    "vr_like": [
+        "واقع افتراضي","VR","افتراضي","محاكاة",
+        "vr","virtual","simulation","immersive"
     ],
 }
 
-# بعض الترجيحات الافتراضية لفهم الميول
-DEFAULT_WEIGHTS: Dict[str, float] = {
-    "adrenaline": 1.3,
-    "tactical": 1.2,
-    "mindful": 1.1,
-    "social": 1.0,
-    "solo": 1.0,
-    "novelty": 1.1,
-    "routine": 1.0,
-    "competition": 1.1,
-    "outdoor": 1.0,
-    "indoor": 1.0,
-    "strength": 1.0,
-    "endurance": 1.0,
-    "mobility": 1.0,
-    "creativity": 1.0,
-    "risk_high": 1.0,
-    "risk_low": 1.0,
-    "time_short": 1.0,
-    "budget_low": 1.0,
-}
+def _score_text(blob: str, keys: List[str]) -> int:
+    blob_low = (blob or "").lower()
+    score = 0
+    for k in keys:
+        if k.lower() in blob_low:
+            score += 1
+    return score
 
-def _norm_text(x: Any) -> str:
-    return str(x or "").strip().lower()
-
-def _token_hits(text: str) -> List[str]:
-    hits: List[str] = []
-    for cat, words in KEYWORDS.items():
-        for w in words:
-            # مطابقة كلمة ضمنية (غير متشددة)
-            if re.search(rf"\b{re.escape(w.lower())}\b", text, flags=re.IGNORECASE):
-                hits.append(cat); break
-    return hits
-
-def _score_answers(answers: Dict[str, Any]) -> Dict[str, float]:
-    scores: Dict[str, float] = {k: 0.0 for k in DEFAULT_WEIGHTS}
-    for qk, payload in (answers or {}).items():
-        if not isinstance(payload, dict):
-            # صيغة قديمة: answers[q] = "text" أو ["a","b"]
-            vals = payload if isinstance(payload, list) else [payload]
-            texts = [_norm_text(v) for v in vals]
-        else:
-            a = payload.get("answer", "")
-            if isinstance(a, list):
-                texts = [_norm_text(v) for v in a]
+def _extract_all_text(answers: Dict[str, Any]) -> str:
+    parts: List[str] = []
+    for k, v in (answers or {}).items():
+        if isinstance(v, dict):
+            parts.append(str(v.get("question", "")))
+            ans = v.get("answer", "")
+            if isinstance(ans, list):
+                parts.extend([str(i) for i in ans])
             else:
-                texts = [_norm_text(a)]
+                parts.append(str(ans))
+        else:
+            parts.append(str(v))
+    return "\n".join(parts)
 
-        for t in texts:
-            if not t: 
-                continue
-            cats = _token_hits(t)
-            # موازنة بسيطة: جملة أطول بقليل = أثر أعلى
-            length_boost = min(len(t)/60.0, 1.0)  # سقف 1.0
-            for c in cats:
-                scores[c] += (1.0 + 0.3*length_boost) * DEFAULT_WEIGHTS.get(c, 1.0)
-
-        # استدلالات خفيفة من صياغة السؤال (إن وُجدت)
-        q_txt = _norm_text(payload.get("question", qk)) if isinstance(payload, dict) else _norm_text(qk)
-        if "لوحد" in q_txt or "alone" in q_txt or "solo" in q_txt:
-            # سؤال تفضيل اجتماعي — لو الإجابة تحتوي "لوحدي" أو "solo"
-            if any(x in " ".join(texts) for x in ["لوحدي","solo","alone","فردي","individ"]):
-                scores["solo"] += 0.8
-            if any(x in " ".join(texts) for x in ["مجموعة","فريق","group","team","ناس"]):
-                scores["social"] += 0.8
-
-    return scores
-
-def _normalize(scores: Dict[str, float]) -> Dict[str, float]:
-    mx = max(scores.values()) if scores else 0.0
-    if mx <= 0: 
-        return {k: 0.0 for k in scores}
-    return {k: round(v / mx, 3) for k, v in scores.items()}
-
-def _derive_preferences(scores: Dict[str, float]) -> Dict[str, Any]:
-    # اشتقاقات مبسطة تعطي معنى مباشر للبروفايل
-    def tri(c: str) -> str:
-        v = scores.get(c, 0.0)
-        return "high" if v >= 0.66 else "medium" if v >= 0.33 else "low"
-
-    env = "outdoor" if scores.get("outdoor",0)>scores.get("indoor",0) else "indoor" if scores.get("indoor",0)>0 else "mixed"
-    group_pref = "solo" if scores.get("solo",0)>scores.get("social",0) else "group" if scores.get("social",0)>0 else "mixed"
-    intensity = "high" if max(scores.get("adrenaline",0), scores.get("endurance",0), scores.get("strength",0))>=0.66 else "medium" if max(scores.get("adrenaline",0), scores.get("endurance",0), scores.get("strength",0))>=0.33 else "low"
-    risk = "high" if scores.get("risk_high",0) > scores.get("risk_low",0) else "low" if scores.get("risk_low",0) > 0 else "medium"
-    novelty = tri("novelty")
-    routine = tri("routine")
-    comp = tri("competition")
-    focus = "tactical" if scores.get("tactical",0)>=max(scores.get("mindful",0), scores.get("creativity",0)) else "mindful" if scores.get("mindful",0)>=scores.get("creativity",0) else "creative"
-
-    time_slot = "short" if scores.get("time_short",0)>=0.33 else "flexible"
-    budget = "low" if scores.get("budget_low",0)>=0.33 else "flexible"
-
-    top5 = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:5]
-    primary_modes = [k for k,v in top5 if v>0]
-
-    return {
-        "environment": env,
-        "group_preference": group_pref,
-        "intensity": intensity,
-        "risk_tolerance": risk,
-        "novelty_seek": novelty,
-        "routine_tolerance": routine,
-        "competitiveness": comp,
-        "cognitive_focus": focus,
-        "time_per_session": time_slot,
-        "budget": budget,
-        "primary_modes": primary_modes,
-    }
-
-def _hints_for_prompt(scores: Dict[str,float], prefs: Dict[str,Any], lang: str) -> str:
-    # نص مختصر يُمرَّر للباكند لتوجيه التوصيات بشكل أدق
-    if lang == "العربية":
-        return (
-            f"بيئة: {prefs['environment']} | جماعية: {prefs['group_preference']} | شدة: {prefs['intensity']} | مجازفة: {prefs['risk_tolerance']} | "
-            f"حداثة: {prefs['novelty_seek']} | روتين: {prefs['routine_tolerance']} | تنافسيّة: {prefs['competitiveness']} | تركيز: {prefs['cognitive_focus']} | "
-            f"زمن الجلسة: {prefs['time_per_session']} | الميزانية: {prefs['budget']} | أنماط أساسية: {', '.join(prefs['primary_modes'])}"
-        )
-    else:
-        return (
-            f"Env: {prefs['environment']} | Group: {prefs['group_preference']} | Intensity: {prefs['intensity']} | Risk: {prefs['risk_tolerance']} | "
-            f"Novelty: {prefs['novelty_seek']} | Routine: {prefs['routine_tolerance']} | Competitive: {prefs['competitiveness']} | Focus: {prefs['cognitive_focus']} | "
-            f"Session time: {prefs['time_per_session']} | Budget: {prefs['budget']} | Primary modes: {', '.join(prefs['primary_modes'])}"
-        )
-
+# -----------------------------
+# التحويل إلى بروفايل
+# -----------------------------
 def encode_answers(answers: Dict[str, Any], lang: str = "العربية") -> Dict[str, Any]:
     """
-    تُرجع بروفايل منظّم:
-      - vector: الدرجات الخام
-      - scores: مُطبَّعة 0..1
-      - preferences: استنتاجات مباشرة (بيئة، شدة، مجازفة..)
-      - hints_for_prompt: جملة موجزة تُساعد الباكند
+    يُرجع:
+      {
+        "scores": {adrenaline:0-10, tactical:0-10, ...},
+        "prefs":  {time_block: short|medium|long, budget_hint: low|med|high, environment_pref: indoor|outdoor|mixed},
+        "signals": [نصوص موجزة],
+        "lang": "ar"|"en"
+      }
     """
-    raw_scores = _score_answers(answers)
-    scores = _normalize(raw_scores)
-    prefs = _derive_preferences(scores)
-    hints = _hints_for_prompt(scores, prefs, lang)
+    # اجمع النص
+    blob = _extract_all_text(answers)
+    is_ar = _is_arabic_text(blob) if lang is None else (lang == "العربية")
+
+    # نقاط أساسية
+    s_adrenaline = _score_text(blob, KW["adrenaline"]) + _score_text(blob, KW["risk"])
+    s_tactical   = _score_text(blob, KW["tactical"])
+    s_solo       = _score_text(blob, KW["solo"])
+    s_social     = _score_text(blob, KW["social"])
+    s_novelty    = _score_text(blob, KW["novelty"])
+    s_mastery    = _score_text(blob, KW["mastery"])
+    s_sensory    = _score_text(blob, KW["sensory"]) + _score_text(blob, KW["calm_restore"])
+    s_discipline = _score_text(blob, KW["discipline"]) + _score_text(blob, KW["structure"])
+    s_outdoor    = _score_text(blob, KW["outdoor"])
+    s_indoor     = _score_text(blob, KW["indoor"])
+    s_risk_tol   = _score_text(blob, KW["risk"]) + _score_text(blob, KW["adrenaline"])
+    s_gear       = _score_text(blob, KW["equipment"]) + (1 if "أداة إلكترونية" in blob or "electronic" in blob.lower() else 0)
+
+    # زمن/ميزانية/بيئة
+    time_block = "short" if _score_text(blob, KW["time_short"]) >= 1 else "medium"
+    budget_hint = "low" if _score_text(blob, KW["budget_low"]) >= 1 else "med"
+    if s_outdoor > s_indoor + 1:
+        environment_pref = "outdoor"
+    elif s_indoor > s_outdoor + 1:
+        environment_pref = "indoor"
+    else:
+        environment_pref = "mixed"
+
+    # قصّ الدرجات إلى 0..10
+    def clamp10(x:int) -> int: return max(0, min(10, x))
+    scores = {
+        "adrenaline":      clamp10(s_adrenaline),
+        "tactical":        clamp10(s_tactical),
+        "solo":            clamp10(s_solo),
+        "social":          clamp10(s_social),
+        "novelty":         clamp10(s_novelty),
+        "mastery":         clamp10(s_mastery),
+        "sensory_seeking": clamp10(s_sensory),
+        "discipline":      clamp10(s_discipline),
+        "structure":       clamp10(s_discipline),   # synonymic view
+        "outdoor":         clamp10(s_outdoor),
+        "indoor":          clamp10(s_indoor),
+        "risk_tolerance":  clamp10(s_risk_tol),
+        "equipment_affinity": clamp10(s_gear),
+    }
+
+    # إشارات برومبت موجزة (تسند التوصيات)
+    if is_ar:
+        sig = []
+        if scores["adrenaline"] >= 3: sig.append("يميل للأدرينالين/المجازفة")
+        if scores["tactical"] >= 2:   sig.append("تفضيل تكتيك/تحليل")
+        if scores["solo"] >= 2:       sig.append("يميل للنشاط الفردي")
+        if scores["social"] >= 2:     sig.append("يستمتع بالتفاعل الاجتماعي")
+        if scores["novelty"] >= 2:    sig.append("يكره التكرار ويحب التجديد")
+        if scores["mastery"] >= 3:    sig.append("يركز على الإتقان التدريجي")
+        if scores["sensory_seeking"] >= 3: sig.append("حساسية حسّية وتنظيم عصبي")
+        if scores["discipline"] >= 3: sig.append("قابل للالتزام بخطة")
+        sig.append(f"بيئة: { 'خارجي' if environment_pref=='outdoor' else 'داخلي' if environment_pref=='indoor' else 'هجين' }")
+        sig.append(f"زمن الجلسة: {'قصير' if time_block=='short' else 'متوسط'}")
+        sig.append(f"ميزانية: {'قليلة' if budget_hint=='low' else 'متوسطة'}")
+    else:
+        sig = []
+        if scores["adrenaline"] >= 3: sig.append("adrenaline / risk seeking")
+        if scores["tactical"] >= 2:   sig.append("tactical / analytical preference")
+        if scores["solo"] >= 2:       sig.append("prefers solo")
+        if scores["social"] >= 2:     sig.append("enjoys social/group")
+        if scores["novelty"] >= 2:    sig.append("novelty seeking; dislikes repetition")
+        if scores["mastery"] >= 3:    sig.append("focus on gradual mastery")
+        if scores["sensory_seeking"] >= 3: sig.append("sensory regulation / mindful")
+        if scores["discipline"] >= 3: sig.append("can follow a plan")
+        sig.append(f"environment: {environment_pref}")
+        sig.append(f"time block: {time_block}")
+        sig.append(f"budget: {budget_hint}")
+
+    prefs = {
+        "time_block": time_block,
+        "budget_hint": budget_hint,
+        "environment_pref": environment_pref
+    }
 
     return {
-        "lang": lang,
-        "vector": raw_scores,
+        "lang": ("العربية" if is_ar else "English"),
         "scores": scores,
-        "preferences": prefs,
-        "hints_for_prompt": hints,
+        "prefs": prefs,
+        "signals": sig,
+        "vr_inclination": 1 if _score_text(blob, KW["vr_like"]) else 0
     }
