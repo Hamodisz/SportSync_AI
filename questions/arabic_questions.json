@@ -1,132 +1,190 @@
 [
   {
     "key": "q1",
-    "question_ar": "ما الأنشطة التي تجعلك تنسى الوقت تمامًا؟",
-    "multiple_choices": ["اللعب", "البرمجة أو التصميم", "المطالعة أو التأمل", "محادثة مع شخص عميق"],
+    "question_ar": "ما الذي يُدخلك في حالة تدفّق (Flow) بسرعة؟",
+    "multiple_choices": ["إيقاع وحركة مستمرة", "سرعة واندفاع", "تحكّم دقيق وتوازن", "لغز أو استراتيجية", "موسيقى وتزامن", "الطبيعة والانغماس"],
     "allow_custom": true,
-    "layer_z": true
+    "category": "flow",
+    "layer_z": true,
+    "weight": 5,
+    "signals_map": {
+      "إيقاع وحركة مستمرة": ["rhythm","endurance"],
+      "سرعة واندفاع": ["speed","adrenaline"],
+      "تحكّم دقيق وتوازن": ["precision","control"],
+      "لغز أو استراتيجية": ["tactical","cognitive"],
+      "موسيقى وتزامن": ["music_sync","timing"],
+      "الطبيعة والانغماس": ["nature","immersion"]
+    }
   },
   {
     "key": "q2",
-    "question_ar": "عندما تواجه تحديًا جديدًا، ماذا تفضل؟",
-    "multiple_choices": ["أفهمه قبل أن أبدأ", "أجرب مباشرة", "أشوف أحد يسويه أول"],
-    "allow_custom": true,
-    "layer_z": true
+    "question_ar": "ما مستوى الأدرينالين الذي يمثّلك؟",
+    "multiple_choices": ["منخفض جدًا", "متوسط", "عالٍ", "عالٍ جدًا (مجازفة محسوبة)"],
+    "allow_custom": false,
+    "category": "arousal",
+    "layer_z": true,
+    "weight": 5
   },
   {
     "key": "q3",
-    "question_ar": "ما أكثر شيء يخليك تترك تمرين أو هواية؟",
-    "multiple_choices": ["الملل", "مافي نتيجة واضحة", "التكرار", "قلة التقدير"],
-    "allow_custom": true,
-    "layer_z": true
+    "question_ar": "راحتك مع المخاطرة؟",
+    "multiple_choices": ["أكرهها", "قليلة", "معتدلة", "مرتفعة بشرط تحكّم", "مرتفعة حتى مع مفاجآت"],
+    "allow_custom": false,
+    "category": "risk",
+    "layer_z": true,
+    "weight": 5
   },
   {
     "key": "q4",
-    "question_ar": "لو دخلت مكان فيه أدوات متنوعة، وش أول شي يجذبك؟",
-    "multiple_choices": ["أداة إلكترونية", "سلاح أو شيء للقتال", "كتاب أو ورقة", "شي غريب ما أعرفه"],
-    "allow_custom": true,
-    "layer_z": true
+    "question_ar": "تفضيلك الاجتماعي في التمرين؟",
+    "multiple_choices": ["لوحدي", "مع شخص واحد", "مجموعة صغيرة", "مجموعة كبيرة/نادي"],
+    "allow_custom": false,
+    "category": "social",
+    "layer_z": true,
+    "weight": 4
   },
   {
     "key": "q5",
-    "question_ar": "تحب تتمرن لوحدك أو مع ناس؟",
-    "multiple_choices": ["لوحدي أفضل", "مع شخص قريب", "مع مجموعة", "حسب المزاج"],
-    "allow_custom": true
+    "question_ar": "أسلوب التوجيه الذي تفضّله؟",
+    "multiple_choices": ["اكتشاف ذاتي", "إرشاد خفيف", "خطة واضحة بالتفصيل", "تدريب صارم ومتابعة"],
+    "allow_custom": false,
+    "category": "coaching",
+    "layer_z": true,
+    "weight": 3
   },
   {
     "key": "q6",
-    "question_ar": "أي نوع من الإنجاز يسعدك أكثر؟",
-    "multiple_choices": ["إنجاز شخصي بدون ما أحد يدري", "إنجاز جماعي", "شي بسيط بس استمتعت فيه"],
-    "allow_custom": true,
-    "layer_z": true
+    "question_ar": "ما درجة دافعك التنافسي؟",
+    "multiple_choices": ["لا يهمني", "محدود", "تحدّي هادئ", "منافسة واضحة وصريحة"],
+    "allow_custom": false,
+    "category": "competition",
+    "layer_z": true,
+    "weight": 4
   },
   {
     "key": "q7",
-    "question_ar": "وش اللي يحفزك أكثر؟",
-    "multiple_choices": ["تحدي صعب", "إحساس التقدم", "كلام محفز", "موسيقى أو أجواء"],
-    "allow_custom": true
+    "question_ar": "أسلوب التعلّم الأنسب لك؟",
+    "multiple_choices": ["أفهم قبل التطبيق", "أجرّب مباشرة", "تطبيق مع أمثلة", "أراقب ثم أحاكي"],
+    "allow_custom": false,
+    "category": "learning",
+    "layer_z": true,
+    "weight": 3
   },
   {
     "key": "q8",
-    "question_ar": "لو كانت عندك ساعة إضافية في يومك، كيف تستخدمها؟",
-    "multiple_choices": ["أتمرن", "أتعلم شي جديد", "أبدع أو أكتب", "أرتاح أو أتأمل"],
-    "allow_custom": true,
-    "layer_z": true
+    "question_ar": "تحمّلك للتكرار مقابل التنوّع؟",
+    "multiple_choices": ["أملّ بسرعة — أحتاج تنوّع", "مزيج متوازن", "أحب الروتين والانضباط"],
+    "allow_custom": false,
+    "category": "novelty",
+    "layer_z": true,
+    "weight": 4
   },
   {
     "key": "q9",
-    "question_ar": "كيف تتصرف في موقف يتطلب سرعة أو خطر؟",
-    "multiple_choices": ["أتحمس", "أتوتر", "أتجنب", "أحلله قبل أتحرك"],
+    "question_ar": "بيئة التمرين المفضلة؟",
+    "multiple_choices": ["داخلية", "خارجية/طبيعة", "ماء", "ثلج/برد", "رمل/أرض ناعمة", "حضرية/هياكل"],
     "allow_custom": true,
-    "layer_z": true
+    "category": "environment",
+    "layer_z": true,
+    "weight": 4
   },
   {
     "key": "q10",
-    "question_ar": "كيف تتعامل مع الروتين؟",
-    "multiple_choices": ["أكرهه", "أتعود", "أغيره باستمرار", "أحوله لتحدي"],
-    "allow_custom": true,
-    "layer_z": true
+    "question_ar": "الطقس/الحرارة الأنسب لك؟",
+    "multiple_choices": ["دافئ", "معتدل", "بارد", "متغيّر — لا يهم"],
+    "allow_custom": false,
+    "category": "climate",
+    "layer_z": false,
+    "weight": 2
   },
   {
     "key": "q11",
-    "question_ar": "وش يلفت انتباهك أولًا لما تدخل مكان جديد؟",
-    "multiple_choices": ["الأجهزة", "الناس", "الأصوات", "التفاصيل الغريبة"],
-    "allow_custom": true
+    "question_ar": "متى تكون طاقتك في أفضل حالاتها؟",
+    "multiple_choices": ["صباحًا", "ظهرًا", "مساءً", "يتغيّر حسب يومي"],
+    "allow_custom": false,
+    "category": "daypart",
+    "layer_z": false,
+    "weight": 2
   },
   {
     "key": "q12",
-    "question_ar": "هل تفضل الرياضات التي فيها تخطيط أو حركة مباشرة؟",
-    "multiple_choices": ["تخطيط وتحليل", "حركة وتفاعل", "مزيج بينهم"],
-    "allow_custom": true
+    "question_ar": "أي نوع حركة يعبّر عنك أكثر؟",
+    "multiple_choices": ["حركة كبيرة وانطلاق", "دقّة وتحكّم يد-عين", "توازن وثبات", "انفجار قصير ثم استعادة"],
+    "allow_custom": false,
+    "category": "motor_profile",
+    "layer_z": true,
+    "weight": 4
   },
   {
     "key": "q13",
-    "question_ar": "هل تحب تفهم الشي قبل تبدأه؟",
-    "multiple_choices": ["دائمًا", "أحيانًا", "نادراً", "لا، أفضل أجرب"],
+    "question_ar": "تركيزك البدني المفضّل؟",
+    "multiple_choices": ["تحمّل قلبي-تنفّسي", "قوّة ومقاومة", "مرونة وحركية", "عقل-جسم/تنفّس واعٍ", "مهارة فنية دقيقة"],
     "allow_custom": true,
-    "layer_z": true
+    "category": "body_focus",
+    "layer_z": true,
+    "weight": 4
   },
   {
     "key": "q14",
-    "question_ar": "وش أكثر شعور تسعى له في الرياضة؟",
-    "multiple_choices": ["قوة", "إنجاز", "حرية", "اتصال داخلي"],
-    "allow_custom": true
+    "question_ar": "التحدّي الذهني الذي تحبّه أثناء الحركة؟",
+    "multiple_choices": ["تكتيك وخداع", "ردّ فعل وسرعة قرار", "ألغاز وأنماط", "ذاكرة خطوات وتسلسل"],
+    "allow_custom": false,
+    "category": "cognitive_challenge",
+    "layer_z": true,
+    "weight": 4
   },
   {
     "key": "q15",
-    "question_ar": "هل تفضل بيئة فيها حماس عالي أو هدوء وتركيز؟",
-    "multiple_choices": ["حماس عالي", "هدوء وتركيز", "مزيج بينهم"],
-    "allow_custom": true
+    "question_ar": "ما الحسّ المحفّز لك أكثر أثناء التمرين؟",
+    "multiple_choices": ["موسيقى وإيقاع", "صمت وتركيز داخلي", "طبيعة وأصواتها", "تقنية/أجهزة وقياسات", "VR/AR وتجارب غامرة"],
+    "allow_custom": true,
+    "category": "sensory",
+    "layer_z": true,
+    "weight": 3
   },
   {
     "key": "q16",
-    "question_ar": "لو شفت تحدي جديد على الإنترنت، وش تسوي؟",
-    "multiple_choices": ["أحفظه للمستقبل", "أجربه", "أتجاهله", "أبحث عنه أكثر"],
-    "allow_custom": true
+    "question_ar": "ميزانية الوقت للجلسة الواحدة؟",
+    "multiple_choices": ["10–20 دقيقة", "20–40 دقيقة", "40–60 دقيقة", "أكثر من ساعة"],
+    "allow_custom": false,
+    "category": "time_budget",
+    "layer_z": false,
+    "weight": 3
   },
   {
     "key": "q17",
-    "question_ar": "ما نوع المحتوى اللي تستمتع فيه أكثر؟",
-    "multiple_choices": ["ألعاب", "علوم", "موسيقى", "قصص أو أنمي"],
+    "question_ar": "إتاحة الأدوات/المكان لديك؟",
+    "multiple_choices": ["بدون أدوات/منزل", "أدوات بسيطة", "صالة/نادي متكامل", "خارج/مسارات وملاعب", "إعداد VR/أجهزة خاصة"],
     "allow_custom": true,
-    "layer_z": true
+    "category": "access",
+    "layer_z": false,
+    "weight": 3
   },
   {
     "key": "q18",
-    "question_ar": "وش أول شي يخليك تشتري أداة رياضية؟",
-    "multiple_choices": ["شكلها", "وظيفتها", "انطباع الناس", "حب الاكتشاف"],
-    "allow_custom": true
+    "question_ar": "هل لديك إصابات/حساسية في المفاصل؟",
+    "multiple_choices": ["لا يوجد", "ركبة", "ظهر", "كتف", "عنق/رسغ", "أخرى"],
+    "allow_custom": true,
+    "category": "injury",
+    "layer_z": false,
+    "weight": 5
   },
   {
     "key": "q19",
-    "question_ar": "كيف تقيّم نفسك حركيًا؟",
-    "multiple_choices": ["سريع الحركة", "متوازن", "بطيء لكن دقيق"],
-    "allow_custom": true
+    "question_ar": "هدفك الأقرب الآن؟",
+    "multiple_choices": ["نزول وزن/دهون", "تحمّل وأداء", "شكل/قوام", "صحة نفسية وهدوء", "مرونة وتفكيك شدّ", "قوّة وانفجار"],
+    "allow_custom": true,
+    "category": "goal",
+    "layer_z": true,
+    "weight": 5
   },
   {
     "key": "q20",
-    "question_ar": "تحب تبني مهارة جديدة؟ ولا تفضّل تتقن مهارة موجودة؟",
-    "multiple_choices": ["أحب أتعلم جديد", "أفضل أتقن الموجود", "حسب المزاج"],
-    "allow_custom": true
+    "question_ar": "وتيرة التقدّم التي تفضّلها؟",
+    "multiple_choices": ["بطيئة وثابتة", "متوسطة مع تحدّيات", "سريعة مع التزام عالٍ"],
+    "allow_custom": false,
+    "category": "progression",
+    "layer_z": true,
+    "weight": 3
   }
 ]
