@@ -66,9 +66,9 @@ def _extract_profile(answers: Dict[str, Any], lang: str) -> Optional[Dict[str, A
         return prof
     # محاولة توليد سريعة إن توفر الموديول
     try:
-        from core.answers_encoder import encode_answers  # type: ignore
-        prof = encode_answers(answers, lang=lang)
-        answers["_profile_"] = prof  # نحتفظ به للاستخدام اللاحق
+       from core.answers_encoder import encode_answers
+profile = encode_answers(answers, lang)
+analysis["encoded_profile"] = profile
         return prof
     except Exception:
         return None
