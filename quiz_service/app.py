@@ -7,7 +7,7 @@ import streamlit as st
 # مسارات مرنة (محلي + Render)
 # =========================
 try:
-    HERE = Path(_file_).resolve().parent
+    HERE = Path(__file__).resolve().parent
 except NameError:
     HERE = Path.cwd()
 
@@ -37,11 +37,15 @@ except Exception:
         user_msg = kwargs.get("user_message", "")
         return f"فهمت: {user_msg}\nسنعدّل الخطة تدريجيًا ونراعي تفضيلاتك خطوة بخطوة."
 
+# Layer Z قد تكون في core أو analysis
 try:
-    from analysis.layer_z_engine import analyze_silent_drivers_combined as analyze_silent_drivers
+    from core.layer_z_engine import analyze_silent_drivers_combined as analyze_silent_drivers
 except Exception:
-    def analyze_silent_drivers(answers, lang="العربية"):
-        return ["تحفيز قصير المدى", "إنجازات سريعة", "تفضيل تدريبات فردية"]
+    try:
+        from analysis.layer_z_engine import analyze_silent_drivers_combined as analyze_silent_drivers
+    except Exception:
+        def analyze_silent_drivers(answers, lang="العربية"):
+            return ["تحفيز قصير المدى", "إنجازات سريعة", "تفضيل تدريبات فردية"]
 
 # =========================
 # تهيئة الصفحة + لغة
@@ -49,9 +53,7 @@ except Exception:
 st.set_page_config(page_title="SportSync — Quiz", page_icon="🎯", layout="centered")
 lang = st.sidebar.radio("🌐 اختر اللغة / Choose Language", ["العربية", "English"], index=0)
 is_ar = (lang == "العربية")
-
-def T(ar, en):
-    return ar if is_ar else en
+T = (lambda ar, en: ar if is_ar else en)
 
 # =========================
 # تحميل الأسئلة (متوافق مع multiple_choices + allow_custom)
@@ -80,7 +82,7 @@ answers = {}
 for q in questions:
     q_key = q.get("key", f"q_{len(answers)+1}")
     text_ar = q.get("question_ar", "")
-    text_en = q.get("question_en", text_ar)  # لو مافيه إنجليزي نعرض العربي
+    text_en = q.get("question_en", text_ar)  # لو ما فيه إنجليزي نعرض العربي
     text = text_ar if is_ar else text_en
 
     choices = q.get("multiple_choices")
@@ -157,7 +159,6 @@ if recs:
         )
 
     st.divider()
-    # زر فتح المحادثة الديناميكية للي ماعجبتهم التوصية
     if st.button(T("🙅‍♂ لم تعجبني التوصيات — افتح محادثة", "🙅‍♂ Not satisfied — open chat")):
         st.session_state["chat_open"] = True
 
@@ -167,22 +168,18 @@ if recs:
 if st.session_state.get("chat_open", False):
     st.subheader(T("🧠 محادثة المدرب الذكي", "🧠 AI Coach Chat"))
 
-    # عرض المحادثة السابقة
     for msg in st.session_state["chat_history"]:
         with st.chat_message("user" if msg["role"] == "user" else "assistant"):
             st.write(msg["content"])
 
-    # إدخال رسالة جديدة
     user_msg = st.chat_input(
         T("اكتب ما الذي لم يعجبك أو ما الذي تريد تعديله…", "Tell me what you didn’t like or what to adjust…")
     )
 
     if user_msg:
-        # أضف رسالة المستخدم
         st.session_state["chat_history"].append({"role": "user", "content": user_msg})
-
-        # حضّر المُدخلات للمدرب
         ratings = [st.session_state.get(f"rating_{i}", st.session_state["ratings"][i]) for i in range(3)]
+
         try:
             reply = start_dynamic_chat(
                 answers=answers,
@@ -197,7 +194,6 @@ if st.session_state.get("chat_open", False):
             reply = T("تم! سنعدّل الخطة بالتدريج حسب ملاحظتك.",
                       "Got it! We’ll adjust the plan gradually based on your feedback.")
 
-        # أضف رد المساعد واعرضه
         st.session_state["chat_history"].append({"role": "assistant", "content": reply})
         with st.chat_message("assistant"):
             st.write(reply)
