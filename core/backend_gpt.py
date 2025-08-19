@@ -375,58 +375,108 @@ def _one_liner(*parts: str, max_len: int = 120) -> str:
     s = " — ".join([p.strip() for p in parts if p and p.strip()])
     return s[:max_len]
 
+# ======== (جديد) اسم الهوية + ملاحظات إنسانية ========
+
+def _concept_label(rec: Dict[str, Any], axes: Dict[str, float], lang: str) -> str:
+    """اسم وصفي قصير للهوية مبني على محاور Z ووجود VR (بدون أسماء رياضات)."""
+    ad = float((axes or {}).get("calm_adrenaline", 0.0) or 0.0)
+    ti = float((axes or {}).get("tech_intuition", 0.0) or 0.0)
+    has_vr = bool((rec or {}).get("vr_idea"))
+
+    if lang == "العربية":
+        base = "تكتيكي" if ad >= 0.5 else "انسيابي" if ad <= -0.5 else "متوازن"
+        layer = "حدسي" if ti >= 0.5 else "دقيق" if ti <= -0.5 else "مرن"
+        extra = "غامر" if has_vr else "مركّز"
+        name = f"{base} {extra}"
+        if layer in ("حدسي","دقيق"):
+            name = f"{name} {layer}"
+        return name
+    else:
+        base = "Tactical" if ad >= 0.5 else "Fluid" if ad <= -0.5 else "Balanced"
+        layer = "Intuitive" if ti >= 0.5 else "Precise" if ti <= -0.5 else "Adaptive"
+        extra = "Immersive" if has_vr else "Focused"
+        name = f"{base} {extra}"
+        if layer in ("Intuitive","Precise"):
+            name = f"{name} {layer}"
+        return name
+
+def _notes_block(rec: Dict[str, Any], lang: str) -> List[str]:
+    """ملاحظات إنسانية قصيرة (تبقى عامة؛ بدون مكان/زمن/تكلفة)."""
+    notes: List[str] = []
+    vr = (rec.get("vr_idea") or "").strip()
+    if lang == "العربية":
+        notes.append("هذه «هوية حركة» وصفية، مو لازم تسميها رياضة.")
+        if vr: notes.append(vr)
+        notes.append("تبغى تفاصيل أدوات/أماكن؟ اسألني في الشات ونخصصها لك.")
+    else:
+        notes.append("This is a descriptive movement identity, not a sport label.")
+        if vr: notes.append(vr)
+        notes.append("Want gear/venue specifics? Ask in chat and we’ll tailor it.")
+    return notes[:3]
+
 def _format_card(rec: Dict[str, Any], i: int, lang: str) -> str:
+    axes_for_title = rec.get("_axes_for_title") or {}
+    concept = _concept_label(rec, axes_for_title, lang)
+
+    # رؤوس
     head_ar = ["🟢 التوصية 1","🌿 التوصية 2","🔮 التوصية 3 (ابتكارية)"]
     head_en = ["🟢 Rec #1","🌿 Rec #2","🔮 Rec #3 (Creative)"]
     head = (head_ar if lang == "العربية" else head_en)[i]
 
+    # عناصر
     scene = (rec.get("scene") or "").strip()
     inner = (rec.get("inner_sensation") or "").strip()
     why   = (rec.get("why_you") or "").strip()
     week  = _to_bullets(rec.get("first_week") or "")
     prog  = _to_bullets(rec.get("progress_markers") or "", max_items=4)
     diff  = rec.get("difficulty", 3)
-    vr    = (rec.get("vr_idea") or "").strip()
 
     intro = _one_liner(scene, inner)
+    notes = _notes_block(rec, lang)
 
     if lang == "العربية":
-        out = [head, ""]
-        if intro: out += ["الفكرة بإيجاز", f"- {intro}", ""]
+        out = [head, "", f"🎯 الهوية المثالية لك: {concept}", ""]
+        if intro:
+            out += ["💡 ما هي؟", f"- {intro}", ""]
         if why:
-            out += ["ليش ممكن تعجبك؟"]
-            for b in _to_bullets(why, 3) or [why]:
+            out += ["🎮 ليه تناسبك؟"]
+            for b in _to_bullets(why, 4) or [why]:
                 out.append(f"- {b}")
             out.append("")
         if week:
-            out += ["نبدأ بخطوتين بسيطتين"]
+            out += ["🔍 شكلها الواقعي:"]
             for b in week: out.append(f"- {b}")
             out.append("")
         if prog:
-            out += ["علامات تبين إنك ماشي صح"]
+            out += ["📈 علامات تقدّم محسوسة:"]
             for b in prog: out.append(f"- {b}")
             out.append("")
         out.append(f"المستوى التقريبي: {diff}/5")
-        if vr: out.append(f"لو تحب تجربة افتراضية: {vr}")
+        if notes:
+            out += ["", "👁‍🗨 ملاحظات:"]
+            for n in notes: out.append(f"- {n}")
         return "\n".join(out)
     else:
-        out = [head, ""]
-        if intro: out += ["In short", f"- {intro}", ""]
+        out = [head, "", f"🎯 Ideal identity: {concept}", ""]
+        if intro:
+            out += ["💡 What is it?", f"- {intro}", ""]
         if why:
-            out += ["Why it may suit you"]
-            for b in _to_bullets(why, 3) or [why]:
+            out += ["🎮 Why it suits you"]
+            for b in _to_bullets(why, 4) or [why]:
                 out.append(f"- {b}")
             out.append("")
         if week:
-            out += ["Two easy starters"]
+            out += ["🔍 Real-world feel:"]
             for b in week: out.append(f"- {b}")
             out.append("")
         if prog:
-            out += ["Cues you’re on track"]
+            out += ["📈 Progress cues:"]
             for b in prog: out.append(f"- {b}")
             out.append("")
         out.append(f"Approx level: {diff}/5")
-        if vr: out.append(f"Optional VR: {vr}")
+        if notes:
+            out += ["", "👁‍🗨 Notes:"]
+            for n in notes: out.append(f"- {n}")
         return "\n".join(out)
 
 def _sanitize_fill(recs: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]]:
@@ -555,7 +605,13 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         except Exception:
             pass
 
+    # مرّر محاور Z لتوليد العنوان ثم احذف المؤقت
+    axes_for_title = (analysis.get("z_axes") or {}) if isinstance(analysis, dict) else {}
+    for r in cleaned:
+        r["_axes_for_title"] = axes_for_title
     cards = [_format_card(cleaned[i], i, lang) for i in range(3)]
+    for r in cleaned:
+        r.pop("_axes_for_title", None)
 
     # لوق مع أعلام الجودة
     quality_flags = {
