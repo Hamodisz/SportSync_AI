@@ -59,8 +59,9 @@ except Exception as e:
     def analyze_silent_drivers(answers: Dict[str, Any], lang: str = "العربية") -> List[str]:
         return ["انجازات سريعة", "تفضيل تحديات قصيرة", "ميول فردية"]
 
-# ترميز الإجابات إلى بروفايل (scores/prefs/signals)
+# ترميز الإجابات إلى بروفايل (scores/prefs/signals/axes/z_markers...)
 try:
+    # ✅ كما طلبت: استيراد مباشر
     from core.answers_encoder import encode_answers
 except Exception as e:
     logging.warning(f"Fallback: answers_encoder غير متاح ({e}). سيتم استخدام بروفايل مبسط.")
@@ -68,6 +69,8 @@ except Exception as e:
         return {
             "lang": lang,
             "scores": {},
+            "axes": {},
+            "z_markers": [],
             "prefs": {"time_block": "medium", "budget_hint": "med", "environment_pref": "mixed"},
             "signals": [],
             "vr_inclination": 0
@@ -92,7 +95,7 @@ except Exception as e:
             return (
                 "أنت مدرب ذكاء اصطناعي احترافي من SportSync AI. "
                 "استخدم لهجة واضحة محترمة ونبرة محفزة. "
-                "طابق الأسلوب مع شخصية المدرب التالية: " + personality + " "
+                "طابق الأسلوب مع شخصية المدرب التالية: " + str(personality) + " "
                 "لديك تحليل المستخدم ونتائج طبقة Z وإجابات الاستبيان وتقييماته. "
                 "اكتب ردودًا قصيرة وعملية تُعدّل الخطة فورًا حسب ملاحظات المستخدم، بدون لوم."
             )
@@ -100,7 +103,7 @@ except Exception as e:
             return (
                 "You are a professional AI coach from SportSync AI. "
                 "Use a clear, respectful, motivating tone. "
-                "Match the style with this coach personality: " + personality + " "
+                "Match the style with this coach personality: " + str(personality) + " "
                 "You have the user's analysis, Layer-Z drivers, survey answers and ratings. "
                 "Write concise, actionable guidance and adapt the plan immediately based on feedback."
             )
@@ -121,7 +124,7 @@ try:
 except Exception as e:
     logging.warning(f"Fallback: user_logger غير متاحة ({e}). سيتم الطباعة للكونسول بدل التسجيل.")
     def log_user_insight(user_id: str, content: Dict[str, Any], event_type: str = "chat_interaction") -> None:
-        logging.info(f"[LOG:{event_type}] {user_id} -> {content.keys()}")
+        logging.info(f"[LOG:{event_type}] {user_id} -> {list(content.keys())}")
 
 # ============== أدوات مساعدة ==============
 def _trim_chat_history(chat_history: List[Dict[str, str]], max_msgs: int = 10) -> List[Dict[str, str]]:
@@ -142,7 +145,6 @@ def _profile_brief(profile: Dict[str, Any], lang: str) -> str:
     prefs = profile.get("prefs", {})
     scores = profile.get("scores", {})
     top_scores = []
-    # الترتيب حسب القيمة ثم أخذ الأعلى (حتى 5)
     for k, v in sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:5]:
         top_scores.append(f"{k}:{v}")
     if lang == "العربية":
@@ -179,7 +181,21 @@ def start_dynamic_chat(
             return "❌ لا يمكن تشغيل المحادثة: مفتاح OPENAI_API_KEY غير مضبوط."
 
         # 1) تحليل المستخدم الكامل
+        # ✅ إضافة: ترميز الإجابات أولاً (كما طلبت)
+        encoded = {}
+        try:
+            encoded = encode_answers(answers, lang=lang)
+        except Exception as e:
+            logging.warning(f"answers_encoder failed: {e}")
+            encoded = {"scores": {}, "axes": {}, "z_markers": [], "prefs": {}, "signals": []}
+
         user_analysis = apply_all_analysis_layers(_safe_json(answers))
+
+        # ✅ تخزين القيم المرمّزة داخل التحليل لاستخدامها في الشخصية والبرومبت
+        user_analysis["encoded_profile"] = encoded
+        user_analysis["z_scores"] = encoded.get("scores", {})
+        user_analysis["z_axes"] = encoded.get("axes", {})
+        user_analysis["z_markers"] = encoded.get("z_markers", [])
 
         # 2) طبقة Z
         try:
@@ -189,22 +205,14 @@ def start_dynamic_chat(
             z = []
         user_analysis["silent_drivers"] = z
 
-        # 3) ترميز الإجابات إلى بروفايل سريع (scores/prefs/signals)
-        try:
-            encoded_profile = encode_answers(answers, lang)
-        except Exception as e:
-            logging.warning(f"answers_encoder failed: {e}")
-            encoded_profile = {"lang": lang, "scores": {}, "prefs": {}, "signals": [], "vr_inclination": 0}
-        user_analysis["encoded_profile"] = encoded_profile
-
-        # 4) شخصية المدرب مع كاش (مفتاح الكاش يتضمن البروفايل لضمان ثبات الأسلوب)
-        cache_key = f"{lang}:{hash(_safe_json({'ua': user_analysis.get('quick_profile',''), 'scores': encoded_profile.get('scores', {}), 'prefs': encoded_profile.get('prefs', {})}))}"
+        # 3) شخصية المدرب مع كاش (مفتاح الكاش يتضمن البروفايل لضمان ثبات الأسلوب)
+        cache_key = f"{lang}:{hash(_safe_json({'ua': user_analysis.get('quick_profile',''), 'scores': encoded.get('scores', {}), 'prefs': encoded.get('prefs', {})}))}"
         personality = get_cached_personality(cache_key)
         if not personality:
             personality = build_dynamic_personality(user_analysis, lang)
             save_cached_personality(cache_key, personality)
 
-        # 5) برومبت سياقي (system)
+        # 4) برومبت سياقي (system)
         system_prompt = build_main_prompt(
             analysis=user_analysis,
             answers=answers,
@@ -214,17 +222,17 @@ def start_dynamic_chat(
             lang=lang
         )
 
-        # 6) بناء الرسائل
+        # 5) بناء الرسائل
         messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
 
-        # 6.1) ملخص طبقة Z + البروفايل المرمّز (system قصير)
+        # 5.1) ملخص طبقة Z + البروفايل المرمّز (system قصير)
         brief_lines = []
         if z:
             brief_lines.append(("محركات Z: " if lang == "العربية" else "Layer-Z: ") + ", ".join(z))
-        brief_lines.append(_profile_brief(encoded_profile, lang))
+        brief_lines.append(_profile_brief(encoded, lang))
         messages.append({"role": "system", "content": "\n".join(brief_lines)})
 
-        # 6.2) سياق مختصر حول التوصيات والتقييمات
+        # 5.2) سياق مختصر حول التوصيات والتقييمات + ✅ إضافة Z-axes/Z-markers للملخّص
         if previous_recommendation:
             rec_join = "\n- " + "\n- ".join(map(str, previous_recommendation[:3]))
         else:
@@ -236,14 +244,23 @@ def start_dynamic_chat(
             f"- Recommendations: {rec_join}\n"
             f"- Ratings: {ratings_str}\n"
         )
+        # ✅ كما طلبت بالضبط:
+        try:
+            brief_context += (
+                f"- Z-axes: {json.dumps(encoded.get('axes', {}), ensure_ascii=False)}\n"
+                f"- Z-markers: {', '.join(encoded.get('z_markers', []))}\n"
+            )
+        except Exception:
+            pass
+
         messages.append({"role": "system", "content": brief_context})
 
-        # 6.3) تاريخ المحادثة السابق (مختصر)
+        # 5.3) تاريخ المحادثة السابق (مختصر)
         for m in _trim_chat_history(chat_history or [], max_msgs=8):
             if m.get("role") in ("user", "assistant"):
                 messages.append({"role": m["role"], "content": m.get("content", "")})
 
-        # 6.4) رسالة المستخدم الحالية (أو سؤال توجيهي)
+        # 5.4) رسالة المستخدم الحالية (أو سؤال توجيهي)
         if user_message:
             messages.append({"role": "user", "content": user_message})
         else:
@@ -253,7 +270,7 @@ def start_dynamic_chat(
                 else "Refine my weekly plan into two simple, immediate steps."
             })
 
-        # 7) استدعاء نموذج الدردشة
+        # 6) استدعاء نموذج الدردشة
         logging.info("Calling OpenAI chat completion...")
         resp = client.chat.completions.create(
             model=CHAT_MODEL,
@@ -263,7 +280,7 @@ def start_dynamic_chat(
         )
         reply = (resp.choices[0].message.content or "").strip()
 
-        # 8) تسجيل التفاعل
+        # 7) تسجيل التفاعل
         try:
             log_user_insight(
                 user_id=user_id,
