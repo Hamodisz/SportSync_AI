@@ -7,7 +7,7 @@ analysis/layer_z_engine.py
   يستخدم encoded["z_scores"] إن توفّر؛ وإلا يستنتج سريعًا من النص.
 """
 
-from _future_ import annotations
+from __future__ import annotations
 from typing import Dict, List, Any
 import re
 
