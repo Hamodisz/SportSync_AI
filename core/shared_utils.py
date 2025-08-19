@@ -1,11 +1,10 @@
 # core/shared_utils.py
+# -- coding: utf-8 --
 
 # =========================================================
 # قيود مشتركة لمنع السطحية ومنع ذكر أسماء الرياضات
 # =========================================================
 
-# قائمة كلمات/أسماء رياضية شائعة تُذكر فقط داخل البرومبت كعناصر "ممنوع استخدامها".
-# (مجرد توجيه للموديل – الفلترة الحقيقية تتم في backend إن رغبت)
 _BANNED_SPORT_TERMS_AR = [
     "كرة","قدم","سلة","طائرة","تنس","سباحة","سبح","ركض","جري","مقاومة",
     "أثقال","رفع أثقال","كمال أجسام","ملاكمة","بوكس","كيك بوكس","جوجيتسو",
@@ -20,308 +19,336 @@ _BANNED_SPORT_TERMS_EN = [
     "crossfit","parkour","scuba","equestrian","horse riding"
 ]
 
-# عبارات عامة تدل على السطحية (نذكرها للموديل ليتجنّبها)
 _GENERIC_AVOID = [
     "أي نشاط بدني مفيد","اختر ما يناسبك","ابدأ بأي شيء","جرّب أكثر من خيار",
     "لا يهم النوع","تحرك فقط","نشاط عام","رياضة عامة","أنت تعرف ما يناسبك"
 ]
 
-# مفردات حسّية نريد كثافة منها (لتذكير الموديل داخل البرومبت)
 _SENSORY_TOKENS_AR = [
     "تنفّس","إيقاع","توتّر","استرخاء","دفء","برودة","توازن","نبض",
     "تعرّق","شدّ","مرونة","هدوء","تركيز","تدفّق","انسجام","ثِقل","خِفّة",
     "إحساس","موجة","امتداد","حرق لطيف","صفاء","تماسك"
 ]
 
+# =========================================================
+# أدوات مساعدة صغيرة لحقن محاور Z إن وُجدت
+# =========================================================
+def _axes_brief(analysis, lang="العربية"):
+    ep = analysis.get("encoded_profile", {}) if isinstance(analysis, dict) else {}
+    axes = ep.get("axes", analysis.get("z_axes", {})) if isinstance(analysis, dict) else {}
+    markers = ep.get("z_markers") or ep.get("signals") or []
+    scores = ep.get("scores", analysis.get("z_scores", {})) if isinstance(analysis, dict) else {}
 
-# ------------------------------
-# [1] دالة توصية أعمق - للديناميكي (بدون أسماء)
-# ------------------------------
+    def fmt_axes(d):
+        if not isinstance(d, dict) or not d:
+            return "n/a"
+        items = []
+        for k, v in d.items():
+            try:
+                v = float(v)
+            except Exception:
+                pass
+            items.append(f"{k}:{v}")
+        return ", ".join(items[:8])
+
+    if lang == "العربية":
+        return (
+            f"محاور Z (مختصر): {fmt_axes(axes)}\n"
+            + (f"مؤشرات: {', '.join(markers[:6])}\n" if markers else "")
+            + (f"أبرز الدرجات: {', '.join([f'{k}:{scores[k]}' for k in list(scores)[:5]])}\n" if scores else "")
+        ).strip()
+    else:
+        return (
+            f"Z-axes brief: {fmt_axes(axes)}\n"
+            + (f"Markers: {', '.join(markers[:6])}\n" if markers else "")
+            + (f"Top scores: {', '.join([f'{k}:{scores[k]}' for k in list(scores)[:5]])}\n" if scores else "")
+        ).strip()
+
+# =========================================================
+# (جديد) شخصية مدرّب ديناميكية لكي يختفي تحذير الاستيراد ويثبت الأسلوب
+# =========================================================
+def build_dynamic_personality(analysis, lang="العربية"):
+    ep = analysis.get("encoded_profile", {}) if isinstance(analysis, dict) else {}
+    axes = ep.get("axes", analysis.get("z_axes", {})) if isinstance(analysis, dict) else {}
+    ti = axes.get("tech_intuition", 0) or axes.get("ti_axis", 0)
+    calm = axes.get("calm_adrenaline", 0)
+    solo = axes.get("solo_group", 0)
+
+    # نبرة المتحدث مبنية على المحاور (تقريبي وبسيط)
+    if calm >= 0.5:
+        base_tone_ar = "هادئ، مطمئن، يركّز على الإحساس"
+        base_tone_en = "calm, reassuring, sensation-first"
+    elif calm <= -0.5:
+        base_tone_ar = "نشِط، حازم، مباشر"
+        base_tone_en = "energetic, firm, direct"
+    else:
+        base_tone_ar = "متزن، واضح، عملي"
+        base_tone_en = "balanced, clear, practical"
+
+    style_ar = "جُمل قصيرة، توجيه عملي، بدون تنظير"
+    style_en = "short sentences, practical guidance, no fluff"
+
+    if ti >= 0.5:   # ميول حدسي
+        style_ar += "، يشجّع الاعتماد على الإحساس"
+        style_en += ", leans on intuition cues"
+    elif ti <= -0.5:  # ميول تقني
+        style_ar += "، يوضح نقاط ضبط بسيطة"
+        style_en += ", adds simple technique cues"
+
+    name = "SportSync Coach"
+    if lang == "العربية":
+        return {
+            "name": name,
+            "tone": base_tone_ar,
+            "style": style_ar,
+            "philosophy": "هوية حركة بلا أسماء؛ الإنسان قبل الرياضة"
+        }
+    else:
+        return {
+            "name": name,
+            "tone": base_tone_en,
+            "style": style_en,
+            "philosophy": "Name-less movement identity; human first"
+        }
+
+# =========================================================
+# [1] برومبت المحادثة الديناميكية (بدون أسماء + بدون مكان/زمن/تكلفة/عدّات)
+# =========================================================
 def build_main_prompt(analysis, answers, personality, previous_recommendation, ratings, lang="العربية"):
-    """
-    تُستخدم في المحادثة الديناميكية لإنتاج توصية أعمق.
-    تعديلات مهمة:
-      - ممنوع ذكر أسماء رياضات؛ استخدم وصفاً حسّياً للمشهد/الإيقاع/السطح/التنفس/نوع الجهد.
-      - اربط السبب بـ Layer Z بوضوح (لماذا أنت؟).
-      - اعطِ خطة أسبوع أول + مؤشرات تقدم (2–4 أسابيع).
-      - إذا انزلق اسم رياضة، استبدله بشرطة طويلة "—" وقدّم وصفاً حسّياً مكانه.
-    """
     banned_ar = "، ".join(_BANNED_SPORT_TERMS_AR)
     banned_en = ", ".join(_BANNED_SPORT_TERMS_EN)
     avoid = "، ".join(_GENERIC_AVOID)
     sensory = "، ".join(_SENSORY_TOKENS_AR)
+    axes_context = _axes_brief(analysis, lang)
 
     if lang == "العربية":
-        prompt = f"""👤 تحليل شخصية المستخدم:
-{analysis}
-"""
+        prompt = f"""👤 تحليل المستخدم (مختصر):
+{analysis.get('quick_profile','fallback')}
 
-        if isinstance(analysis, dict) and "silent_drivers" in analysis and analysis["silent_drivers"]:
-            prompt += "🧭 المحركات الصامتة:\n"
-            for s in analysis["silent_drivers"]:
-                prompt += f"- {s}\n"
-            prompt += "\n"
+{('🧭 ' + axes_context) if axes_context else ''}
 
-        prompt += f"""🧠 ملف المدرب الذكي:
-الاسم: {personality.get("name")}
-النبرة: {personality.get("tone")}
-الأسلوب: {personality.get("style")}
-الفلسفة: {personality.get("philosophy")}
+🧠 ملف المدرب:
+الاسم: {personality.get('name')}
+النبرة: {personality.get('tone')}
+الأسلوب: {personality.get('style')}
+الفلسفة: {personality.get('philosophy')}
 
-📝 إجابات المستخدم:
+📝 ملخص إجابات المستخدم (مضغوط للمرجع):
 """
         for k, v in (answers or {}).items():
-            prompt += f"- {k}: {v}\n"
+            if isinstance(v, dict):
+                prompt += f"- {v.get('question', k)}: {v.get('answer','')}\n"
+            else:
+                prompt += f"- {k}: {v}\n"
 
-        prev1 = previous_recommendation[0] if previous_recommendation and len(previous_recommendation) > 0 else "—"
-        prev2 = previous_recommendation[1] if previous_recommendation and len(previous_recommendation) > 1 else "—"
-        prev3 = previous_recommendation[2] if previous_recommendation and len(previous_recommendation) > 2 else "—"
-
+        prev = []
+        for i in range(3):
+            prev.append(previous_recommendation[i] if previous_recommendation and len(previous_recommendation) > i else "—")
         prompt += f"""
 
-📊 تقييم المستخدم للتوصيات السابقة:
-{ratings}
+📊 تقييم المستخدم للتوصيات السابقة: {ratings}
 
-📌 التوصيات الثلاثة التي قُدمت سابقًا:
-1. {prev1}
-2. {prev2}
-3. {prev3}
+📌 آخر 3 توصيات (للاطلاع فقط):
+1. {prev[0]}
+2. {prev[1]}
+3. {prev[2]}
 
-⚠ قواعد صارمة (لا تكسرها):
-- ممنوع ذكر أسماء رياضات نهائيًا. قائمة محظورة للأمثلة: [{banned_ar}] / [{banned_en}]
-- إن انزلق اسم، استبدله فورًا بـ "—" وقدّم وصفًا حسّيًا بديلاً.
-- تجنّب العبارات السطحية مثل: {avoid}
-- استخدم لغة حسّية غنيّة (تذكير بالمفردات: {sensory})
-- اربط التوصية مباشرةً بـ Layer Z (لماذا أنت؟ ما الذي يذيب وعيك؟ ما الدافع الداخلي؟)
-- اعطِ خطة للأسبوع الأول (٣ خطوات عملية واضحة).
-- اعطِ مؤشرات تقدّم محسوسة خلال 2–4 أسابيع.
+⚠ قواعد أسلوبية صارمة:
+- ممنوع ذكر أسماء رياضات نهائيًا. محظورات أمثلة: [{banned_ar}] / [{banned_en}]
+- إن انزلق اسم، استبدله فورًا بـ "—" وقدّم وصفًا حسّيًا بديلًا.
+- لا تذكر المكان/الزمن/التكلفة/العدّات/الجولات/الدقائق.
+- تجنّب العبارات السطحية: {avoid}
+- لغة إنسانية بسيطة، جُمل قصيرة. كثّف الحسّيات (تذكير: {sensory}).
+- اشرح ليش تناسبه ببساطة (لا تقل "Layer Z" لفظيًا).
 
-✅ SELF‑CHECK (قبل الإخراج):
-- لا توجد أي أسماء رياضات أو أدوات شهيرة حرفيًا.
-- طول التوصية ≥ 6 جمل مفيدة.
-- مذكور: (المشهد، الإحساس الداخلي، لماذا أنت/Layer Z، الملاءمة العملية، أول أسبوع، مؤشرات التقدم).
+✅ SELF-CHECK قبل الإخراج:
+- لا أسماء رياضات أو أدوات، ولا مكان/زمن/تكلفة/عدّات.
+- صياغة إنسانية موجّهة للمستخدم مباشرة.
+- تضمين: المشهد، الإحساس الداخلي، لماذا أنت، أول أسبوع (نوعي)، مؤشرات تقدّم.
 
-🎯 المطلوب الآن:
-بناءً على كل ما سبق، أعطني توصية أعمق وأصدق بصيغة مقطع واحد بهذا القالب (من غير أسماء رياضات):
+🎯 أعطني مقطع توصية واحد بهذه البنية (بدون أرقام):
 • المشهد: ...
 • الإحساس الداخلي: ...
-• لماذا أنت (Layer Z): ...
-• الملاءمة العملية: (الزمن/المكان/التكلفة/الأمان) ...
-• أول أسبوع: ...
-• مؤشرات التقدم: ...
-
-- كن ذكيًا، واقعيًا، وعاطفيًا. لا تكرر مضمون التوصيات السابقة، ولا تلمّح لأسمائها.
+• ليش تناسبك: ...
+• أول أسبوع (نوعي): ...
+• علامات تقدّم: ...
 """
     else:
-        # English version mirrors the same constraints
-        banned = ", ".join(_BANNED_SPORT_TERMS_EN)
         avoid_en = ", ".join(_GENERIC_AVOID)
-        prompt = f"""👤 User Personality Analysis:
-{analysis}
-"""
+        prompt = f"""👤 User analysis (brief):
+{analysis.get('quick_profile','fallback')}
 
-        if isinstance(analysis, dict) and "silent_drivers" in analysis and analysis["silent_drivers"]:
-            prompt += "🧭 Silent Drivers:\n"
-            for s in analysis["silent_drivers"]:
-                prompt += f"- {s}\n"
-            prompt += "\n"
+{('🧭 ' + axes_context) if axes_context else ''}
 
-        prompt += f"""🧠 Smart Coach Profile:
-Name: {personality.get("name")}
-Tone: {personality.get("tone")}
-Style: {personality.get("style")}
-Philosophy: {personality.get("philosophy")}
+🧠 Coach profile:
+Name: {personality.get('name')}
+Tone: {personality.get('tone')}
+Style: {personality.get('style')}
+Philosophy: {personality.get('philosophy')}
 
-📝 User's Questionnaire Answers:
+📝 Condensed answers (reference):
 """
         for k, v in (answers or {}).items():
-            prompt += f"- {k}: {v}\n"
+            if isinstance(v, dict):
+                prompt += f"- {v.get('question', k)}: {v.get('answer','')}\n"
+            else:
+                prompt += f"- {k}: {v}\n"
 
-        prev1 = previous_recommendation[0] if previous_recommendation and len(previous_recommendation) > 0 else "—"
-        prev2 = previous_recommendation[1] if previous_recommendation and len(previous_recommendation) > 1 else "—"
-        prev3 = previous_recommendation[2] if previous_recommendation and len(previous_recommendation) > 2 else "—"
-
+        prev = []
+        for i in range(3):
+            prev.append(previous_recommendation[i] if previous_recommendation and len(previous_recommendation) > i else "—")
         prompt += f"""
 
-📊 User's Ratings on Previous Recommendations:
-{ratings}
+📊 Previous ratings: {ratings}
 
-📌 Previous Three Recommendations:
-1. {prev1}
-2. {prev2}
-3. {prev3}
+📌 Last 3 suggestions (for reference):
+1. {prev[0]}
+2. {prev[1]}
+3. {prev[2]}
 
-⚠ Hard Rules (do not break):
-- Do NOT name any sports. Banned examples: [{banned}]
-- If a sport name slips, replace it with "—" and provide a sensory substitute.
+⚠ Hard style rules:
+- Absolutely NO sport names. Banned examples: [{banned_en}]
+- If any slips, replace with "—" and describe the sensation instead.
+- Do NOT mention place/time/cost/reps/sets/minutes.
 - Avoid generic phrases: {avoid_en}
-- Use rich sensory language (setting/surface/rhythm/breathing/type of effort).
-- Tie rationale to Layer Z (why you? flow trigger? inner driver).
-- Provide a First Week plan (3 concrete steps).
-- Provide progress markers within 2–4 weeks.
+- Human tone, short sentences. Increase sensory density.
 
-✅ SELF‑CHECK before output:
-- Zero sport/tool brand names.
-- Length ≥ 6 meaningful sentences.
-- Includes: Scene, Inner Sensation, Why you (Layer Z), Practical Fit, First Week, Progress Markers.
+✅ SELF-CHECK before output:
+- No sport/tool names, no place/time/cost/reps.
+- Human, directly addressing the user.
+- Include: Scene, Inner sensation, Why you, First week (qualitative), Progress markers.
 
-🎯 Your task:
-Return ONE deeper recommendation (no sport names) using this template:
+🎯 Return ONE recommendation block (no numbers):
 • Scene: ...
-• Inner Sensation: ...
-• Why you (Layer Z): ...
-• Practical Fit (time/place/cost/safety): ...
-• First Week: ...
-• Progress Markers: ...
-
-Be smart, realistic, and emotionally resonant. Do not repeat or allude to prior suggestions.
+• Inner sensation: ...
+• Why it fits you: ...
+• First week (qualitative): ...
+• Progress markers: ...
 """
     return prompt
 
 
-# ------------------------------
-# [2] دالة 3 توصيات رئيسية - للbackend (بدون أسماء)
-# ------------------------------
+# =========================================================
+# [2] برومبت 3 توصيات رئيسية للـ backend (بدون أسماء + بدون مكان/زمن/تكلفة/عدّات)
+# =========================================================
 def generate_main_prompt(analysis, answers, personality, lang="العربية"):
-    """
-    تُستخدم لتوليد 3 توصيات رئيسية بوضع "هوية بلا أسماء".
-    """
     banned_ar = "، ".join(_BANNED_SPORT_TERMS_AR)
     banned_en = ", ".join(_BANNED_SPORT_TERMS_EN)
     avoid = "، ".join(_GENERIC_AVOID)
     sensory = "، ".join(_SENSORY_TOKENS_AR)
+    axes_context = _axes_brief(analysis, lang)
 
     if lang == "العربية":
-        prompt = f"""🧠 تحليل المستخدم:
-{analysis}
-"""
-        if isinstance(analysis, dict) and "silent_drivers" in analysis and analysis["silent_drivers"]:
-            prompt += "🧭 المحركات الصامتة:\n"
-            for s in analysis["silent_drivers"]:
-                prompt += f"- {s}\n"
-            prompt += "\n"
+        prompt = f"""🧠 تحليل المستخدم (مختصر): {analysis.get('quick_profile','fallback')}
+{('🧭 ' + axes_context) if axes_context else ''}
 
-        prompt += f"""👤 الملف النفسي للمدرب الذكي:
+👤 الملف النفسي للمدرب:
 الاسم: {personality.get("name")}
 النبرة: {personality.get("tone")}
 الأسلوب: {personality.get("style")}
 الفلسفة: {personality.get("philosophy")}
 
-📝 إجابات المستخدم على الاستبيان:
+📝 إجابات المستخدم (للرجوع فقط، لا تعيدها نصًا):
 """
         for k, v in (answers or {}).items():
-            prompt += f"- {k}: {v}\n"
+            if isinstance(v, dict):
+                prompt += f"- {v.get('question', k)}: {v.get('answer','')}\n"
+            else:
+                prompt += f"- {k}: {v}\n"
 
         prompt += f"""
 
 ⚠ قواعد صارمة:
-- ممنوع ذكر أسماء رياضات نهائيًا. أمثلة محظورة: [{banned_ar}] / [{banned_en}]
-- إن انزلق اسم، استبدله بـ "—" مع وصف حسّي بديل.
-- تجنّب العبارات السطحية مثل: {avoid}
-- زِد الكثافة الحسّية (تذكير بالمفردات: {sensory})
-- اربط كل توصية بـ Layer Z بوضوح.
+- ممنوع تمامًا ذكر أسماء الرياضات: [{banned_ar}] / [{banned_en}]
+- لا مكان/زمن/تكلفة/عدّات/جولات/دقائق.
+- تجنّب العبارات السطحية: {avoid}
+- زد الكثافة الحسّية (تذكير: {sensory})
+- علّل كل توصية ببساطة (ليش تناسبه).
 
-✅ SELF‑CHECK قبل الإخراج:
-- لا توجد أسماء رياضات أو أدوات شهيرة.
-- لكل توصية ≥ 6 جمل مفيدة، وتحتوي العناصر الستة المطلوبة.
+✅ SELF-CHECK:
+- صفر أسماء رياضية وأرقام زمن/عدّات.
+- لكل توصية ≥ 6 جمل مفيدة وتتضمن العناصر المطلوبة.
 
-🎯 أعطني ثلاث «تجارب حركة» بالضبط:
-
+🎯 أعطني ثلاث «تجارب حركة» بالضبط (JSON داخلي سيُبنى لاحقًا)، اكتب المحتوى النصي لهذه الحقول فقط:
 1) الهوية الأساسية:
    • المشهد: ...
    • الإحساس الداخلي: ...
-   • لماذا أنت (Layer Z): ...
-   • الملاءمة العملية: ...
-   • أول أسبوع: ...
+   • ليش تناسبك: ...
+   • أول أسبوع (نوعي): ...
    • مؤشرات التقدم: ...
 
 2) البديل الواقعي:
    • المشهد: ...
    • الإحساس الداخلي: ...
-   • لماذا أنت (Layer Z): ...
-   • الملاءمة العملية: ...
-   • أول أسبوع: ...
+   • ليش تناسبك: ...
+   • أول أسبوع (نوعي): ...
    • مؤشرات التقدم: ...
 
 3) الابتكارية/المزيج:
    • المشهد: ...
    • الإحساس الداخلي: ...
-   • لماذا أنت (Layer Z): ...
-   • الملاءمة العملية: ...
-   • أول أسبوع: ...
+   • ليش تناسبك: ...
+   • أول أسبوع (نوعي): ...
    • مؤشرات التقدم: ...
 """
     else:
-        banned = ", ".join(_BANNED_SPORT_TERMS_EN)
         avoid_en = ", ".join(_GENERIC_AVOID)
+        prompt = f"""🧠 User analysis (brief): {analysis.get('quick_profile','fallback')}
+{('🧭 ' + axes_context) if axes_context else ''}
 
-        prompt = f"""🧠 User Analysis:
-{analysis}
-"""
-        if isinstance(analysis, dict) and "silent_drivers" in analysis and analysis["silent_drivers"]:
-            prompt += "🧭 Silent Drivers:\n"
-            for s in analysis["silent_drivers"]:
-                prompt += f"- {s}\n"
-            prompt += "\n"
-
-        prompt += f"""👤 Smart Coach Profile:
+👤 Coach profile:
 Name: {personality.get("name")}
 Tone: {personality.get("tone")}
 Style: {personality.get("style")}
 Philosophy: {personality.get("philosophy")}
 
-📝 User Questionnaire Answers:
+📝 User answers (for reference, do not echo verbatim):
 """
         for k, v in (answers or {}).items():
-            prompt += f"- {k}: {v}\n"
+            if isinstance(v, dict):
+                prompt += f"- {v.get('question', k)}: {v.get('answer','')}\n"
+            else:
+                prompt += f"- {k}: {v}\n"
 
         prompt += f"""
 
-⚠ Hard Rules:
-- Absolutely NO sport names. Banned examples: [{banned}]
-- If any slips, replace with "—" and describe the experience instead.
+⚠ Hard rules:
+- No sport names whatsoever: [{banned_en}]
+- No place/time/cost/reps/sets/minutes.
 - Avoid generic phrases: {avoid_en}
-- Increase sensory density (setting/surface/rhythm/breathing/effort).
-- Tie each suggestion explicitly to Layer Z.
+- Increase sensory density; explain simply why it fits.
 
-✅ SELF‑CHECK before output:
-- No sport/tool names.
-- Each suggestion ≥ 6 useful sentences and includes all six items.
+✅ SELF-CHECK:
+- Zero sport names and numeric session details.
+- Each suggestion ≥ 6 meaningful sentences and includes the required parts.
 
-🎯 Return exactly three «movement experiences»:
-
-1) Core Identity:
+🎯 Return exactly three «movement experiences». Write only the textual content for these keys:
+1) Core identity:
    • Scene: ...
-   • Inner Sensation: ...
-   • Why you (Layer Z): ...
-   • Practical Fit: ...
-   • First Week: ...
-   • Progress Markers: ...
+   • Inner sensation: ...
+   • Why it fits you: ...
+   • First week (qualitative): ...
+   • Progress markers: ...
 
-2) Practical Alternative:
+2) Practical alternative:
    • Scene: ...
-   • Inner Sensation: ...
-   • Why you (Layer Z): ...
-   • Practical Fit: ...
-   • First Week: ...
-   • Progress Markers: ...
+   • Inner sensation: ...
+   • Why it fits you: ...
+   • First week (qualitative): ...
+   • Progress markers: ...
 
-3) Creative/Mix:
+3) Creative / mix:
    • Scene: ...
-   • Inner Sensation: ...
-   • Why you (Layer Z): ...
-   • Practical Fit: ...
-   • First Week: ...
-   • Progress Markers: ...
+   • Inner sensation: ...
+   • Why it fits you: ...
+   • First week (qualitative): ...
+   • Progress markers: ...
 """
     return prompt
 
 
 # ------------------------------
-# [3] (اختياري) برومبت واضح للهوية بلا أسماء لاستخدامات أخرى
+# [3] نسخة مطابقة لفلسفة "هوية بلا أسماء"
 # ------------------------------
 def generate_main_prompt_identity(analysis, answers, personality, lang="العربية"):
-    """
-    نسخة مطابقة لفلسفة "هوية بلا أسماء"، مفيدة إذا احتجت استدعاءً صريحًا من ملفات ثانية.
-    """
     return generate_main_prompt(analysis, answers, personality, lang)
