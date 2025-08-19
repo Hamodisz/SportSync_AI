@@ -7,7 +7,7 @@ core/backend_gpt.py
 - يحاول مرتين قبل السقوط للـ fallback. يدعم العربية/English.
 """
 
-from __future__ import annotations
+from _future_ import annotations
 
 import os, json, re
 from typing import Any, Dict, List, Optional
@@ -118,12 +118,13 @@ _SENSORY = [
     "إحساس","امتداد","حرق لطيف","صفاء","تماسك"
 ]
 
-# كلمات/أنماط محظورة (أرقام زمن/عدّات/تكلفة/مكان مباشر)
+# كلمات/أنماط محظورة (أرقام زمن/عدّات/تكلفة/مكان مباشر) – شملت صيغ «داخلية/خارجية»
 _FORBIDDEN_SENT = re.compile(
     r"(\b\d+(\.\d+)?\s*(?:min|mins|minute|minutes|second|seconds|hour|hours|دقيقة|دقائق|ثانية|ثواني|ساعة|ساعات)\b|"
     r"(?:rep|reps|set|sets|تكرار|عدة|عدات|جولة|جولات|×)|"
     r"(?:تكلفة|ميزانية|cost|budget|ريال|دولار|\$|€)|"
-    r"(?:بالبيت|في البيت|قرب المنزل|بالمنزل|في النادي|في الجيم|صالة|نادي|جيم|غرفة|ساحة|ملعب|حديقة|شاطئ|طبيعة|خارجي|داخلي|outdoor|indoor|park|beach|gym|studio))",
+    r"(?:بالبيت|في\s*البيت|قرب\s*المنزل|بالمنزل|في\s*النادي|في\s*الجيم|صالة|نادي|جيم|غرفة|ساحة|ملعب|حديقة|شاطئ|"
+    r"طبيعة|خارجي(?:ة)?|داخل(?:ي|ية)?|outdoor|indoor|park|beach|gym|studio))",
     re.IGNORECASE
 )
 
@@ -166,6 +167,53 @@ def _is_meaningful(rec: Dict[str, Any]) -> bool:
         rec.get("progress_markers","")
     ]).strip()
     return len(blob) >= 80
+
+# ========= Alignment with Z-axes (هام لتحسين الجودة) =========
+_AR_TOK = {
+    "calm": ["هدوء","تنفّس","بطيء","استرخاء","صفاء","يركّز","سكون"],
+    "adren": ["اندفاع","سريع","انفجار","إثارة","مجازفة","اشتباك","قوة لحظية"],
+    "solo": ["لوحدك","فردي","مع نفسك","ذاتية"],
+    "group": ["مع ناس","جماعة","شريك","فريق","تفاعل"],
+    "tech": ["تفاصيل","إتقان","تقنية","صقل","ضبط","تكرار واعٍ"],
+    "intu": ["إحساسك","حدس","تلقائي","على المزاج","بديهة"]
+}
+_EN_TOK = {
+    "calm": ["calm","slow","breath","quiet","settle","soft","mindful"],
+    "adren": ["fast","burst","risk","edge","explosive","adrenaline"],
+    "solo": ["solo","alone","by yourself","individual"],
+    "group": ["with people","partner","team","group","social"],
+    "tech": ["detail","technique","repeat to perfect","precise","drill"],
+    "intu": ["by feel","intuitive","impulsive","flow with it","go with it"]
+}
+
+def _axes_expectations(axes: Dict[str, float], lang: str) -> Dict[str, List[str]]:
+    tok = _AR_TOK if lang == "العربية" else _EN_TOK
+    out: Dict[str, List[str]] = {}
+    if not isinstance(axes, dict): return out
+    # calm_adrenaline ∈ [-1..+1]
+    ca = axes.get("calm_adrenaline")
+    if isinstance(ca, (int, float)):
+        out["calm_adrenaline"] = tok["adren"] if ca >= 0.5 else tok["calm"] if ca <= -0.5 else []
+    # solo_group
+    sg = axes.get("solo_group")
+    if isinstance(sg, (int, float)):
+        out["solo_group"] = tok["group"] if sg >= 0.5 else tok["solo"] if sg <= -0.5 else []
+    # tech_intuition
+    ti = axes.get("tech_intuition")
+    if isinstance(ti, (int, float)):
+        out["tech_intuition"] = tok["intu"] if ti >= 0.5 else tok["tech"] if ti <= -0.5 else []
+    return out
+
+def _mismatch_with_axes(rec: Dict[str, Any], axes: Dict[str, float], lang: str) -> bool:
+    exp = _axes_expectations(axes or {}, lang)
+    if not exp: return False
+    blob = " ".join(str(rec.get(k,"")) for k in ("scene","inner_sensation","why_you","first_week"))
+    blob_l = blob.lower()
+    # إذا في توقع كلمات ولم نجد أي كلمة مقابلة → تعارض
+    for k, words in exp.items():
+        if words and not any(w.lower() in blob_l for w in words):
+            return True
+    return False
 
 def _sanitize_record(r: Dict[str, Any]) -> Dict[str, Any]:
     """ينظّف حقول التوصية من المحظورات ويشيل practical_fit إن وُجد."""
@@ -259,7 +307,7 @@ def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
     if lang == "العربية":
         sys = (
             "أنت مدرّب SportSync AI بنبرة إنسانية لطيفة (صديق محترف). "
-            "ممنوع ذكر المكان/الزمن/التكلفة/العدّات/الجولات أو أي أرقام دقائق. "
+            "لا تذكر المكان/الزمن/التكلفة/العدّات/الجولات أو أي أرقام دقائق. "
             "استخدم لغة حسّية واضحة وقوائم قصيرة. أعِد JSON فقط."
         )
         usr = (
@@ -268,6 +316,7 @@ def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
             "{\"recommendations\":[{\"scene\":\"...\",\"inner_sensation\":\"...\",\"why_you\":\"...\","
             "\"first_week\":\"...\",\"progress_markers\":\"...\",\"difficulty\":1-5,\"vr_idea\":\"...\"}]}\n"
             "قواعد الأسلوب:\n"
+            "- لهجة صديق مهني وقصيرة.\n"
             "- 'why_you' سبب واضح وبشري.\n"
             "- 'first_week' خطوات نوعية بلا أرقام/عدّات/دقائق.\n"
             "- 'progress_markers' مؤشرات إحساس/سلوك دون أزمنة.\n\n"
@@ -442,15 +491,42 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     parsed = _parse_json(raw1) or []
     cleaned = _sanitize_fill(parsed, lang)
 
+    # ===== بوابة محاذاة Z-axes + إصلاح بنبرة إنسانية =====
+    axes = (analysis.get("z_axes") or {}) if isinstance(analysis, dict) else {}
+    mismatch_axes = any(_mismatch_with_axes(rec, axes, lang) for rec in cleaned)
+
     # فحص الجودة ومحاولة إصلاح ثانية
-    need_repair = any(_too_generic(" ".join([c.get("scene",""), c.get("why_you","")])) for c in cleaned)
+    need_repair_generic = any(_too_generic(" ".join([c.get("scene",""), c.get("why_you","")])) for c in cleaned)
+    need_repair = need_repair_generic or mismatch_axes
+
     if need_repair:
+        # نبني تلميحات محاذاة للموديل
+        exp = _axes_expectations(axes or {}, lang)
+        align_hint = ""
+        if exp:
+            if lang == "العربية":
+                align_hint = (
+                    "حاذِ التوصيات مع محاور Z:\n"
+                    f"- هدوء/أدرينالين → استخدم مفردات: {', '.join(exp.get('calm_adrenaline', []))}\n"
+                    f"- فردي/جماعي → مفردات: {', '.join(exp.get('solo_group', []))}\n"
+                    f"- تقني/حدسي → مفردات: {', '.join(exp.get('tech_intuition', []))}\n"
+                )
+            else:
+                align_hint = (
+                    "Align with Z-axes:\n"
+                    f"- Calm/Adrenaline words: {', '.join(exp.get('calm_adrenaline', []))}\n"
+                    f"- Solo/Group words: {', '.join(exp.get('solo_group', []))}\n"
+                    f"- Technical/Intuitive words: {', '.join(exp.get('tech_intuition', []))}\n"
+                )
+
         repair_prompt = {
             "role":"user",
             "content":(
-                "أعد صياغة التوصيات بجودة أعلى وبنبرة إنسانية. "
-                "تذكير: لا مكان/زمن/تكلفة ولا أرقام/عدّات/جولات/دقائق. "
-                "املأ why_you و first_week بعناصر حسّية نوعية واضحة. JSON فقط."
+                ("أعد صياغة التوصيات بنبرة إنسانية حارة وواضحة. " if lang=="العربية"
+                 else "Rewrite with a warm, human tone. ") +
+                "تذكير صارم: لا مكان/زمن/تكلفة ولا أرقام/عدّات/جولات/دقائق. "
+                "املأ why_you و first_week بعناصر حسّية نوعية. JSON فقط.\n\n" +
+                align_hint
             )
         }
         try:
@@ -481,6 +557,13 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
 
     cards = [_format_card(cleaned[i], i, lang) for i in range(3)]
 
+    # لوق مع أعلام الجودة
+    quality_flags = {
+        "generic": any(_too_generic(" ".join([c.get("scene",""), c.get("why_you","")])) for c in cleaned),
+        "low_sensory": any(not _has_sensory(" ".join([c.get("scene",""), c.get("inner_sensation","")])) for c in cleaned),
+        "mismatch_axes": mismatch_axes
+    }
+
     try:
         log_user_insight(
             user_id=user_id,
@@ -490,7 +573,8 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
                 "analysis": analysis,
                 "silent_drivers": silent,
                 "encoded_profile": profile,
-                "recommendations": cleaned
+                "recommendations": cleaned,
+                "quality_flags": quality_flags
             },
             event_type="initial_recommendation"
         )
