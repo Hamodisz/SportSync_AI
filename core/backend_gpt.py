@@ -6,7 +6,7 @@ core/backend_gpt.py
 يحاول مرتين قبل السقوط للـ fallback. يدعم العربية/English.
 """
 
-from __future__ import annotations
+from _future_ import annotations
 
 import os, json, re
 from typing import Any, Dict, List, Optional
@@ -59,17 +59,48 @@ except Exception:
         def analyze_silent_drivers(answers: Dict[str, Any], lang: str = "العربية") -> List[str]:
             return ["إنجازات قصيرة", "نفور من التكرار", "تفضيل تحدّي ذهني"]
 
-# (جديد) مُشفِّر الإجابات (اختياري): لو موجود نستفيد منه، لو لا نتجاهله
+# ========= (جديد) مُشفِّر الإجابات (اختياري) =========
 def _extract_profile(answers: Dict[str, Any], lang: str) -> Optional[Dict[str, Any]]:
-    prof = answers.get("_profile_")
-    if prof and isinstance(prof, dict):
+    """
+    يعيد بروفايل مُشفَّر إن وُجد في answers تحت المفتاح "profile"،
+    أو يحاول توليده عبر core.answers_encoder.encode_answers (إن توفّر).
+    يُرجِع None لو غير متاح.
+    """
+    # لو المكلنت مرّر بروفايل جاهز
+    prof = answers.get("profile")
+    if isinstance(prof, dict):
         return prof
-    # محاولة توليد سريعة إن توفر الموديول
+
+    # محاولة توليد سريع
+    encode_answers = None
     try:
-       from core.answers_encoder import encode_answers
-profile = encode_answers(answers, lang)
-analysis["encoded_profile"] = profile
-        return prof
+        from core.answers_encoder import encode_answers as _enc
+        encode_answers = _enc
+    except Exception:
+        try:
+            from analysis.answers_encoder import encode_answers as _enc
+            encode_answers = _enc
+        except Exception:
+            encode_answers = None
+
+    if encode_answers is None:
+        return None
+
+    try:
+        enc = encode_answers(answers, lang=lang)
+        preferences = enc.get("prefs", enc.get("preferences", {}))
+        z_markers = enc.get("z_markers", [])
+        signals   = enc.get("signals", [])
+        hints = " | ".join([*z_markers, *signals])[:1000]  # نص موجز للبرومبت
+
+        return {
+            "scores": enc.get("scores", {}),
+            "axes": enc.get("axes", {}),
+            "preferences": preferences,
+            "hints_for_prompt": hints,
+            "vr_inclination": enc.get("vr_inclination", 0),
+            "confidence": enc.get("confidence", 0.0),
+        }
     except Exception:
         return None
 
@@ -93,7 +124,7 @@ def _violates(t: str) -> bool:   return bool(_name_re.search(t or ""))
 def _answers_to_bullets(answers: Dict[str, Any]) -> str:
     out = []
     for k, v in (answers or {}).items():
-        if k == "_profile_":
+        if k == "profile":
             continue
         if isinstance(v, dict):
             q, a = v.get("question", k), v.get("answer", "")
@@ -186,9 +217,9 @@ def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
     persona = personality if isinstance(personality, str) else json.dumps(personality, ensure_ascii=False)
 
     # (جديد) حوافز البروفايل المُشفَّر إن وُجد
-    profile = answers.get("_profile_")
+    profile = analysis.get("encoded_profile")
     profile_hints = ""
-    profile_prefs = {}
+    profile_prefs: Dict[str, Any] = {}
     if isinstance(profile, dict):
         profile_hints = profile.get("hints_for_prompt", "")
         profile_prefs = profile.get("preferences", {})
@@ -196,7 +227,7 @@ def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
     if lang == "العربية":
         sys = (
             "أنت مدرّب SportSync AI. امنع ذكر أسماء الرياضات/الأدوات. "
-            "استخدم لغة حسّية وربط Layer-Z. أخرج JSON فقط."
+            "استخدم لغة حسّية واربط Layer-Z. أخرج JSON فقط."
         )
         usr = (
             "حوّل بيانات المستخدم إلى ثلاث توصيات هوية حركة بلا أسماء رياضات.\n"
@@ -294,18 +325,21 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     # (جديد) التقاط بروفايل الترميز إن وُجد (أو توليده)
     profile = _extract_profile(answers, lang)
     if profile:
-        analysis["encoded_profile"] = {
-            "scores": profile.get("scores", {}),
-            "preferences": profile.get("preferences", {}),
-            "hints_for_prompt": profile.get("hints_for_prompt", "")
-        }
+        analysis["encoded_profile"] = profile
+        # لراحة التحليل/البرومبت:
+        if "axes" in profile:
+            analysis["z_axes"] = profile["axes"]
+        if "scores" in profile:
+            analysis["z_scores"] = profile["scores"]
 
     # شخصية المدرب من الكاش
     persona = get_cached_personality(analysis, lang=lang)
     if not persona:
         persona = {"name":"SportSync Coach","tone":"حازم-هادئ","style":"حسّي واقعي","philosophy":"هوية حركة بلا أسماء"}
-        try: save_cached_personality(analysis, persona, lang=lang)
-        except Exception: pass
+        try:
+            save_cached_personality(analysis, persona, lang=lang)
+        except Exception:
+            pass
 
     # === أول محاولة
     msgs = _json_prompt(analysis, answers, persona, lang)
@@ -323,7 +357,7 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     cleaned = _sanitize_fill(parsed, lang)
 
     # فحص الجودة ومحاولة إصلاح ثانية
-    need_repair = any(_too_generic(" ".join([c.get("scene",""),c.get("why_you","")])) for c in cleaned)
+    need_repair = any(_too_generic(" ".join([c.get("scene",""), c.get("why_you","")])) for c in cleaned)
     if need_repair:
         repair_prompt = {
             "role":"user",
@@ -335,16 +369,25 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         }
         try:
             resp2 = OpenAI_CLIENT.chat.completions.create(
-                model=CHAT_MODEL, messages=msgs+[{"role":"assistant","content":raw1}, repair_prompt],
+                model=CHAT_MODEL,
+                messages=msgs + [{"role":"assistant","content":raw1}, repair_prompt],
                 temperature=0.85, max_tokens=1200
             )
             raw2 = (resp2.choices[0].message.content or "").strip()
             if _violates(raw2): raw2 = _mask_names(raw2)
             parsed2 = _parse_json(raw2) or []
             cleaned2 = _sanitize_fill(parsed2, lang)
+
+            # اختر الأفضل بدرجة طول حسّي أعلى
             def score(r: Dict[str,Any]) -> int:
-                txt = " ".join([r.get("scene",""), r.get("inner_sensation",""), r.get("why_you",""), r.get("first_week","")])
+                txt = " ".join([
+                    r.get("scene",""),
+                    r.get("inner_sensation",""),
+                    r.get("why_you",""),
+                    r.get("first_week","")
+                ])
                 return len(txt)
+
             if sum(map(score, cleaned2)) > sum(map(score, cleaned)):
                 cleaned = cleaned2
         except Exception:
@@ -357,7 +400,7 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
             user_id=user_id,
             content={
                 "language": lang,
-                "answers": {k:v for k,v in answers.items() if k!="_profile_"},
+                "answers": {k: v for k, v in answers.items() if k != "profile"},
                 "analysis": analysis,
                 "silent_drivers": silent,
                 "encoded_profile": profile,
