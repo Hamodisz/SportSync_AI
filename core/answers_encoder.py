@@ -22,7 +22,7 @@ Encoder يحوّل إجابات الكويز إلى بروفايل مضغوط ق
     analysis["z_markers"]= encoded["z_markers"]
 """
 
-from __future__ import annotations
+from _future_ import annotations
 import re
 from typing import Dict, Any, List, Union
 
