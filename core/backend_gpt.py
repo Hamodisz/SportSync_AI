@@ -2,8 +2,9 @@
 """
 core/backend_gpt.py
 -------------------
-توصيات "هوية رياضية بلا أسماء" بثلاث كروت حسّية منظمة + طبقة Z + خطة أسبوع وبديل VR.
-يحاول مرتين قبل السقوط للـ fallback. يدعم العربية/English.
+توصيات "هوية رياضية بلا أسماء" بثلاث كروت حسّية منظمة + طبقة Z + خطة أسبوع (نوعية فقط) + فكرة VR.
+- لا مكان/زمن/تكلفة ولا عدّات/جولات/دقائق في الإخراج.
+- يحاول مرتين قبل السقوط للـ fallback. يدعم العربية/English.
 """
 
 from __future__ import annotations
@@ -66,7 +67,6 @@ def _extract_profile(answers: Dict[str, Any], lang: str) -> Optional[Dict[str, A
     أو يحاول توليده عبر core.answers_encoder.encode_answers (إن توفّر).
     يُرجِع None لو غير متاح.
     """
-    # لو المكلنت مرّر بروفايل جاهز
     prof = answers.get("profile")
     if isinstance(prof, dict):
         return prof
@@ -113,10 +113,17 @@ _AVOID_GENERIC = [
     "لا يهم النوع","تحرك فقط","نشاط عام","رياضة عامة","أنت تعرف ما يناسبك"
 ]
 _SENSORY = [
-    "تنفّس","إيقاع","توتّر","استرخاء","دفء","برودة","توازن","نبض",
+    "تنفّس","إيقاع","توتر","استرخاء","دفء","برودة","توازن","نبض",
     "تعرّق","شدّ","مرونة","هدوء","تركيز","تدفّق","انسجام","ثِقل","خِفّة",
     "إحساس","امتداد","حرق لطيف","صفاء","تماسك"
 ]
+
+# كلمات/أنماط محظورة (أرقام زمن/عدّات/تكلفة/مكان مباشر)
+_NUM_TIME_COST_PAT = re.compile(
+    r"(\b\d+(\.\d+)?\b|\b\d+\s*(min|mins|minute|minutes|second|seconds|hour|hours|جولة|جولات|عدة|عدات|دقيقة|دقائق|ساعة|ساعات)\b|"
+    r"تكلفة|cost|budget|ريال|دولار|$|€|مكان|near home|بالبيت|في النادي|في الجيم)",
+    re.IGNORECASE
+)
 
 def _mask_names(t: str) -> str: return _name_re.sub("—", t or "")
 def _violates(t: str) -> bool:   return bool(_name_re.search(t or ""))
@@ -134,127 +141,164 @@ def _answers_to_bullets(answers: Dict[str, Any]) -> str:
         out.append(f"- {q}: {a}")
     return "\n".join(out)
 
-def _too_generic(text: str, min_chars: int = 320) -> bool:
+def _too_generic(text: str, min_chars: int = 280) -> bool:
     t = (text or "").strip()
     return len(t) < min_chars or any(p in t for p in _AVOID_GENERIC)
 
-def _has_sensory(text: str, min_hits: int = 4) -> bool:
+def _has_sensory(text: str, min_hits: int = 3) -> bool:
     return sum(1 for w in _SENSORY if w in (text or "")) >= min_hits
 
 def _is_meaningful(rec: Dict[str, Any]) -> bool:
     blob = " ".join([
         rec.get("scene",""), rec.get("inner_sensation",""),
-        rec.get("why_you",""), rec.get("practical_fit",""),
-        rec.get("first_week",""), rec.get("progress_markers","")
+        rec.get("why_you",""), rec.get("first_week",""),
+        rec.get("progress_markers","")
     ]).strip()
     return len(blob) >= 80
 
+def _strip_forbidden(text: str) -> str:
+    """يزيل الأرقام ودقائق/جولات/تكلفة/مكان مباشر من النص."""
+    if not text: return text
+    return _NUM_TIME_COST_PAT.sub("", text)
+
+def _sanitize_record(r: Dict[str, Any]) -> Dict[str, Any]:
+    """ينظّف حقول التوصية من المحظورات ويشيل practical_fit إن وُجد."""
+    r = dict(r or {})
+    r.pop("practical_fit", None)  # حذف الحقل بالكامل
+
+    for k in ("scene","inner_sensation","why_you","first_week","progress_markers","vr_idea"):
+        if isinstance(r.get(k), str):
+            r[k] = _strip_forbidden(_mask_names(r[k].strip()))
+    # ضبط الصعوبة ضمن 1..5
+    try:
+        d = int(r.get("difficulty", 3))
+        r["difficulty"] = max(1, min(5, d))
+    except Exception:
+        r["difficulty"] = 3
+    return r
+
 def _fallback_identity(i: int, lang: str) -> Dict[str, Any]:
-    presets_ar = [
-        {
-            "scene":"بيئة متغيّرة السطح بإيقاع متوسط وبوابات لطاقة النفس المفتوحة.",
-            "inner_sensation":"تدفّق دافئ ووضوح ذهني تدريجي.",
-            "why_you":"تحب تحدّي ذاتك بدون رتابة وتبحث عن إحكام داخلي (Layer Z).",
-            "practical_fit":"20–30 دقيقة قرب المنزل، تكلفة صفر، أمان عالٍ.",
-            "first_week":"3 جلسات؛ 5 د دفء؛ تتبّع النفس؛ تدوين إحساس ما بعد.",
-            "progress_markers":"تنفّس أهدأ، رغبة للزيادة، صفاء أطول.",
-            "difficulty":2,"vr_idea":"طورها بتحديات واقع افتراضي تكتيكية خفيفة."
-        },
-        {
-            "scene":"مساحة داخلية بسيطة وحركة مقاومة متناغمة لليدين والجذع.",
-            "inner_sensation":"حرارة لطيفة وتمركز بالجذع.",
-            "why_you":"تحتاج إنجاز ملموس سريع بعيدًا عن التعقيد (Layer Z).",
-            "practical_fit":"15–20 دقيقة بالبيت، أدوات بسيطة.",
-            "first_week":"3 جلسات؛ 6 حركات × جولتين؛ سجل شدة الجهد.",
-            "progress_markers":"ثبات النواة، نوم أعمق، طاقة أعلى.",
-            "difficulty":3,"vr_idea":"استخدم محاكيات وزن/توازن داخل VR."
-        },
-        {
-            "scene":"أرضية ثابتة ومجال رؤية واسع مع تمدّد واعٍ بطيء.",
-            "inner_sensation":"هدوء عصبي وتخفيف شدّ المفاصل الدقيقة.",
-            "why_you":"تحتاج إعادة ضبط عصبي-عاطفي ترفع تقبّل الجهد (Layer Z).",
-            "practical_fit":"10–15 دقيقة عند الغروب، مساحة صغيرة.",
-            "first_week":"حركة واعية + 3 دورات تنفّس؛ مذكرات قبل/بعد.",
-            "progress_markers":"توتر رقبة أقل، تفكير أصفى، تحمّل أفضل.",
-            "difficulty":1,"vr_idea":"جلسات إسترخاء تفاعلية داخل الطبيعة الافتراضية."
-        }
-    ]
-    presets_en = [
-        {
-            "scene":"Variable outdoor surface, medium rhythm, open-chest breathing gates.",
-            "inner_sensation":"Warm limb flow; clearing mind.",
-            "why_you":"Craves non-repetitive self-challenge with internal mastery (Layer Z).",
-            "practical_fit":"20–30 min near home; zero cost; safe.",
-            "first_week":"3 sessions; 5-min warm-up; breath tracking; post-notes.",
-            "progress_markers":"Calmer breath, urge to go longer, clearer focus.",
-            "difficulty":2,"vr_idea":"Light tactical VR challenges as variant."
-        },
-        {
-            "scene":"Simple indoor space; rhythmic body-weight resistance (arms + trunk).",
-            "inner_sensation":"Gentle heat; centered core stability.",
-            "why_you":"Wants quick, tangible progress without complexity (Layer Z).",
-            "practical_fit":"15–20 min at home; minimal tools.",
-            "first_week":"3 sessions; 6 basics × 2 rounds; log RPE.",
-            "progress_markers":"Core control, deeper sleep, higher energy.",
-            "difficulty":3,"vr_idea":"Balance/weight simulations in VR."
-        },
-        {
-            "scene":"Stable floor, wide FoV; slow aware movement with elastic stretches.",
-            "inner_sensation":"Deep nervous calm; joint decompression.",
-            "why_you":"Needs neuro-emotional reset to boost cardio tolerance (Layer Z).",
-            "practical_fit":"10–15 min at dusk; tiny space.",
-            "first_week":"Mindful mobility + 3 breath cycles; before/after log.",
-            "progress_markers":"Less neck/jaw tension; clearer thinking.",
-            "difficulty":1,"vr_idea":"Immersive nature-relax VR sessions."
-        }
-    ]
-    return (presets_ar if lang == "العربية" else presets_en)[i % 3]
+    """فولباك بلا أرقام ولا مكان/زمن/تكلفة."""
+    if lang == "العربية":
+        presets = [
+            {
+                "scene":"مساحة مفتوحة بإحساس انسيابي وتغيّر بسيط في السطح.",
+                "inner_sensation":"دفء تدريجي ووضوح ذهني هادئ.",
+                "why_you":"تحب التقدّم السلس بلا رتابة وتبحث عن سيطرة داخلية بسيطة.",
+                "first_week":"ابدأ بحركات تفتح النفس وتبني الإيقاع. زِد استكشاف الحركة وفق إحساسك.",
+                "progress_markers":"تنفّس أهدأ، صفاء بعد الجلسة، رغبة طبيعية للاستمرار.",
+                "difficulty":2,
+                "vr_idea":"نسخة افتراضية خفيفة تُبرز الإيقاع والتتبع."
+            },
+            {
+                "scene":"مساحة داخلية بسيطة تسمح بحركة متناغمة للجذع والذراعين.",
+                "inner_sensation":"حرارة لطيفة مع إحساس بالتماسك في الوسط.",
+                "why_you":"تحب تقدّم واضح وقابل للملاحظة دون تعقيد.",
+                "first_week":"ركّز على حركات تُشغّل الجذع وتُشعر بالثبات. لاحظ حالتك قبل وبعد.",
+                "progress_markers":"إحساس أقوى بالثبات، نوم أعمق، طاقة أهدأ خلال اليوم.",
+                "difficulty":3,
+                "vr_idea":"محاكاة توازن بسيطة لتعزيز التمركز."
+            },
+            {
+                "scene":"مكان هادئ مع مجال رؤية واسع وحركة واعية بطيئة.",
+                "inner_sensation":"تهدئة عصبية وإطالة مريحة للمفاصل.",
+                "why_you":"تحتاج إعادة تنظيم شعوري ترفع تقبّل الجهد تدريجيًا.",
+                "first_week":"حرّك ببطء مع متابعة النفس ثم أضف تمديدات مرنة حسب ما يناسب جسدك.",
+                "progress_markers":"توتر أقل في الرقبة/الفك، تركيز أوضح، توازن أفضل.",
+                "difficulty":1,
+                "vr_idea":"جلسة طبيعة افتراضية للاسترخاء الذهني."
+            }
+        ]
+    else:
+        presets = [
+            {
+                "scene":"Open area with gentle flow and slight surface variation.",
+                "inner_sensation":"Warm build-up with calm clarity.",
+                "why_you":"You like smooth progress without boredom and value inner control.",
+                "first_week":"Use easy movements that open your breath; explore flow by feel.",
+                "progress_markers":"Calmer breath, post-session clarity, natural urge to continue.",
+                "difficulty":2,
+                "vr_idea":"Light rhythm/tracking VR variant."
+            },
+            {
+                "scene":"Simple indoor space allowing rhythmic trunk and arm flow.",
+                "inner_sensation":"Gentle heat with a centered core.",
+                "why_you":"You want clear, noticeable progress without complexity.",
+                "first_week":"Pick movements that engage the core and build stability. Note before/after.",
+                "progress_markers":"Stronger stability, deeper sleep, steadier energy.",
+                "difficulty":3,
+                "vr_idea":"Simple balance VR to reinforce centering."
+            },
+            {
+                "scene":"Quiet space with wide field of view and slow mindful motion.",
+                "inner_sensation":"Neural calm and comfortable decompression.",
+                "why_you":"You need a gentle reset that raises tolerance for effort over time.",
+                "first_week":"Move slowly while tracking breath; add elastic stretches as feels right.",
+                "progress_markers":"Less neck/jaw tension, clearer focus, better balance.",
+                "difficulty":1,
+                "vr_idea":"Immersive nature-relax session."
+            }
+        ]
+    return presets[i % 3]
 
 def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
                  personality: Any, lang: str) -> List[Dict[str, str]]:
     bullets = _answers_to_bullets(answers)
-    silent = analysis.get("silent_drivers", [])
     persona = personality if isinstance(personality, str) else json.dumps(personality, ensure_ascii=False)
 
     # (جديد) حوافز البروفايل المُشفَّر إن وُجد
     profile = analysis.get("encoded_profile")
     profile_hints = ""
-    profile_prefs: Dict[str, Any] = {}
     if isinstance(profile, dict):
-        profile_hints = profile.get("hints_for_prompt", "")
-        profile_prefs = profile.get("preferences", {})
+        profile_hints = profile.get("hints_for_prompt", "") or ", ".join(profile.get("preferences", {}).values())
 
     if lang == "العربية":
         sys = (
-            "أنت مدرّب SportSync AI. امنع ذكر أسماء الرياضات/الأدوات. "
-            "استخدم لغة حسّية واربط Layer-Z. أخرج JSON فقط."
+            "أنت مدرّب SportSync AI.\n"
+            "- اكتب بلغة بسيطة جدًا وجُمل قصيرة.\n"
+            "- لا تذكر عبارة 'Layer Z' لفظيًا؛ اشرح السبب ببساطة.\n"
+            "- ممنوع: المكان/الزمن/التكلفة، وممنوع العدّات/الجولات/الدقائق.\n"
+            "- استخدم قوائم نقطية واضحة.\n"
+            "- أعِد JSON فقط."
         )
         usr = (
-            "حوّل بيانات المستخدم إلى ثلاث توصيات هوية حركة بلا أسماء رياضات.\n"
-            "Return JSON ONLY:\n"
-            "{\"recommendations\":[{\"scene\":\"...\",\"inner_sensation\":\"...\",\"why_you\":\"...\",\"practical_fit\":\"...\","
+            "حوّل بيانات المستخدم إلى ثلاث توصيات حركة بلا أسماء رياضات.\n"
+            "أعِد JSON فقط بالمفاتيح:\n"
+            "{\"recommendations\":[{\"scene\":\"...\",\"inner_sensation\":\"...\",\"why_you\":\"...\","
             "\"first_week\":\"...\",\"progress_markers\":\"...\",\"difficulty\":1-5,\"vr_idea\":\"...\"}]}\n"
-            "لو ظهر اسم رياضة استبدله بـ \"—\" مع بديل حسّي.\n\n"
+            "قواعد الأسلوب:\n"
+            "- 'why_you' سبب واضح وبسيط.\n"
+            "- 'first_week' خطوات نوعية (بدون أرقام/جولات/عدّات/دقائق).\n"
+            "- 'progress_markers' علامات إحساس/سلوك بدون أرقام زمنية.\n\n"
             f"— شخصية المدرب:\n{persona}\n\n"
-            "— تحليل المستخدم (طبقة Z مضمنة):\n" + json.dumps(analysis, ensure_ascii=False) + "\n\n"
+            "— تحليل المستخدم:\n" + json.dumps(analysis, ensure_ascii=False) + "\n\n"
             "— إجابات موجزة:\n" + bullets + "\n\n"
-            + ("— تلميحات بروفايل مُشفَّر:\n" + profile_hints + "\n\n" if profile_hints else "")
-            + ("— تفضيلات مستنتجة:\n" + json.dumps(profile_prefs, ensure_ascii=False) + "\n\n" if profile_prefs else "") +
-            "قيود: 3 توصيات بالضبط، مشهد/إحساس/لماذا أنت/ملاءمة (مكان/زمن/تكلفة/أمان)/أسبوع أول (3 خطوات محددة)/مؤشرات (2–4 أسابيع)/صعوبة/فكرة VR."
+            + ("— إشارات بروفايل:\n" + profile_hints + "\n\n" if profile_hints else "")
+            + "أعِد JSON فقط، بدون أي نص خارجي."
         )
     else:
         sys = (
-            "You are SportSync AI coach. Never name sports. Use sensory language + Layer-Z. JSON only."
+            "You are SportSync AI coach.\n"
+            "- Very simple language, short sentences.\n"
+            "- Do NOT mention 'Layer Z' explicitly; explain plainly.\n"
+            "- FORBIDDEN: place/time/cost and reps/sets/minutes.\n"
+            "- Use clear bullets.\n"
+            "- Return JSON only."
         )
         usr = (
-            "Create THREE movement-identity suggestions with NO sports names.\n"
-            "Return JSON ONLY with keys: scene, inner_sensation, why_you, practical_fit, first_week, progress_markers, difficulty(1-5), vr_idea.\n"
-            "If a sport name appears, replace with '—' and add a sensory substitute.\n\n"
+            "Create THREE movement-identity suggestions (no sport names).\n"
+            "Return JSON ONLY with keys:\n"
+            "{\"recommendations\":[{\"scene\":\"...\",\"inner_sensation\":\"...\",\"why_you\":\"...\","
+            "\"first_week\":\"...\",\"progress_markers\":\"...\",\"difficulty\":1-5,\"vr_idea\":\"...\"}]}\n"
+            "Style rules:\n"
+            "- 'why_you' plain and specific.\n"
+            "- 'first_week' qualitative steps (no numbers/reps/sets/minutes).\n"
+            "- 'progress_markers' qualitative cues (no time numbers).\n\n"
             f"— Coach persona:\n{persona}\n\n"
-            "— User analysis (Layer-Z included):\n" + json.dumps(analysis, ensure_ascii=False) + "\n\n"
+            "— User analysis:\n" + json.dumps(analysis, ensure_ascii=False) + "\n\n"
             "— Bulleted answers:\n" + bullets + "\n\n"
-            + ("— Encoded profile hints:\n" + profile_hints + "\n\n" if profile_hints else "")
-            + ("— Derived preferences:\n" + json.dumps(profile_prefs, ensure_ascii=False) + "\n\n" if profile_prefs else "")
+            + ("— Profile hints:\n" + profile_hints + "\n\n" if profile_hints else "")
+            + "Return JSON only."
         )
     return [{"role": "system", "content": sys}, {"role": "user", "content": usr}]
 
@@ -277,35 +321,82 @@ def _parse_json(text: str) -> Optional[List[Dict[str, Any]]]:
             pass
     return None
 
+def _to_bullets(text: str, max_items: int = 5) -> List[str]:
+    if not text: return []
+    raw = re.split(r"[;\n\.،]+", text)
+    items = [i.strip(" -•\t ") for i in raw if i.strip()]
+    return items[:max_items]
+
+def _one_liner(*parts: str, max_len: int = 120) -> str:
+    s = " — ".join([p.strip() for p in parts if p and p.strip()])
+    return s[:max_len]
+
 def _format_card(rec: Dict[str, Any], i: int, lang: str) -> str:
-    head_ar = ["🟢 التوصية رقم 1","🌿 التوصية رقم 2","🔮 التوصية رقم 3 (ابتكارية)"]
-    head_en = ["🟢 Recommendation #1","🌿 Recommendation #2","🔮 Recommendation #3 (Creative)"]
+    head_ar = ["🟢 التوصية 1","🌿 التوصية 2","🔮 التوصية 3 (ابتكارية)"]
+    head_en = ["🟢 Rec #1","🌿 Rec #2","🔮 Rec #3 (Creative)"]
     head = (head_ar if lang == "العربية" else head_en)[i]
-    return (
-        f"{head}\n\n"
-        f"{'المشهد' if lang=='العربية' else 'Scene'}: {rec.get('scene','—')}\n\n"
-        f"{'الإحساس الداخلي' if lang=='العربية' else 'Inner sensation'}: {rec.get('inner_sensation','')}\n\n"
-        f"{'لماذا أنت (Layer Z)' if lang=='العربية' else 'Why you (Layer-Z)'}: {rec.get('why_you','')}\n\n"
-        f"{'الملاءمة العملية' if lang=='العربية' else 'Practical fit'}: {rec.get('practical_fit','')}\n\n"
-        f"{'أول أسبوع' if lang=='العربية' else 'First week'}: {rec.get('first_week','')}\n\n"
-        f"{'مؤشرات التقدم' if lang=='العربية' else 'Progress markers'}: {rec.get('progress_markers','')}\n\n"
-        f"{'الصعوبة' if lang=='العربية' else 'Difficulty'}: {rec.get('difficulty',3)}/5\n"
-        f"VR: {rec.get('vr_idea','')}\n"
-    )
+
+    scene = (rec.get("scene") or "").strip()
+    inner = (rec.get("inner_sensation") or "").strip()
+    why   = (rec.get("why_you") or "").strip()
+    week  = _to_bullets(rec.get("first_week") or "")
+    prog  = _to_bullets(rec.get("progress_markers") or "", max_items=4)
+    diff  = rec.get("difficulty", 3)
+    vr    = (rec.get("vr_idea") or "").strip()
+
+    intro = _one_liner(scene, inner)
+
+    if lang == "العربية":
+        out = [head, ""]
+        if intro: out += ["*وش هي؟*", f"- {intro}", ""]
+        if why:
+            out += ["*ليش تناسبك؟*"]
+            for b in _to_bullets(why, 3) or [why]:
+                out.append(f"- {b}")
+            out.append("")
+        if week:
+            out += ["*خطة أسبوع أول (نوعية)*"]
+            for b in week: out.append(f"- {b}")
+            out.append("")
+        if prog:
+            out += ["*علامات تقدّم*"]
+            for b in prog: out.append(f"- {b}")
+            out.append("")
+        out.append(f"*الصعوبة:* {diff}/5")
+        if vr: out.append(f"*VR (اختياري):* {vr}")
+        return "\n".join(out)
+    else:
+        out = [head, ""]
+        if intro: out += ["*What is it?*", f"- {intro}", ""]
+        if why:
+            out += ["*Why you*"]
+            for b in _to_bullets(why, 3) or [why]:
+                out.append(f"- {b}")
+            out.append("")
+        if week:
+            out += ["*First week (qualitative)*"]
+            for b in week: out.append(f"- {b}")
+            out.append("")
+        if prog:
+            out += ["*Progress markers*"]
+            for b in prog: out.append(f"- {b}")
+            out.append("")
+        out.append(f"*Difficulty:* {diff}/5")
+        if vr: out.append(f"*VR (optional):* {vr}")
+        return "\n".join(out)
 
 def _sanitize_fill(recs: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     for i in range(3):
         r = recs[i] if i < len(recs) else {}
-        # mask names
-        for k, v in list(r.items()):
-            if isinstance(v, str) and _violates(v):
-                r[k] = _mask_names(v)
+        # mask names + remove forbidden numerics/place/time/cost + drop practical_fit
+        r = _sanitize_record(r)
+
         # quality gate
         blob = " ".join([
             r.get("scene",""), r.get("inner_sensation",""),
-            r.get("why_you",""), r.get("practical_fit",""),
-            r.get("first_week",""), r.get("progress_markers","")
+            r.get("why_you",""), r.get("first_week",""),
+            r.get("progress_markers","")
         ])
         if _too_generic(blob) or not _has_sensory(blob) or not _is_meaningful(r):
             r = _fallback_identity(i, lang)
@@ -326,7 +417,6 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     profile = _extract_profile(answers, lang)
     if profile:
         analysis["encoded_profile"] = profile
-        # لراحة التحليل/البرومبت:
         if "axes" in profile:
             analysis["z_axes"] = profile["axes"]
         if "scores" in profile:
@@ -352,6 +442,7 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     except Exception as e:
         return [f"❌ خطأ اتصال النموذج: {e}", "—", "—"]
 
+    # Sanitization pass-1
     if _violates(raw1): raw1 = _mask_names(raw1)
     parsed = _parse_json(raw1) or []
     cleaned = _sanitize_fill(parsed, lang)
@@ -363,8 +454,9 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
             "role":"user",
             "content":(
                 "إعادة صياغة التوصيات السابقة بجودة أعلى (بدون أسماء رياضات): "
-                "املأ فجوات why_you/first_week بمزيد من الدقة الحسية والربط بـ Layer-Z و preferences/profile. "
-                "أعد JSON فقط بنفس البنية السابقة."
+                "التزم بعدم ذكر المكان/الزمن/التكلفة وعدم استخدام أرقام/عدّات/جولات/دقائق. "
+                "املأ why_you و first_week بعناصر حسّية نوعية واضحة. "
+                "أعد JSON فقط بنفس البنية."
             )
         }
         try:
@@ -378,7 +470,7 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
             parsed2 = _parse_json(raw2) or []
             cleaned2 = _sanitize_fill(parsed2, lang)
 
-            # اختر الأفضل بدرجة طول حسّي أعلى
+            # اختر الأفضل بحِسّية أطول
             def score(r: Dict[str,Any]) -> int:
                 txt = " ".join([
                     r.get("scene",""),
