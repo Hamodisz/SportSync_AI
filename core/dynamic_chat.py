@@ -15,7 +15,7 @@ core/dynamic_chat.py
 - يحافظ على سجل المحادثة مختصر لتقليل التكلفة.
 """
 
-from _future_ import annotations
+from __future__ import annotations
 
 import os
 import json
