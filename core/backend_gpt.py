@@ -2,14 +2,12 @@
 """
 core/backend_gpt.py
 -------------------
-توصيات "هوية رياضية بلا أسماء" بثلاث كروت حسّية + محاذاة Z-axes + خطة نوعية + فكرة VR.
-- لا وقت/مكان/تكلفة/عدّات/جولات (نحذف الجملة المخالفة بالكامل).
-- مسموح تسمية الهوية/اللعبة عند الحاجة (فك الحظر عن الأسماء بطريقة موجّهة).
-- محاولتان لإصلاح الجودة قبل السقوط إلى FallBack ذهبي.
-- يدعم العربية/English.
+توصيات "هوية رياضية بلا أسماء" بثلاث كروت حسّية منظمة + طبقة Z + خطة أسبوع (نوعية فقط) + فكرة VR.
+- لا مكان/زمن/تكلفة ولا عدّات/جولات/دقائق في الإخراج.
+- يحاول مرتين قبل السقوط للـ fallback. يدعم العربية/English.
 """
 
-from __future__ import annotations
+from _future_ import annotations
 
 import os, json, re
 from typing import Any, Dict, List, Optional
@@ -21,7 +19,11 @@ except Exception as e:
     raise RuntimeError("أضف الحزمة في requirements: openai>=1.6.1,<2") from e
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OpenAI_CLIENT = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+if not OPENAI_API_KEY:
+    OpenAI_CLIENT = None
+else:
+    OpenAI_CLIENT = OpenAI(api_key=OPENAI_API_KEY)
+
 CHAT_MODEL = os.getenv("CHAT_MODEL", "gpt-4o")  # بدّل إلى gpt-4o-mini لتكلفة أقل
 
 # ========= Project imports (with safe fallbacks) =========
@@ -58,8 +60,53 @@ except Exception:
         def analyze_silent_drivers(answers: Dict[str, Any], lang: str = "العربية") -> List[str]:
             return ["إنجازات قصيرة", "نفور من التكرار", "تفضيل تحدّي ذهني"]
 
-# ========= إعدادات النص/الجودة =========
-_ALLOW_SPORT_NAMES = True  # فك الحظر عن الأسماء عند الحاجة (اسم الهوية/أمثلة ألعاب)
+# ========= (جديد) مُشفِّر الإجابات (اختياري) =========
+def _extract_profile(answers: Dict[str, Any], lang: str) -> Optional[Dict[str, Any]]:
+    """
+    يعيد بروفايل مُشفَّر إن وُجد في answers تحت المفتاح "profile"،
+    أو يحاول توليده عبر core.answers_encoder.encode_answers (إن توفّر).
+    يُرجِع None لو غير متاح.
+    """
+    prof = answers.get("profile")
+    if isinstance(prof, dict):
+        return prof
+
+    # محاولة توليد سريع
+    encode_answers = None
+    try:
+        from core.answers_encoder import encode_answers as _enc
+        encode_answers = _enc
+    except Exception:
+        try:
+            from analysis.answers_encoder import encode_answers as _enc
+            encode_answers = _enc
+        except Exception:
+            encode_answers = None
+
+    if encode_answers is None:
+        return None
+
+    try:
+        enc = encode_answers(answers, lang=lang)
+        preferences = enc.get("prefs", enc.get("preferences", {}))
+        z_markers = enc.get("z_markers", [])
+        signals   = enc.get("signals", [])
+        hints = " | ".join([*z_markers, *signals])[:1000]  # نص موجز للبرومبت
+
+        return {
+            "scores": enc.get("scores", {}),
+            "axes": enc.get("axes", {}),
+            "preferences": preferences,
+            "hints_for_prompt": hints,
+            "vr_inclination": enc.get("vr_inclination", 0),
+            "confidence": enc.get("confidence", 0.0),
+        }
+    except Exception:
+        return None
+
+# ========= Rules & helpers =========
+_BLOCKLIST = r"(جري|ركض|سباحة|كرة|قدم|سلة|طائرة|تنس|ملاكمة|كاراتيه|كونغ فو|يوجا|يوغا|بيلاتس|رفع|أثقال|تزلج|دراج|دراجة|ركوب|خيول|باركور|جودو|سكواش|بلياردو|جولف|كرة طائرة|كرة اليد|هوكي|سباق|ماراثون|مصارعة|MMA|Boxing|Karate|Judo|Taekwondo|Soccer|Football|Basketball|Tennis|Swim|Swimming|Running|Run|Cycle|Cycling|Bike|Biking|Yoga|Pilates|Rowing|Row|Skate|Skating|Ski|Skiing|Climb|Climbing|Surf|Surfing|Golf|Volleyball|Handball|Hockey|Parkour|Wrestling)"
+_name_re = re.compile(_BLOCKLIST, re.IGNORECASE)
 
 _AVOID_GENERIC = [
     "أي نشاط بدني مفيد","اختر ما يناسبك","ابدأ بأي شيء","جرّب أكثر من خيار",
@@ -68,18 +115,10 @@ _AVOID_GENERIC = [
 _SENSORY = [
     "تنفّس","إيقاع","توتر","استرخاء","دفء","برودة","توازن","نبض",
     "تعرّق","شدّ","مرونة","هدوء","تركيز","تدفّق","انسجام","ثِقل","خِفّة",
-    "إحساس","امتداد","حرق لطيف","صفاء","تماسك","اندفاع","تمويه","كمين"
-]
-_TACTICAL_AR = [
-    "كمين","مراوغة","اختباء","انقضاض","تضليل","تمويه","مسح محيطي",
-    "قفل هدف","انسحاب تكتيكي","تشتيت","إسناد","استدراج","تحييد"
-]
-_TACTICAL_EN = [
-    "ambush","dodge","evade","stealth","flank","lure","decoy","pounce",
-    "lock-on","scan","disengage","feint","neutralize","cover","support"
+    "إحساس","امتداد","حرق لطيف","صفاء","تماسك"
 ]
 
-# كلمات/أنماط محظورة (أرقام زمن/عدّات/تكلفة/مكان مباشر)
+# كلمات/أنماط محظورة (أرقام زمن/عدّات/تكلفة/مكان مباشر) – شملت صيغ «داخلية/خارجية»
 _FORBIDDEN_SENT = re.compile(
     r"(\b\d+(\.\d+)?\s*(?:min|mins|minute|minutes|second|seconds|hour|hours|دقيقة|دقائق|ثانية|ثواني|ساعة|ساعات)\b|"
     r"(?:rep|reps|set|sets|تكرار|عدة|عدات|جولة|جولات|×)|"
@@ -89,6 +128,9 @@ _FORBIDDEN_SENT = re.compile(
     re.IGNORECASE
 )
 
+def _mask_names(t: str) -> str: return _name_re.sub("—", t or "")
+def _violates(t: str) -> bool:   return bool(_name_re.search(t or ""))
+
 def _split_sentences(text: str) -> List[str]:
     if not text: return []
     return [s.strip() for s in re.split(r"(?<=[\.\!\?؟])\s+|[\n،]+", text) if s.strip()]
@@ -96,7 +138,7 @@ def _split_sentences(text: str) -> List[str]:
 def _scrub_forbidden(text: str) -> str:
     """يحذف أي جملة تتضمن مكان/زمن/تكلفة/عدّات/جولات بالكامل."""
     kept = [s for s in _split_sentences(text) if not _FORBIDDEN_SENT.search(s)]
-    return "، ".join(kept).strip(" .،-")
+    return "، ".join(kept).strip(" .،")
 
 def _answers_to_bullets(answers: Dict[str, Any]) -> str:
     out = []
@@ -111,197 +153,256 @@ def _answers_to_bullets(answers: Dict[str, Any]) -> str:
         out.append(f"- {q}: {a}")
     return "\n".join(out)
 
-def _too_generic(text: str, min_chars: int = 260) -> bool:
+def _too_generic(text: str, min_chars: int = 280) -> bool:
     t = (text or "").strip()
     return len(t) < min_chars or any(p in t for p in _AVOID_GENERIC)
 
-def _has_sensory(text: str, min_hits: int = 4) -> bool:
+def _has_sensory(text: str, min_hits: int = 3) -> bool:
     return sum(1 for w in _SENSORY if w in (text or "")) >= min_hits
 
-def _count_tactical(text: str, lang: str) -> int:
-    lst = _TACTICAL_AR if lang == "العربية" else _TACTICAL_EN
-    low = (text or "").lower()
-    return sum(1 for w in lst if w.lower() in low)
+def _is_meaningful(rec: Dict[str, Any]) -> bool:
+    blob = " ".join([
+        rec.get("scene",""), rec.get("inner_sensation",""),
+        rec.get("why_you",""), rec.get("first_week",""),
+        rec.get("progress_markers","")
+    ]).strip()
+    return len(blob) >= 80
 
-# ========= Z-axes alignment =========
+# ========= Alignment with Z-axes (تحسين الجودة) =========
 _AR_TOK = {
-    "calm": ["هدوء","تنفّس","سكون","صفاء","بطيء"],
-    "adren": ["اندفاع","سريع","اشتباك","قوة لحظية","حسم"],
-    "solo": ["فردي","لوحدك","ذاتية"],
-    "group": ["مع ناس","جماعة","شريك","فريق"],
-    "tech": ["تقنية","تفاصيل","إتقان","ضبط"],
-    "intu": ["حدس","تلقائي","على الإحساس","بديهة"]
+    "calm": ["هدوء","تنفّس","بطيء","استرخاء","صفاء","يركّز","سكون"],
+    "adren": ["اندفاع","سريع","انفجار","إثارة","مجازفة","اشتباك","قوة لحظية"],
+    "solo": ["لوحدك","فردي","مع نفسك","ذاتية"],
+    "group": ["مع ناس","جماعة","شريك","فريق","تفاعل"],
+    "tech": ["تفاصيل","إتقان","تقنية","صقل","ضبط","تكرار واعٍ"],
+    "intu": ["إحساسك","حدس","تلقائي","على المزاج","بديهة"]
 }
 _EN_TOK = {
-    "calm": ["calm","slow","breath","quiet","settle"],
-    "adren": ["fast","burst","risk","adrenaline","clutch"],
-    "solo": ["solo","alone","by yourself"],
-    "group": ["with people","partner","team","group"],
-    "tech": ["technique","detail","precise","drill"],
-    "intu": ["by feel","intuitive","go with it"]
+    "calm": ["calm","slow","breath","quiet","settle","soft","mindful"],
+    "adren": ["fast","burst","risk","edge","explosive","adrenaline"],
+    "solo": ["solo","alone","by yourself","individual"],
+    "group": ["with people","partner","team","group","social"],
+    "tech": ["detail","technique","repeat to perfect","precise","drill"],
+    "intu": ["by feel","intuitive","impulsive","flow with it","go with it"]
 }
 
 def _axes_expectations(axes: Dict[str, float], lang: str) -> Dict[str, List[str]]:
     tok = _AR_TOK if lang == "العربية" else _EN_TOK
     out: Dict[str, List[str]] = {}
     if not isinstance(axes, dict): return out
+    # calm_adrenaline ∈ [-1..+1]
     ca = axes.get("calm_adrenaline")
     if isinstance(ca, (int, float)):
         out["calm_adrenaline"] = tok["adren"] if ca >= 0.5 else tok["calm"] if ca <= -0.5 else []
+    # solo_group
     sg = axes.get("solo_group")
     if isinstance(sg, (int, float)):
         out["solo_group"] = tok["group"] if sg >= 0.5 else tok["solo"] if sg <= -0.5 else []
+    # tech_intuition
     ti = axes.get("tech_intuition")
     if isinstance(ti, (int, float)):
         out["tech_intuition"] = tok["intu"] if ti >= 0.5 else tok["tech"] if ti <= -0.5 else []
     return out
 
-def _mismatch_with_axes(text: str, axes: Dict[str, float], lang: str) -> bool:
+def _mismatch_with_axes(rec: Dict[str, Any], axes: Dict[str, float], lang: str) -> bool:
     exp = _axes_expectations(axes or {}, lang)
     if not exp: return False
-    low = (text or "").lower()
-    for words in exp.values():
-        if words and not any(w.lower() in low for w in words):
+    blob = " ".join(str(rec.get(k,"")) for k in ("scene","inner_sensation","why_you","first_week"))
+    blob_l = blob.lower()
+    # إذا في توقع كلمات ولم نجد أي كلمة مقابلة → تعارض
+    for _, words in exp.items():
+        if words and not any(w.lower() in blob_l for w in words):
             return True
     return False
 
-# ========= Fallbacks الذهبية (نفس الجودة المرجعية) =========
-def _golden_fallbacks(lang: str) -> List[Dict[str, Any]]:
+# ========= عنوان فريد ومنع تكرار =============
+
+# عناوين ممنوعة حرفياً (عربي/إنجليزي) + مُطبّع
+AVOID_TITLES = {
+    "tactical immersive combat", "tactical-immersive combat",
+    "القتال التكتيكي الغامر", "تاكتيكال اميرسف كومبات",
+}
+def _norm_title(t: str) -> str:
+    return re.sub(r"[^\w\u0600-\u06FF]+", " ", (t or "").strip().lower())
+
+def _pick_bucket_from_axes(axes: Dict[str, float], lang: str) -> str:
+    ca = (axes or {}).get("calm_adrenaline", 0.0)
+    sg = (axes or {}).get("solo_group", 0.0)
+    if ca >= 0.4 and sg >= 0.2:
+        return "adren_team"
+    if ca >= 0.4 and sg < 0.2:
+        return "adren_solo"
+    if ca < 0.0 and sg >= 0.2:
+        return "calm_team"
+    return "calm_solo"
+
+_BUCKETS_AR = {
+    "adren_team": ["مناورات تكتيك حيّة", "كمائن تفاعلية جماعية", "مطاردات ذهن-جسد"],
+    "adren_solo": ["عمليات خاطفة فردية", "مهام حافة الإدراك", "مبارزات عقل متحرك"],
+    "calm_team": ["تدفّق جماعي مُنظّم", "إيقاع تركيز مشترك", "مهام توازن ذكي"],
+    "calm_solo": ["تدفّق هادئ مركز", "ألغاز حركة ذكية", "انسجام دقيق بالحركة"],
+}
+_BUCKETS_EN = {
+    "adren_team": ["Stealth-Strike Ops", "Kinetic Tactics Crew", "Adrenal Mission Sets"],
+    "adren_solo": ["Edge-Flow Duel", "Solo Stealth Runs", "Mind-Lock Pursuit"],
+    "calm_team": ["Coordinated Flow Grid", "Rhythm-Focus Squad", "Balance Lab Missions"],
+    "calm_solo": ["Calm-Flow Focus", "Mindful Motion Puzzles", "Precision Flow Sets"],
+}
+
+def _make_unique_title(user_id: str, axes: Dict[str, float], lang: str, idx: int = 0) -> str:
+    bucket = _pick_bucket_from_axes(axes, lang)
+    pool = _BUCKETS_AR[bucket] if lang == "العربية" else _BUCKETS_EN[bucket]
+    seed = abs(hash(f"{user_id}:{json.dumps(axes, sort_keys=True)}:{idx}"))
+    return pool[seed % len(pool)]
+
+def _guard_titles(recs: List[Dict[str, Any]], user_id: str, axes: Dict[str, float], lang: str) -> None:
+    seen = set()
+    for i, r in enumerate(recs):
+        t = (r.get("title") or "").strip()
+        nt = _norm_title(t)
+        if not t or nt in AVOID_TITLES or nt in seen:
+            r["title"] = _make_unique_title(user_id, axes, lang, idx=i)
+            nt = _norm_title(r["title"])
+        seen.add(nt)
+
+# ========= Sanitization / Fallback =========
+def _sanitize_record(r: Dict[str, Any]) -> Dict[str, Any]:
+    """ينظّف حقول التوصية من المحظورات ويشيل practical_fit إن وُجد."""
+    r = dict(r or {})
+    r.pop("practical_fit", None)  # حذف الحقل بالكامل
+    for k in ("scene","inner_sensation","why_you","first_week","progress_markers","vr_idea"):
+        if isinstance(r.get(k), str):
+            r[k] = _scrub_forbidden(_mask_names(r[k].strip()))
+    try:
+        d = int(r.get("difficulty", 3))
+        r["difficulty"] = max(1, min(5, d))
+    except Exception:
+        r["difficulty"] = 3
+    return r
+
+def _fallback_identity(i: int, lang: str) -> Dict[str, Any]:
+    """فولباك بلا أرقام ولا مكان/زمن/تكلفة — بصياغة حسّية إنسانية."""
     if lang == "العربية":
-        return [
+        presets = [
             {
-                "identity_title": "Tactical Immersive Combat",
-                "what_is_it": [
-                    "مهمّات تكتيكية بقراءة خصم وتمويه وكمين وانقضاض",
-                    "أدرينالين محسوب: تلتقط إشارات وتقفل هدف وتبدّل الخطة في لحظة",
-                    "ممكن عبر منصّات VR تكتيكية أو محاكيات ميدان افتراضي"
-                ],
-                "why_you": "تكره الرتابة وتنجذب للتحدّي الذهني الخالي من الثرثرة — تحب الهيمنة الهادئة: تفهم، تحاصر، ثم تحسم.",
-                "real_world_shape": [
-                    "سيناريو تسلّل: مسح محيطي، مسار آمن، تضليل ثم حسم نظيف",
-                    "تتبّع النفس والنبض والاستجابة للصوت/الظل بسرعة هادئة",
-                    "كل جولة بأسلوب مختلف (مراوغة/استدراج/تحييد)"
-                ],
-                "notes": ["اعتبرها تدريب ذكاء تحت ضغط لا رياضة تقليدية.", "لو زاد الاندفاع، ارجع لمسح أبطأ ثم حسم واضح."],
-                "expansions": ["نسخة Solo لرفع الحدس والردّ السريع", "نسخة Team لإسناد وتوزيع أدوار"],
-                "difficulty": 3,
-                "vr_idea": "ساحة مهمّات تكتيكية بمحفّزات صوت/ظل."
+                "scene":"إحساس انسيابي بإيقاع لطيف يفتح النفس تدريجيًا.",
+                "inner_sensation":"دفء هادئ ووضوح بسيط في التفكير.",
+                "why_you":"تحب التقدّم السلس وتكره الرتابة. تبغى سيطرة داخلية بدون تعقيد.",
+                "first_week":"ابدأ بحركات تفتح النفس بلطف، ثم وسّع المدى حسب الإحساس.",
+                "progress_markers":"تنفّس أهدأ، صفاء بعد الجلسة، رغبة طبيعية للاستمرار.",
+                "difficulty":2,
+                "vr_idea":"نسخة افتراضية خفيفة تُبرز الإيقاع والتتبّع."
             },
             {
-                "identity_title": "Stealth-Flow Missions",
-                "what_is_it": [
-                    "انسياب هادئ مع قرارات صامتة وتمويه بصري",
-                    "تحكم بالتنفس لتبريد الأدرينالين وبناء حضور ذهني",
-                    "مهام قصيرة بتغيرات سطح/إيقاع بدون تكرار"
-                ],
-                "why_you": "تبحث عن تقدّم محسوس من غير ضجيج وتحب السيطرة الداخلية مع بصمة تكتيكية.",
-                "real_world_shape": [
-                    "تتبُّع مسارات ظلّ، تبديل زوايا، تجميد لحظة الحسم",
-                    "ترميز إشارات سمعية/بصرية ثم قرار حدسي محسوب",
-                    "انسحاب تكتيكي إذا اختل الإيقاع ثم إعادة تموضع"
-                ],
-                "notes": ["حافظ على شريط تنفس مستقر أثناء القرار.", "دوّن نمط القرارات التي تعطيك صفاء."],
-                "expansions": ["دمج طبيعة افتراضية + مهام صامتة", "Puzzle-Hunt مع أهداف متغيرة"],
-                "difficulty": 2,
-                "vr_idea": "VR خفيف يبرز الإيقاع والتتبّع."
+                "scene":"حركة متناغمة تُشغّل الجذع والذراعين بإحساس ثابت.",
+                "inner_sensation":"حرارة خفيفة مع تماسك في الوسط.",
+                "why_you":"تبغى تقدّم واضح وقابل للملاحظة بدون فلسفة زايدة.",
+                "first_week":"شغّل الجذع بحركات بسيطة، واختم بمرونة هادئة.",
+                "progress_markers":"ثبات أقوى، نوم أعمق، طاقة أهدأ خلال اليوم.",
+                "difficulty":3,
+                "vr_idea":"محاكاة توازن بسيطة لتعزيز التمركز."
             },
             {
-                "identity_title": "Mind-Trap Puzzles in Motion",
-                "what_is_it": [
-                    "ألغاز قرار تحت حركة: تفكّر وتتحرّك في آنٍ واحد",
-                    "إقفال مسارات، فتح اختصارات، وخدع بصرية بسيطة",
-                    "تدرّب على الانتقال بين حدس سريع وتحليل دقيق"
-                ],
-                "why_you": "تحب الفهم العميق وإثبات التفوّق الهادئ على المسار لا على الناس.",
-                "real_world_shape": [
-                    "سلسلة مصائد ذهنية متحركة: تختار، تختبر، ثم تصحّح",
-                    "إيقاع متنقّل بين تركيز دقيق وتدفّق تلقائي",
-                    "تقييم بعدي قصير: ما الذي حُسم بسرعة؟"
-                ],
-                "notes": ["لا تتعجّل الحسم: دقّة قبل سرعة.", "اسمح للهفوة الواحدة أن تعلّمك مسارًا أفضل."],
-                "expansions": ["Solo تحليلي أو Team لتوزيع الأدوار الذهنية", "هجين AI يولّد ألغازًا على مزاجك"],
-                "difficulty": 2,
-                "vr_idea": "غرف ألغاز تفاعلية متبدلة."
+                "scene":"إيقاع هادئ يسمح للجهاز العصبي يهدأ تدريجيًا.",
+                "inner_sensation":"تفكّك لطيف للتوتر وإحساس رايق.",
+                "why_you":"تحتاج إعادة ضبط ترفع تقبّل الجهد خطوة بخطوة.",
+                "first_week":"تابع النفس، وحرّك ببطء، وأضف تمديدات مرنة على مزاجك.",
+                "progress_markers":"توتر أقل، تركيز أوضح، توازن أفضل.",
+                "difficulty":1,
+                "vr_idea":"طبيعة افتراضية للاسترخاء الذهني."
             }
         ]
     else:
-        return [
+        presets = [
             {
-                "identity_title": "Tactical Immersive Combat",
-                "what_is_it": [
-                    "Stealth missions with decoy, ambush and clean pounce",
-                    "Measured adrenaline: scan, lock-on, pivot plan instantly",
-                    "Runs on tactical VR platforms or simulated arenas"
-                ],
-                "why_you": "You reject fluff and crave quiet dominance: understand, trap, then finish.",
-                "real_world_shape": [
-                    "Stealth entry → area scan → safe path → feint → decisive strike",
-                    "Breath/HR tracking, rapid calm responses to sound/shadow",
-                    "Each round a new pattern (evade/lure/neutralize)"
-                ],
-                "notes": ["Treat it as ‘intelligence under pressure’ not a classic sport.", "Slow scan if arousal spikes, then clean finish."],
-                "expansions": ["Solo for instincts, Team for roles and cover", "Nature-VR hybrid for nervous-system balance"],
-                "difficulty": 3,
-                "vr_idea": "Tactical mission arena with sound/lighting cues."
+                "scene":"A smooth, easy rhythm that opens the breath.",
+                "inner_sensation":"Warm calm and simple mental clarity.",
+                "why_you":"You like steady progress and dislike boredom.",
+                "first_week":"Open the breath gently, then widen range by feel.",
+                "progress_markers":"Calmer breath, post-session clarity, natural urge to continue.",
+                "difficulty":2,
+                "vr_idea":"Light VR emphasizing rhythm and tracking."
             },
-            # (…الثاني والثالث نفس المعاني بالإنجليزية إن احتجت)
+            {
+                "scene":"Harmonious flow engaging trunk and arms with steadiness.",
+                "inner_sensation":"Gentle heat and centered feel.",
+                "why_you":"You want noticeable progress without overthinking.",
+                "first_week":"Activate the core with simple moves; close with soft mobility.",
+                "progress_markers":"Stronger stability, deeper sleep, steadier energy.",
+                "difficulty":3,
+                "vr_idea":"Simple balance simulation to reinforce centering."
+            },
+            {
+                "scene":"Quiet tempo that lets the nervous system settle.",
+                "inner_sensation":"Tension eases; mind feels clear.",
+                "why_you":"You need a gentle reset to raise effort tolerance.",
+                "first_week":"Track your breath and move slowly; add elastic stretches by feel.",
+                "progress_markers":"Less neck/jaw tension, clearer focus, better balance.",
+                "difficulty":1,
+                "vr_idea":"Immersive nature-relax VR."
+            }
         ]
+    return presets[i % 3]
 
-# ========= Prompt (JSON schema جديد) =========
+# ========= Prompt =========
 def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
                  personality: Any, lang: str) -> List[Dict[str, str]]:
     bullets = _answers_to_bullets(answers)
     persona = personality if isinstance(personality, str) else json.dumps(personality, ensure_ascii=False)
 
-    profile = analysis.get("encoded_profile") or {}
-    axes = profile.get("axes", analysis.get("z_axes", {})) or {}
-    axes_str = json.dumps(axes, ensure_ascii=False)
+    # (جديد) حوافز البروفايل المُشفَّر إن وُجد
+    profile = analysis.get("encoded_profile")
+    profile_hints = ""
+    if isinstance(profile, dict):
+        profile_hints = profile.get("hints_for_prompt", "") or ", ".join(profile.get("preferences", {}).values())
+
+    avoid_titles_str = ", ".join(sorted(AVOID_TITLES))
 
     if lang == "العربية":
         sys = (
-            "أنت مدرّب SportSync AI بنبرة إنسانية دافئة (صديق محترف). "
-            "ممنوع ذكر الوقت/المكان/التكلفة/العدّات/الجولات أو أرقام الدقائق. "
-            "مسموح تسمية الهوية أو ذكر مثال لعبة/أسلوب عند الحاجة. "
-            "استخدم لغة حسّية وتكتيكية بأفعال قوية وبجمل قصيرة. "
-            "أعد JSON فقط."
+            "أنت مدرّب SportSync AI بنبرة إنسانية لطيفة (صديق محترف). "
+            "لا تذكر المكان/الزمن/التكلفة/العدّات/الجولات أو أي أرقام دقائق. "
+            "استخدم لغة حسّية واضحة وقوائم قصيرة. أعِد JSON فقط."
         )
         usr = (
-            "أعد ثلاث توصيات «هوية حركة» بجودة عالية وفق المخطط التالي:\n"
-            "{\"recommendations\":[{\n"
-            "  \"identity_title\":\"اسم الهوية واضح غير عام (مثال مسموح: Tactical Immersive Combat)\",\n"
-            "  \"what_is_it\":\"3-5 نقاط حسّية تصف التجربة (عناصر لعب/قرارات/آليات)\",\n"
-            "  \"why_you\":\"3 نقاط تربط الدوافع الداخلية/Layer-Z مباشرة (مثال: تكره الرتابة، هيمنة هادئة)\",\n"
-            "  \"real_world_shape\":\"3 نقاط كيف تبدو الجلسة فعليًا دون وقت/مكان/تكلفة/عدّات\",\n"
-            "  \"notes\":\"2-3 ملاحظات ذكية\",\n"
-            "  \"expansions\":\"2 توسعات (Solo/Team أو هجين AI/طبيعة)\",\n"
-            "  \"difficulty\":1-5,\n"
-            "  \"vr_idea\":\"إن وُجد\"\n"
-            "}]} \n"
-            "التزم بمفردات حسّية وتكتيكية (كمين، مراوغة، تمويه، انقضاض، مسح محيطي، قفل هدف...).\n"
-            f"— شخصية المدرب: {persona}\n"
-            f"— محاور Z-axes: {axes_str}\n"
-            "— إجابات المستخدم:\n" + bullets + "\n"
-            "أعد JSON فقط بلا أي شرح خارجي."
+            "حوّل بيانات المستخدم إلى ثلاث توصيات حركة بلا أسماء رياضات.\n"
+            "أعِد JSON فقط بالمفاتيح:\n"
+            "{\"recommendations\":[{\"title\":\"...\",\"scene\":\"...\",\"inner_sensation\":\"...\",\"why_you\":\"...\","
+            "\"first_week\":\"...\",\"progress_markers\":\"...\",\"difficulty\":1-5,\"vr_idea\":\"...\"}]}\n"
+            "قواعد الأسلوب:\n"
+            "- عنوان لكل توصية (2–5 كلمات)، فريد ومعبّر.\n"
+            f"- لا تستخدم هذه العناوين حرفيًا: {avoid_titles_str}\n"
+            "- لهجة صديق مهني وقصيرة.\n"
+            "- 'why_you' سبب واضح وبشري.\n"
+            "- 'first_week' خطوات نوعية بلا أرقام/عدّات/دقائق.\n"
+            "- 'progress_markers' مؤشرات إحساس/سلوك دون أزمنة.\n\n"
+            f"— شخصية المدرب:\n{persona}\n\n"
+            "— تحليل المستخدم:\n" + json.dumps(analysis, ensure_ascii=False) + "\n\n"
+            "— إجابات موجزة:\n" + bullets + "\n\n"
+            + ("— إشارات بروفايل:\n" + profile_hints + "\n\n" if profile_hints else "")
+            + "أعِد JSON فقط."
         )
     else:
         sys = (
             "You are a warm, human SportSync coach. "
-            "Forbid time/place/cost/reps/sets; allow naming the identity or example games when helpful. "
-            "Use sensory and tactical verbs; short sentences. Return JSON only."
+            "Do NOT mention location/time/cost/reps/sets or minute counts. "
+            "Use sensory, concise bullets. Return JSON only."
         )
         usr = (
-            "Produce THREE movement-identity suggestions with this schema:\n"
-            "{\"recommendations\":[{\"identity_title\":\"...\",\"what_is_it\":\"3-5 bullets\","
-            "\"why_you\":\"3 bullets tied to Layer-Z\",\"real_world_shape\":\"3 bullets\","
-            "\"notes\":\"2-3 bullets\",\"expansions\":\"2 options\",\"difficulty\":1-5,\"vr_idea\":\"...\"}]}\n"
-            f"— Coach persona: {persona}\n"
-            f"— Z-axes: {axes_str}\n"
-            "— User answers:\n" + bullets + "\n"
-            "Return JSON only."
+            "Create THREE nameless movement-identity suggestions.\n"
+            "Return JSON ONLY with:\n"
+            "{\"recommendations\":[{\"title\":\"...\",\"scene\":\"...\",\"inner_sensation\":\"...\",\"why_you\":\"...\","
+            "\"first_week\":\"...\",\"progress_markers\":\"...\",\"difficulty\":1-5,\"vr_idea\":\"...\"}]}\n"
+            "Style rules: human tone; unique 2–5 word title per rec; no place/time/cost.\n"
+            f"Do NOT use these titles verbatim: {avoid_titles_str}\n\n"
+            f"— Coach persona:\n{persona}\n\n"
+            "— User analysis:\n" + json.dumps(analysis, ensure_ascii=False) + "\n\n"
+            "— Bulleted answers:\n" + bullets + "\n\n"
+            + ("— Profile hints:\n" + profile_hints + "\n\n" if profile_hints else "")
+            + "JSON only."
         )
     return [{"role": "system", "content": sys}, {"role": "user", "content": usr}]
 
-# ========= JSON parsing =========
 def _parse_json(text: str) -> Optional[List[Dict[str, Any]]]:
     try:
         obj = json.loads(text)
@@ -321,122 +422,90 @@ def _parse_json(text: str) -> Optional[List[Dict[str, Any]]]:
             pass
     return None
 
-# ========= Sanitization + Quality =========
-def _listify(x: Any) -> List[str]:
-    if not x: return []
-    if isinstance(x, list): return [str(i) for i in x if str(i).strip()]
-    return [s.strip() for s in re.split(r"[;\n\.•]+", str(x)) if s.strip()]
+def _to_bullets(text: str, max_items: int = 5) -> List[str]:
+    if not text: return []
+    raw = re.split(r"[;\n\.،]+", text)
+    items = [i.strip(" -•\t ") for i in raw if i.strip()]
+    return items[:max_items]
 
-def _sanitize_record(r: Dict[str, Any]) -> Dict[str, Any]:
-    """ينظّف الحقول من الجُمل المخالفة، ويسوّي الأنواع (list/str)."""
-    r = dict(r or {})
-    for key in ("identity_title","why_you","vr_idea"):
-        if isinstance(r.get(key), str):
-            r[key] = _scrub_forbidden(r[key])
-    for key in ("what_is_it","real_world_shape","notes","expansions"):
-        if key in r:
-            joined = "، ".join(_listify(r.get(key)))
-            r[key] = _listify(_scrub_forbidden(joined))
-    try:
-        d = int(r.get("difficulty", 3))
-        r["difficulty"] = max(1, min(5, d))
-    except Exception:
-        r["difficulty"] = 3
-    return r
+def _one_liner(*parts: str, max_len: int = 120) -> str:
+    s = " — ".join([p.strip() for p in parts if p and p.strip()])
+    return s[:max_len]
 
-def _score_quality(rec: Dict[str, Any], axes: Dict[str, float], lang: str) -> Dict[str, Any]:
-    text_blob = " ".join([
-        str(rec.get("identity_title","")),
-        " ".join(rec.get("what_is_it",[]) or _listify(rec.get("what_is_it"))),
-        str(rec.get("why_you","")),
-        " ".join(rec.get("real_world_shape",[]) or _listify(rec.get("real_world_shape"))),
-        " ".join(rec.get("notes",[]) or _listify(rec.get("notes"))),
-        " ".join(rec.get("expansions",[]) or _listify(rec.get("expansions")))
-    ])
-    tactical = _count_tactical(text_blob, lang)
-    sensory  = _has_sensory(text_blob, 4)
-    titled   = len((rec.get("identity_title") or "").strip()) >= 4
-    generic  = _too_generic(text_blob, 240)
-    mismatch = _mismatch_with_axes(text_blob, axes, lang)
-    forbidden = bool(_FORBIDDEN_SENT.search(text_blob))
+def _format_card(rec: Dict[str, Any], i: int, lang: str) -> str:
+    head_ar = ["🟢 التوصية 1","🌿 التوصية 2","🔮 التوصية 3 (ابتكارية)"]
+    head_en = ["🟢 Rec #1","🌿 Rec #2","🔮 Rec #3 (Creative)"]
+    head = (head_ar if lang == "العربية" else head_en)[i]
 
-    score = (tactical >= 2) + sensory + titled + (not generic) + (not mismatch) + (not forbidden)
-    return {
-        "score": int(score),
-        "flags": {
-            "tactical_ok": tactical >= 2,
-            "sensory_ok": sensory,
-            "title_ok": titled,
-            "generic": generic,
-            "mismatch_axes": mismatch,
-            "forbidden": forbidden
-        }
-    }
-
-def _quality_gate_and_fill(recs: List[Dict[str, Any]], lang: str, axes: Dict[str, float]) -> List[Dict[str, Any]]:
-    out: List[Dict[str, Any]] = []
-    gold = _golden_fallbacks(lang)
-    gi = 0
-    for i in range(3):
-        r = _sanitize_record(recs[i] if i < len(recs) else {})
-        q = _score_quality(r, axes, lang)
-        if q["score"] < 5:  # عتبة صارمة
-            r = gold[gi % len(gold)]
-            gi += 1
-        out.append(_sanitize_record(r))
-    return out
-
-# ========= Formatting (كروت نصّية جاهزة) =========
-def _to_bullets(text: Any, max_items: int = 6) -> List[str]:
-    return _listify(text)[:max_items]
-
-def _format_card(rec: Dict[str, Any], idx: int, lang: str) -> str:
-    title = rec.get("identity_title", "").strip()
-    what  = _to_bullets(rec.get("what_is_it"))
-    why   = _to_bullets(rec.get("why_you"))
-    real  = _to_bullets(rec.get("real_world_shape"))
-    notes = _to_bullets(rec.get("notes"))
-    exp   = _to_bullets(rec.get("expansions"), max_items=3)
+    title = (rec.get("title") or "").strip()
+    scene = (rec.get("scene") or "").strip()
+    inner = (rec.get("inner_sensation") or "").strip()
+    why   = (rec.get("why_you") or "").strip()
+    week  = _to_bullets(rec.get("first_week") or "")
+    prog  = _to_bullets(rec.get("progress_markers") or "", max_items=4)
     diff  = rec.get("difficulty", 3)
     vr    = (rec.get("vr_idea") or "").strip()
 
+    intro = _one_liner(scene, inner)
+
     if lang == "العربية":
-        out = []
-        out.append(f"🎯 الهوية المثالية لك: {title if title else f'الخيار {idx+1}'}")
-        out.append("")
-        out.append("💡 ما هي؟")
-        for b in what: out.append(f"\t• {b}")
-        out.append("")
-        out.append("🎮 ليه تناسبك؟")
-        for b in why: out.append(f"\t• {b}")
-        out.append("")
-        out.append("🔍 شكلها الواقعي:")
-        for b in real: out.append(f"\t• {b}")
-        if notes:
-            out.append("\n👁‍🗨 ملاحظات مهمة:")
-            for b in notes: out.append(f"\t• {b}")
-        if exp:
-            out.append("\n⸻\n🧩 توسعة:")
-            for b in exp: out.append(f"\t• {b}")
-        out.append(f"\nالمستوى التقريبي: {diff}/5" + (f" — VR: {vr}" if vr else ""))
-        return "\n".join(out).strip()
+        out = [head, ""]
+        if title: out += [f"🎯 الهوية المثالية لك: {title}", ""]
+        if intro: out += ["💡 ما هي؟", f"- {intro}", ""]
+        if why:
+            out += ["🎮 ليه تناسبك؟"]
+            for b in _to_bullets(why, 3) or [why]:
+                out.append(f"- {b}")
+            out.append("")
+        if week:
+            out += ["🔍 شكلها الواقعي (نوعي)"]
+            for b in week: out.append(f"- {b}")
+            out.append("")
+        if prog:
+            out += ["✅ علامات تقدّم محسوسة"]
+            for b in prog: out.append(f"- {b}")
+            out.append("")
+        out.append(f"المستوى التقريبي: {diff}/5")
+        if vr: out.append(f"VR (اختياري): {vr}")
+        return "\n".join(out)
     else:
-        out = []
-        out.append(f"🎯 Best-fit identity: {title if title else f'Option {idx+1}'}\n")
-        out.append("💡 What is it?")
-        for b in what: out.append(f"\t• {b}")
-        out.append("\n🎮 Why you?")
-        for b in why: out.append(f"\t• {b}")
-        out.append("\n🔍 Real-world shape:")
-        for b in real: out.append(f"\t• {b}")
-        if notes:
-            out.append("\n👁‍🗨 Notes:")
-            for b in notes: out.append(f"\t• {b}")
-        if exp:
-            out.append("\n🧩 Expansions:")
-            for b in exp: out.append(f"\t• {b}")
-        out.append(f"\nApprox difficulty: {diff}/5" + (f" — VR: {vr}" if vr else ""))
-        return "\n".join(out).strip()
+        out = [head, ""]
+        if title: out += [f"🎯 Your movement identity: {title}", ""]
+        if intro: out += ["💡 In short", f"- {intro}", ""]
+        if why:
+            out += ["🎮 Why it fits you"]
+            for b in _to_bullets(why, 3) or [why]:
+                out.append(f"- {b}")
+            out.append("")
+        if week:
+            out += ["🔍 How it looks (qualitative)"]
+            for b in week: out.append(f"- {b}")
+            out.append("")
+        if prog:
+            out += ["✅ Progress cues"]
+            for b in prog: out.append(f"- {b}")
+            out.append("")
+        out.append(f"Approx level: {diff}/5")
+        if vr: out.append(f"VR (optional): {vr}")
+        return "\n".join(out)
+
+def _sanitize_fill(recs: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for i in range(3):
+        r = recs[i] if i < len(recs) else {}
+        # mask + scrub + drop practical_fit
+        r = _sanitize_record(r)
+
+        # quality gate
+        blob = " ".join([
+            r.get("scene",""), r.get("inner_sensation",""),
+            r.get("why_you",""), r.get("first_week",""),
+            r.get("progress_markers","")
+        ])
+        if _too_generic(blob) or not _has_sensory(blob) or not _is_meaningful(r):
+            r = _fallback_identity(i, lang)
+        out.append(r)
+    return out
 
 # ========= PUBLIC API =========
 def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العربية", user_id: str = "N/A") -> List[str]:
@@ -448,105 +517,118 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     silent = analyze_silent_drivers(answers, lang=lang) or []
     analysis["silent_drivers"] = silent
 
-    # بروفايل مُشفّر (اختياري)
-    profile = None
-    try:
-        from core.answers_encoder import encode_answers as _enc
-        profile = _enc(answers, lang=lang)
-    except Exception:
-        try:
-            from analysis.answers_encoder import encode_answers as _enc2
-            profile = _enc2(answers, lang=lang)
-        except Exception:
-            profile = None
-
+    # (جديد) التقاط بروفايل الترميز إن وُجد (أو توليده)
+    profile = _extract_profile(answers, lang)
     if profile:
         analysis["encoded_profile"] = profile
-        if "axes" in profile: analysis["z_axes"] = profile["axes"]
-        if "scores" in profile: analysis["z_scores"] = profile["scores"]
+        if "axes" in profile:
+            analysis["z_axes"] = profile["axes"]
+        if "scores" in profile:
+            analysis["z_scores"] = profile["scores"]
 
     # شخصية المدرب من الكاش
     persona = get_cached_personality(analysis, lang=lang)
     if not persona:
-        persona = {"name":"SportSync Coach","tone":"حازم-هادئ","style":"إنساني حسّي واقعي","philosophy":"هوية حركة بلا أسماء"}
+        persona = {"name":"SportSync Coach","tone":"حازم-هادئ","style":"حسّي واقعي إنساني","philosophy":"هوية حركة بلا أسماء"}
         try:
             save_cached_personality(analysis, persona, lang=lang)
         except Exception:
             pass
 
-    # === محاولة 1
+    # === أول محاولة
     msgs = _json_prompt(analysis, answers, persona, lang)
     try:
         resp = OpenAI_CLIENT.chat.completions.create(
-            model=CHAT_MODEL, messages=msgs, temperature=0.9, max_tokens=1400
+            model=CHAT_MODEL, messages=msgs, temperature=0.9, max_tokens=1200
         )
         raw1 = (resp.choices[0].message.content or "").strip()
-        print(f"[AI] len={len(raw1)} raw[:120]={raw1[:120]!r}")
+        print(f"[AI] model={CHAT_MODEL} len={len(raw1)} raw[:120]={raw1[:120]!r}")
     except Exception as e:
-        # سقوط مباشر للفولباك الذهبي
-        cleaned = _golden_fallbacks(lang)[:3]
-        return [_format_card(cleaned[i], i, lang) for i in range(3)]
+        return [f"❌ خطأ اتصال النموذج: {e}", "—", "—"]
 
+    # Sanitization pass-1
+    if _violates(raw1): raw1 = _mask_names(raw1)
     parsed = _parse_json(raw1) or []
-    axes = (analysis.get("z_axes") or {}) if isinstance(analysis, dict) else {}
-    cleaned = _quality_gate_and_fill(parsed, lang, axes)
+    cleaned = _sanitize_fill(parsed, lang)
 
-    # === إصلاح موجّه إذا الجودة ضعيفة أو محاذاة Z سيئة
-    need_repair = False
-    for r in cleaned:
-        blob = " ".join([r.get("identity_title","")] + r.get("what_is_it",[]) + r.get("real_world_shape",[]))
-        q = _score_quality(r, axes, lang)
-        if q["score"] < 5 or _mismatch_with_axes(blob, axes, lang):
-            need_repair = True
-            break
+    # ===== عنوان فريد وحظر العناوين المكررة/الممنوعة =====
+    axes = (analysis.get("z_axes") or {}) if isinstance(analysis, dict) else {}
+    _guard_titles(cleaned, user_id=user_id, axes=axes, lang=lang)
+
+    # ===== بوابة محاذاة Z-axes + إصلاح بنبرة إنسانية =====
+    mismatch_axes = any(_mismatch_with_axes(rec, axes, lang) for rec in cleaned)
+
+    # فحص الجودة ومحاولة إصلاح ثانية
+    need_repair_generic = any(_too_generic(" ".join([c.get("scene",""), c.get("why_you","")])) for c in cleaned)
+    need_repair = need_repair_generic or mismatch_axes
 
     if need_repair:
-        exp = _axes_expectations(axes, lang)
+        # نبني تلميحات محاذاة للموديل
+        exp = _axes_expectations(axes or {}, lang)
         align_hint = ""
         if exp:
             if lang == "العربية":
                 align_hint = (
                     "حاذِ التوصيات مع محاور Z:\n"
-                    f"- كلمات هدوء/أدرينالين: {', '.join(exp.get('calm_adrenaline', []))}\n"
-                    f"- فردي/جماعي: {', '.join(exp.get('solo_group', []))}\n"
-                    f"- تقني/حدسي: {', '.join(exp.get('tech_intuition', []))}\n"
+                    f"- هدوء/أدرينالين → استخدم مفردات: {', '.join(exp.get('calm_adrenaline', []))}\n"
+                    f"- فردي/جماعي → مفردات: {', '.join(exp.get('solo_group', []))}\n"
+                    f"- تقني/حدسي → مفردات: {', '.join(exp.get('tech_intuition', []))}\n"
                 )
             else:
                 align_hint = (
                     "Align with Z-axes:\n"
-                    f"- Calm/Adrenaline: {', '.join(exp.get('calm_adrenaline', []))}\n"
-                    f"- Solo/Group: {', '.join(exp.get('solo_group', []))}\n"
-                    f"- Technical/Intuitive: {', '.join(exp.get('tech_intuition', []))}\n"
+                    f"- Calm/Adrenaline words: {', '.join(exp.get('calm_adrenaline', []))}\n"
+                    f"- Solo/Group words: {', '.join(exp.get('solo_group', []))}\n"
+                    f"- Technical/Intuitive words: {', '.join(exp.get('tech_intuition', []))}\n"
                 )
+
         repair_prompt = {
-            "role": "user",
-            "content": (
-                ("أعد الصياغة بنبرة إنسانية، أفعال تكتيكية واضحة، واسم هوية قوي عند الحاجة. " if lang=="العربية"
-                 else "Rewrite with a warm human tone, clear tactical verbs, and a strong identity title when helpful. ")
-                + "احذف أي جملة فيها وقت/مكان/تكلفة/عدّات بالكامل. JSON فقط.\n" + align_hint
+            "role":"user",
+            "content":(
+                ("أعد صياغة التوصيات بنبرة إنسانية حارة وواضحة. " if lang=="العربية"
+                 else "Rewrite with a warm, human tone. ") +
+                "تذكير صارم: لا مكان/زمن/تكلفة ولا أرقام/عدّات/جولات/دقائق. "
+                "املأ title/why_you/first_week بعناصر حسّية نوعية. JSON فقط.\n\n" +
+                align_hint
             )
         }
         try:
             resp2 = OpenAI_CLIENT.chat.completions.create(
                 model=CHAT_MODEL,
                 messages=msgs + [{"role":"assistant","content":raw1}, repair_prompt],
-                temperature=0.85, max_tokens=1400
+                temperature=0.85, max_tokens=1200
             )
             raw2 = (resp2.choices[0].message.content or "").strip()
+            if _violates(raw2): raw2 = _mask_names(raw2)
             parsed2 = _parse_json(raw2) or []
-            cleaned2 = _quality_gate_and_fill(parsed2, lang, axes)
+            cleaned2 = _sanitize_fill(parsed2, lang)
+            _guard_titles(cleaned2, user_id=user_id, axes=axes, lang=lang)
 
-            # اختر الأحسن عبر مجموع نقاط الجودة
-            def total_score(lst: List[Dict[str,Any]]) -> int:
-                return sum(_score_quality(r, axes, lang)["score"] for r in lst)
-            if total_score(cleaned2) >= total_score(cleaned):
+            # اختر الأفضل بحِسّية أطول
+            def score(r: Dict[str,Any]) -> int:
+                txt = " ".join([
+                    r.get("title",""),
+                    r.get("scene",""),
+                    r.get("inner_sensation",""),
+                    r.get("why_you",""),
+                    r.get("first_week","")
+                ])
+                return len(txt)
+
+            if sum(map(score, cleaned2)) > sum(map(score, cleaned)):
                 cleaned = cleaned2
         except Exception:
             pass
 
     cards = [_format_card(cleaned[i], i, lang) for i in range(3)]
 
-    # لوق مختصر
+    # لوق مع أعلام الجودة
+    quality_flags = {
+        "generic": any(_too_generic(" ".join([c.get("scene",""), c.get("why_you","")])) for c in cleaned),
+        "low_sensory": any(not _has_sensory(" ".join([c.get("scene",""), c.get("inner_sensation","")])) for c in cleaned),
+        "mismatch_axes": mismatch_axes
+    }
+
     try:
         log_user_insight(
             user_id=user_id,
@@ -556,7 +638,8 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
                 "analysis": analysis,
                 "silent_drivers": silent,
                 "encoded_profile": profile,
-                "recommendations_json": cleaned,
+                "recommendations": cleaned,
+                "quality_flags": quality_flags
             },
             event_type="initial_recommendation"
         )
