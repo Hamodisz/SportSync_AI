@@ -20,7 +20,7 @@ from __future__ import annotations
 import os
 import json
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Generator  # ← إضافة Generator
 
 # ============== إعداد اللوجينغ ==============
 logging.basicConfig(
@@ -328,6 +328,151 @@ def start_dynamic_chat(
             if lang == "العربية" else
             f"❌ Dynamic chat failed: {e}"
         )
+
+
+# ============== بثّ حي (Streaming) ==============
+def start_dynamic_chat_stream(
+    answers: Dict[str, Any],
+    previous_recommendation: List[str],
+    ratings: List[int],
+    user_id: str,
+    lang: str = "العربية",
+    chat_history: Optional[List[Dict[str, str]]] = None,
+    user_message: str = ""
+) -> Generator[str, None, None]:
+    """
+    توليد ردّ المساعد ببث حي (stream). ترجع جنريتور يسلّم مقاطع نصية.
+    تستخدم نفس بايبلاين start_dynamic_chat لضمان ثبات الأسلوب والشخصية.
+    """
+    if client is None:
+        yield ("❌ لا يمكن البث لأن OPENAI_API_KEY غير مضبوط."
+               if lang == "العربية" else
+               "❌ Streaming unavailable: OPENAI_API_KEY is missing.")
+        return
+
+    # 1) ترميز + تحليل مختصر
+    try:
+        encoded = encode_answers(answers, lang=lang)
+    except Exception:
+        encoded = {"scores": {}, "axes": {}, "z_markers": [], "prefs": {}, "signals": []}
+
+    try:
+        ua = apply_all_analysis_layers(_safe_json(answers), user_id=user_id, lang=lang)
+    except Exception:
+        ua = {"quick_profile": "fallback", "raw": answers, "traits": []}
+
+    ua["encoded_profile"] = encoded
+    ua["z_scores"] = encoded.get("scores", {})
+    ua["z_axes"]   = encoded.get("axes", {})
+    ua["z_markers"]= encoded.get("z_markers", [])
+
+    try:
+        z = analyze_silent_drivers(answers, lang=lang) or []
+    except Exception:
+        z = []
+    ua["silent_drivers"] = z
+
+    # 2) شخصية المدرب (محفوظة في الكاش بنفس المفتاح)
+    cache_key = f"{lang}:{hash(_safe_json({'ua': ua.get('quick_profile',''), 'scores': encoded.get('scores', {}), 'prefs': encoded.get('prefs', {})}))}"
+    personality = get_cached_personality(cache_key)
+    if not personality:
+        personality = build_dynamic_personality(ua, lang)
+        save_cached_personality(cache_key, personality)
+
+    # 3) برومبت النظام
+    system_prompt = build_main_prompt(
+        analysis=ua,
+        answers=answers,
+        personality=personality,
+        previous_recommendation=previous_recommendation,
+        ratings=ratings,
+        lang=lang
+    )
+
+    # 4) بناء الرسائل (مع ملخّص Z والبروفايل)
+    messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
+    brief = []
+    if z:
+        brief.append(("محركات Z: " if lang=="العربية" else "Layer-Z: ") + ", ".join(z))
+    brief.append(_profile_brief(encoded, lang))
+    messages.append({"role": "system", "content": "\n".join(brief)})
+
+    if previous_recommendation:
+        rec_join = "\n- " + "\n- ".join(map(str, previous_recommendation[:3]))
+    else:
+        rec_join = "\n- (no previous recs)"
+    ratings_str = ", ".join(map(str, ratings[:3])) if ratings else "n/a"
+    brief_context = (
+        ("ملخص سياقي:\n" if lang == "العربية" else "Context brief:\n") +
+        f"- Lang: {lang}\n"
+        f"- Recommendations: {rec_join}\n"
+        f"- Ratings: {ratings_str}\n"
+    )
+    try:
+        brief_context += (
+            f"- Z-axes: {json.dumps(encoded.get('axes', {}), ensure_ascii=False)}\n"
+            f"- Z-markers: {', '.join(encoded.get('z_markers', []))}\n"
+        )
+    except Exception:
+        pass
+    messages.append({"role": "system", "content": brief_context})
+
+    for m in _trim_chat_history(chat_history or [], max_msgs=8):
+        if m.get("role") in ("user", "assistant"):
+            messages.append({"role": m["role"], "content": m.get("content", "")})
+
+    messages.append({"role": "user", "content": user_message or (
+        "أعد ضبط الخطة بخطوتين بسيطتين للأسبوع القادم."
+        if lang=="العربية" else
+        "Refine my weekly plan into two simple, immediate steps."
+    )})
+
+    # 5) اتصال ستريم مع OpenAI
+    try:
+        stream = client.chat.completions.create(
+            model=CHAT_MODEL,
+            messages=messages,
+            temperature=0.8,
+            max_tokens=450,
+            stream=True
+        )
+    except Exception as e:
+        yield (f"❌ خطأ اتصال: {e}" if lang=="العربية" else f"❌ API error: {e}")
+        return
+
+    # 6) بث حي للنص (ونجمع نسخة نهائية للّوج)
+    final_buf: List[str] = []
+    try:
+        for chunk in stream:
+            part = ""
+            try:
+                part = chunk.choices[0].delta.content or ""
+            except Exception:
+                part = ""
+            if part:
+                final_buf.append(part)
+                yield part
+    finally:
+        # تسجيل التفاعل بعد اكتمال البث
+        reply_full = "".join(final_buf).strip()
+        try:
+            log_user_insight(
+                user_id=user_id,
+                content={
+                    "language": lang,
+                    "answers": answers,
+                    "ratings": ratings,
+                    "user_analysis": ua,
+                    "previous_recommendation": previous_recommendation,
+                    "personality_used": personality,
+                    "user_message": user_message,
+                    "ai_reply": reply_full,
+                    "streaming": True
+                },
+                event_type="chat_interaction"
+            )
+        except Exception:
+            pass
 
 
 # (اختياري) فحص صحة سريع
