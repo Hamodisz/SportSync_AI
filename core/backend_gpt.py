@@ -45,19 +45,29 @@ except Exception:
         key = f"{lang}:{hash(json.dumps(analysis, ensure_ascii=False, sort_keys=True))}"
         _PERS_CACHE[key] = personality
 
+# ========= Helpers: Arabic normalization =========
+_AR_DIAC = r"[ًٌٍَُِّْـ]"
+def _normalize_ar(t: str) -> str:
+    """تطبيع مبسّط للنص العربي لتحسين المطابقة/المنع."""
+    if not t: return ""
+    t = re.sub(_AR_DIAC, "", t)           # إزالة التشكيل والتمطيط
+    t = t.replace("أ","ا").replace("إ","ا").replace("آ","ا")
+    t = t.replace("ؤ","و").replace("ئ","ي")
+    t = t.replace("ة","ه").replace("ى","ي")
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
 # تحليل المستخدم — نحاول أكثر من توقيع دالة
 def _call_analyze_user_from_answers(user_id: str, answers: Dict[str, Any], lang: str) -> Dict[str, Any]:
     try:
-        # ❶ في بعض المشاريع analysis.user_analysis
         from analysis.user_analysis import analyze_user_from_answers as _ana
         try:
-            out = _ana(user_id=user_id, answers=answers, lang=lang)  # توقيع (user_id, answers, lang)
+            out = _ana(user_id=user_id, answers=answers, lang=lang)
         except TypeError:
-            out = _ana(answers)  # توقيع (answers) القديم
+            out = _ana(answers)
         return {"traits": out} if isinstance(out, list) else (out or {})
     except Exception:
         try:
-            # ❷ في بعض المشاريع core.user_analysis
             from core.user_analysis import analyze_user_from_answers as _ana2
             try:
                 out = _ana2(user_id=user_id, answers=answers, lang=lang)
@@ -79,15 +89,9 @@ except Exception:
 
 # ========= (جديد) مُشفِّر الإجابات (اختياري) =========
 def _extract_profile(answers: Dict[str, Any], lang: str) -> Optional[Dict[str, Any]]:
-    """
-    يعيد بروفايل مُشفَّر إن وُجد في answers تحت المفتاح "profile"،
-    أو يحاول توليده عبر core.answers_encoder.encode_answers (إن توفّر).
-    """
     prof = answers.get("profile")
     if isinstance(prof, dict):
         return prof
-
-    # محاولة توليد سريع
     encode_answers = None
     try:
         from core.answers_encoder import encode_answers as _enc
@@ -98,17 +102,14 @@ def _extract_profile(answers: Dict[str, Any], lang: str) -> Optional[Dict[str, A
             encode_answers = _enc
         except Exception:
             encode_answers = None
-
     if encode_answers is None:
         return None
-
     try:
         enc = encode_answers(answers, lang=lang)
         preferences = enc.get("prefs", enc.get("preferences", {}))
         z_markers = enc.get("z_markers", [])
         signals   = enc.get("signals", [])
-        hints = " | ".join([*z_markers, *signals])[:1000]  # نص موجز للبرومبت
-
+        hints = " | ".join([*z_markers, *signals])[:1000]
         return {
             "scores": enc.get("scores", {}),
             "axes": enc.get("axes", {}),
@@ -123,7 +124,6 @@ def _extract_profile(answers: Dict[str, Any], lang: str) -> Optional[Dict[str, A
         return None
 
 # ========= Rules & helpers =========
-# (ملاحظة: سنستخدمه فقط لو ALLOW_SPORT_NAMES=False)
 _BLOCKLIST = r"(جري|ركض|سباحة|كرة|قدم|سلة|طائرة|تنس|ملاكمة|كاراتيه|كونغ فو|يوجا|يوغا|بيلاتس|رفع|أثقال|تزلج|دراج|دراجة|ركوب|خيول|باركور|جودو|سكواش|بلياردو|جولف|كرة طائرة|كرة اليد|هوكي|سباق|ماراثون|مصارعة|MMA|Boxing|Karate|Judo|Taekwondo|Soccer|Football|Basketball|Tennis|Swim|Swimming|Running|Run|Cycle|Cycling|Bike|Biking|Yoga|Pilates|Rowing|Row|Skate|Skating|Ski|Skiing|Climb|Climbing|Surf|Surfing|Golf|Volleyball|Handball|Hockey|Parkour|Wrestling)"
 _name_re = re.compile(_BLOCKLIST, re.IGNORECASE)
 
@@ -137,7 +137,6 @@ _SENSORY = [
     "إحساس","امتداد","حرق لطيف","صفاء","تماسك"
 ]
 
-# ممنوع (وقت/تكلفة/عدّات/مكان مباشر)
 _FORBIDDEN_SENT = re.compile(
     r"(\b\d+(\.\d+)?\s*(?:min|mins|minute|minutes|second|seconds|hour|hours|دقيقة|دقائق|ثانية|ثواني|ساعة|ساعات)\b|"
     r"(?:rep|reps|set|sets|تكرار|عدة|عدات|جولة|جولات|×)|"
@@ -147,23 +146,27 @@ _FORBIDDEN_SENT = re.compile(
     re.IGNORECASE
 )
 
+def _contains_blocked_name(t: str) -> bool:
+    """مطابقة مزدوجة: خام + بعد التطبيع."""
+    if not t: return False
+    return bool(_name_re.search(t)) or bool(_name_re.search(_normalize_ar(t)))
+
 def _mask_names(t: str) -> str:
     if ALLOW_SPORT_NAMES:
         return t or ""
-    return _name_re.sub("—", t or "")
-
-def _violates_names(t: str) -> bool:
-    if ALLOW_SPORT_NAMES:
-        return False
-    return bool(_name_re.search(t or ""))
+    # استبدال خام + بعد التطبيع (تقريبي)
+    s = t or ""
+    s = _name_re.sub("—", s)
+    if s == (t or "") and _contains_blocked_name(t):
+        s = "—"
+    return s
 
 def _split_sentences(text: str) -> List[str]:
     if not text: return []
     return [s.strip() for s in re.split(r"(?<=[\.\!\?؟])\s+|[\n،]+", text) if s.strip()]
 
 def _scrub_forbidden(text: str) -> str:
-    """يحذف أي جملة تتضمن مكان/زمن/تكلفة/عدّات/جولات بالكامل."""
-    kept = [s for s in _split_sentences(text) if not _FORBIDDEN_SENT.search(s)]
+    kept = [s for s in _split_sentences(text) if not _FORBIDDEN_SENT.search(_normalize_ar(s))]
     return "، ".join(kept).strip(" .،")
 
 def _answers_to_bullets(answers: Dict[str, Any]) -> str:
@@ -239,14 +242,12 @@ def _mismatch_with_axes(rec: Dict[str, Any], axes: Dict[str, float], lang: str) 
 
 # ========= Sanitizers / Fallbacks =========
 def _sanitize_record(r: Dict[str, Any]) -> Dict[str, Any]:
-    """تنظيف عام + حذف الحقول المحظورة + تنظيف الجمل الممنوعة."""
     r = dict(r or {})
     r.pop("practical_fit", None)
     for k in ("sport_label","scene","what_it_looks_like","inner_sensation","why_you",
               "first_week","progress_markers","win_condition","core_skills","variant_vr","variant_no_vr","vr_idea","mode"):
         if isinstance(r.get(k), str):
             r[k] = _scrub_forbidden(_mask_names(r[k].strip()))
-    # core_skills قد تأتي كسلسلة
     if isinstance(r.get("core_skills"), str):
         parts = [p.strip(" -•\t") for p in re.split(r"[,\n،]+", r["core_skills"]) if p.strip()]
         r["core_skills"] = parts[:6]
@@ -257,13 +258,11 @@ def _sanitize_record(r: Dict[str, Any]) -> Dict[str, Any]:
         r["difficulty"] = max(1, min(5, d))
     except Exception:
         r["difficulty"] = 3
-    # mode ضبط
     if r.get("mode") not in ("Solo","Team","Solo/Team","فردي","جماعي","فردي/جماعي"):
         r["mode"] = r.get("mode","Solo")
     return r
 
 def _fallback_identity(i: int, lang: str) -> Dict[str, Any]:
-    """فولباك قوي يعطي رياضة واضحة بدون أرقام/أماكن."""
     if lang == "العربية":
         presets = [
             {
@@ -282,7 +281,7 @@ def _fallback_identity(i: int, lang: str) -> Dict[str, Any]:
             },
             {
                 "sport_label":"Stealth-Flow Missions",
-                "what_it_looks_like":"مسار صامت متدرج: اختباء قصير، ظهور محسوب، لمس 'علامة' ثم اختفاء.",
+                "what_it_looks_like":"مسار صامت متدرّج: اختباء قصير، ظهور محسوب، لمس 'علامة' ثم اختفاء.",
                 "inner_sensation":"تركيز عميق وتنظيم للنفس مع حركة ناعمة.",
                 "why_you":"تبغى تقدّم ملموس بدون ضجيج وتحب الإتقان الهادئ.",
                 "first_week":"درّب تبديل السرعات بسلاسة وملاحظة الزوايا الآمنة.",
@@ -328,13 +327,55 @@ def _fallback_identity(i: int, lang: str) -> Dict[str, Any]:
         ]
     return presets[i % len(presets)]
 
+# ========= Diversity & defaults =========
+def _canonical_label(label: str) -> str:
+    if not label: return ""
+    lab = re.sub(r"\s+", " ", label).strip(" -—:،")
+    # لا نحاول title case بالعربية؛ نتركها كما هي
+    return lab
+
+def _fill_defaults(r: Dict[str, Any], lang: str) -> Dict[str, Any]:
+    """ملء الحقول الناقصة سريعاً دون تغيير أسلوب الموديل."""
+    r = dict(r or {})
+    if not r.get("win_condition"):
+        r["win_condition"] = ("إنجاز المهمة دون انكشاف." if lang=="العربية"
+                              else "Complete the mission without being detected.")
+    if not r.get("core_skills"):
+        r["core_skills"] = ["تتبّع زاوية الرؤية","تغيير الإيقاع","قرار سريع"] if lang=="العربية" \
+                           else ["angle tracking","tempo shifts","fast decision"]
+    if not r.get("mode"):
+        r["mode"] = "Solo/Team"
+    if not r.get("variant_vr"):
+        r["variant_vr"] = ("مبارزات تكتيكية في VR مع مؤشّر مجال رؤية." if lang=="العربية"
+                           else "Tactical VR duels with FOV indicator.")
+    if not r.get("variant_no_vr"):
+        r["variant_no_vr"] = ("حلبة حواجز خفيفة مع ممرات ظل." if lang=="العربية"
+                              else "Light obstacle arena with shadow lanes.")
+    return r
+
+def _enforce_diversity(recs: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]]:
+    """منع تكرار نفس الهوية/الملمح عبر الكروت الثلاثة."""
+    seen = set()
+    for i, r in enumerate(recs):
+        lab = _canonical_label(r.get("sport_label",""))
+        if not lab:
+            continue
+        if lab in seen:
+            # إن تكرر، نحافظ على الجوهر ونضيف تمايز واضح
+            if lang == "العربية":
+                r["sport_label"] = lab + " — نمط تخفّي فردي"
+            else:
+                r["sport_label"] = lab + " — Solo Infiltration"
+        seen.add(_canonical_label(r.get("sport_label","")))
+    return recs
+
 # ========= Prompt Builder =========
 def _style_seed(user_id: str, profile: Optional[Dict[str, Any]]) -> int:
     base = user_id or "anon"
     axes = profile.get("axes", {}) if isinstance(profile, dict) else {}
     s = f"{base}:{json.dumps(axes, sort_keys=True, ensure_ascii=False)}"
     h = hashlib.sha256(s.encode("utf-8")).hexdigest()
-    return int(h[:8], 16)  # ثابت لكل مستخدم/محاور
+    return int(h[:8], 16)
 
 def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
                  personality: Any, lang: str, style_seed: int) -> List[Dict[str, str]]:
@@ -344,10 +385,13 @@ def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
     axes = profile.get("axes", {})
     exp = _axes_expectations(axes, lang)
     exp_lines = []
-    for k, words in exp.items():
-        if words:
-            title = {"calm_adrenaline":"هدوء/أدرينالين","solo_group":"فردي/جماعي","tech_intuition":"تقني/حدسي"} if lang=="العربية" else {"calm_adrenaline":"Calm/Adrenaline","solo_group":"Solo/Group","tech_intuition":"Technical/Intuitive"}
-            exp_lines.append(f"{title[k]}: {', '.join(words)}")
+    if exp:
+        title = {"calm_adrenaline":"هدوء/أدرينالين","solo_group":"فردي/جماعي","tech_intuition":"تقني/حدسي"} \
+                if lang=="العربية" else \
+                {"calm_adrenaline":"Calm/Adrenaline","solo_group":"Solo/Group","tech_intuition":"Technical/Intuitive"}
+        for k, words in exp.items():
+            if words:
+                exp_lines.append(f"{title[k]}: {', '.join(words)}")
     axis_hint = ("\n".join(exp_lines)) if exp_lines else ""
 
     if lang == "العربية":
@@ -358,7 +402,7 @@ def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
             "أعِد JSON فقط."
         )
         usr = (
-            "حوّل بيانات المستخدم إلى ثلاث توصيات «رياضة واضحة» (ليس مجرد إحساس). "
+            "حوّل بيانات المستخدم إلى ثلاث توصيات «هوية رياضية واضحة». "
             "أعِد JSON بالمفاتيح: "
             "{\"recommendations\":[{"
             "\"sport_label\":\"...\","
@@ -503,17 +547,17 @@ def _sanitize_fill(recs: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]
     out: List[Dict[str, Any]] = []
     for i in range(3):
         r = recs[i] if i < len(recs) else {}
-        r = _sanitize_record(r)
+        r = _fill_defaults(_sanitize_record(r), lang)
         blob = " ".join([
             r.get("sport_label",""), r.get("what_it_looks_like",""),
             r.get("why_you",""), r.get("first_week",""),
             r.get("progress_markers",""), r.get("win_condition","")
         ])
-        # شروط الجودة الدنيا
-        if _too_generic(blob, 220) or not _has_sensory(blob) or not _is_meaningful(r) or not r.get("win_condition") or len(r.get("core_skills") or []) < 3:
+        if _too_generic(blob, 220) or not _has_sensory(blob) or not _is_meaningful(r) \
+           or not r.get("win_condition") or len(r.get("core_skills") or []) < 3:
             r = _fallback_identity(i, lang)
         out.append(r)
-    return out
+    return _enforce_diversity(out, lang)
 
 # ========= PUBLIC API =========
 def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العربية", user_id: str = "N/A") -> List[str]:
@@ -550,7 +594,13 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     msgs = _json_prompt(analysis, answers, persona, lang, seed)
     try:
         resp = OpenAI_CLIENT.chat.completions.create(
-            model=CHAT_MODEL, messages=msgs, temperature=0.9, max_tokens=1400
+            model=CHAT_MODEL,
+            messages=msgs,
+            temperature=0.55,          # ↓ ثبات أعلى
+            top_p=0.9,
+            presence_penalty=0.2,      # تنويع طفيف
+            frequency_penalty=0.15,
+            max_tokens=1400
         )
         raw1 = (resp.choices[0].message.content or "").strip()
         print(f"[AI] model={CHAT_MODEL} len={len(raw1)} raw[:140]={raw1[:140]!r}")
@@ -558,11 +608,12 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         return [f"❌ خطأ اتصال النموذج: {e}", "—", "—"]
 
     # Sanitization pass-1
-    if _violates_names(raw1): raw1 = _mask_names(raw1)
+    if not ALLOW_SPORT_NAMES and _contains_blocked_name(raw1):
+        raw1 = _mask_names(raw1)
     parsed = _parse_json(raw1) or []
     cleaned = _sanitize_fill(parsed, lang)
 
-    # ===== محاذاة Z-axes + إصلاح ثانٍ بنبرة إنسانية =====
+    # ===== محاذاة Z-axes + إصلاح ثانٍ =====
     axes = (analysis.get("z_axes") or {}) if isinstance(analysis, dict) else {}
     mismatch_axes = any(_mismatch_with_axes(rec, axes, lang) for rec in cleaned)
     need_repair_generic = any(_too_generic(" ".join([c.get("what_it_looks_like",""), c.get("why_you","")]), 220) for c in cleaned)
@@ -601,10 +652,15 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
             resp2 = OpenAI_CLIENT.chat.completions.create(
                 model=CHAT_MODEL,
                 messages=msgs + [{"role":"assistant","content":raw1}, repair_prompt],
-                temperature=0.85, max_tokens=1400
+                temperature=0.6,
+                top_p=0.9,
+                presence_penalty=0.2,
+                frequency_penalty=0.15,
+                max_tokens=1400
             )
             raw2 = (resp2.choices[0].message.content or "").strip()
-            if _violates_names(raw2): raw2 = _mask_names(raw2)
+            if not ALLOW_SPORT_NAMES and _contains_blocked_name(raw2):
+                raw2 = _mask_names(raw2)
             parsed2 = _parse_json(raw2) or []
             cleaned2 = _sanitize_fill(parsed2, lang)
 
