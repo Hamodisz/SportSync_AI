@@ -1,0 +1,29 @@
+{
+  "version": "1.0",
+  "ar": {
+    "VR": ["vr","واقع افتراضي","افتراضي","نظاره"],
+    "تكتيكي": ["تكتيك","تكتيكي","كمين","خطة","ambush","tactic"],
+    "قتالي": ["قتال","مبارزة","اشتباك","combat"],
+    "هدوء/تنفّس": ["هدوء","تنفس","تنفّس","صفاء","تركيز","breath","calm"],
+    "أدرينالين": ["اندفاع","أدرينالين","سرعة","انقضاض","strike","fast"],
+    "فردي": ["فردي","لوحدي","وحيد","solo"],
+    "جماعي": ["جماعي","فريق","team","group"],
+    "ألغاز/خداع": ["لغز","الغاز","خدعة","puzzle","feint"],
+    "دقة/تصويب": ["دقة","تصويب","نشان","precision","mark"],
+    "تخفّي": ["تخفّي","ظل","stealth"],
+    "قبضة/توازن": ["قبضة","توازن","grip","balance","climb","تسلق"]
+  },
+  "en": {
+    "VR": ["vr","virtual reality","headset"],
+    "Tactical": ["tactic","tactical","ambush","plan"],
+    "Combat": ["combat","duel","engage"],
+    "Calm/Breath": ["calm","breath","breathing","quiet","focus"],
+    "Adrenaline": ["adrenaline","fast","burst","strike","rush"],
+    "Solo": ["solo","alone","individual"],
+    "Team": ["team","group","co-op","squad"],
+    "Puzzles/Feint": ["puzzle","riddle","feint","trick"],
+    "Precision": ["precision","aim","mark","accuracy"],
+    "Stealth": ["stealth","shadow","hide"],
+    "Grip/Balance": ["grip","balance","hold","climb"]
+  }
+}
