@@ -855,7 +855,161 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
                 cleaned = cleaned2
         except Exception:
             pass
+# ====== Blacklist (persistent, JSON) =========================================
+from pathlib import Path
+from datetime import datetime
 
+DATA_DIR = Path(_file_).resolve().parent.parent / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+BL_PATH = DATA_DIR / "blacklist.json"
+
+def _load_json_safe(p: Path) -> dict:
+    try:
+        with p.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def _save_json_atomic(p: Path, payload: dict) -> None:
+    tmp = p.with_suffix(".tmp")
+    with tmp.open("w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    tmp.replace(p)
+
+def _load_blacklist() -> dict:
+    bl = _load_json_safe(BL_PATH)
+    if not isinstance(bl.get("labels"), dict):
+        bl["labels"] = {}
+    bl.setdefault("version", "1.0")
+    return bl
+
+# — aliases/canonicalization helpers (اختياري: يستفيد من KB إن وجد)
+KB_PATH = DATA_DIR / "sportsync_knowledge.json"
+KB = _load_json_safe(KB_PATH)
+_ALIAS_MAP = {}
+# من sportsync_knowledge.json → label_aliases
+if isinstance(KB.get("label_aliases"), dict):
+    for canon, alist in KB["label_aliases"].items():
+        for a in alist:
+            _ALIAS_MAP[_normalize_ar(a).lower()] = canon
+# ومن labels_aliases.json (لو موجود)
+AL_PATH = DATA_DIR / "labels_aliases.json"
+AL2 = _load_json_safe(AL_PATH)
+if isinstance(AL2.get("canonical"), dict):
+    for a, canon in AL2["canonical"].items():
+        _ALIAS_MAP[_normalize_ar(a).lower()] = canon
+
+_FORBIDDEN_GENERIC = set(
+    KB.get("guards", {}).get("forbidden_generic_labels", [])
+) | set(AL2.get("forbidden_generic", []) or [])
+
+def _canon_label(label: str) -> str:
+    """توحيد الاسم: إزالة التشكيل/التمطيط، حروف صغيرة، تطبيق aliases، ثم تفريغ للمفتاح."""
+    lab = _normalize_ar(label or "").lower().strip(" -—:،")
+    if not lab:
+        return ""
+    # aliases → canonical id لو معروف
+    if lab in _ALIAS_MAP:
+        return _ALIAS_MAP[lab]
+    # إسقاط الرموز غير حرف/رقم عربي/لاتيني
+    lab = re.sub(r"[^a-z0-9\u0600-\u06FF]+", " ", lab)
+    lab = re.sub(r"\s+", " ", lab).strip()
+    return lab
+
+def _is_forbidden_generic(label: str) -> bool:
+    base = _normalize_ar((label or "")).lower()
+    return any(g in base for g in _FORBIDDEN_GENERIC)
+
+def _bl_has(bl: dict, label: str) -> bool:
+    c = _canon_label(label)
+    return bool(c and c in bl["labels"])
+
+def _bl_add(bl: dict, label: str, alias: str = "") -> None:
+    c = _canon_label(label)
+    if not c:
+        return
+    rec = bl["labels"].get(c, {"aliases": [], "count": 0, "first_seen": None})
+    if alias and alias not in rec["aliases"]:
+        rec["aliases"].append(alias)
+    rec["count"] = int(rec.get("count", 0)) + 1
+    if not rec.get("first_seen"):
+        rec["first_seen"] = datetime.utcnow().isoformat() + "Z"
+    rec["last_used"] = datetime.utcnow().isoformat() + "Z"
+    bl["labels"][c] = rec
+
+_AR_VARIANTS = [
+    "نسخة ظلّية", "نمط مراوغة", "خط تحكّم هادئ", "نسخة تفكيك تكتيكي",
+    "مناورة عكسية", "زاوية صامتة", "طيف التتبع", "تدفق خفي"
+]
+_EN_VARIANTS = [
+    "Shadow Variant", "Evasive Pattern", "Calm-Control Line", "Tactical Deconstruction",
+    "Counter-Maneuver", "Silent Angle", "Tracking Flux", "Stealth Flow"
+]
+
+def _generate_variant_label(base: str, lang: str, salt: int = 0) -> str:
+    """إن كان الاسم محجوزًا، نولّد اسم جديد بنفس الهوية لكن مختلف كليًا نصيًا."""
+    base = (base or "").strip(" -—:،")
+    if lang == "العربية":
+        pool = _AR_VARIANTS
+        joiner = " — "
+    else:
+        pool = _EN_VARIANTS
+        joiner = " — "
+    # اختَر متغيرًا مستقرًا نسبيًا بالـ salt
+    idx = abs(hash(_normalize_ar(base) + str(salt))) % len(pool)
+    return f"{base}{joiner}{pool[idx]}"
+
+def _perturb_phrasing(rec: Dict[str, Any], lang: str) -> Dict[str, Any]:
+    """نُعدّل الصياغة قليلًا لضمان اختلاف النص إذا الهوية نفسها."""
+    r = dict(rec)
+    tacky_add_ar = " ركّز على قراءة الزوايا بدل مطاردة الحركة. اجعل القرار يظهر فجأة عندما يهدأ الإيقاع."
+    tacky_add_en = " Emphasize reading angles over chasing motion; let decisions snap when the rhythm calms."
+    if lang == "العربية":
+        r["what_it_looks_like"] = (r.get("what_it_looks_like","") + tacky_add_ar).strip()
+        r["why_you"] = (r.get("why_you","") + " تحب الاختصار الذكي وإخفاء نواياك حتى اللحظة المناسبة.").strip()
+    else:
+        r["what_it_looks_like"] = (r.get("what_it_looks_like","") + tacky_add_en).strip()
+        r["why_you"] = (r.get("why_you","") + " You like smart brevity and hiding intent until the decisive beat.").strip()
+    return r
+
+def _ensure_unique_labels_v_global(recs: List[Dict[str, Any]], lang: str, bl: dict) -> List[Dict[str, Any]]:
+    """
+    1) منع تكرار أي اسم ظهر سابقًا (blacklist).
+    2) منع العناوين العامة/الركيكة (generic).
+    3) لو محجوز → اصنع اسمًا مختلفًا + عدّل الصياغة قليلًا.
+    4) ضمان عدم تكرار داخل نفس الرد أيضًا.
+    """
+    used_now = set()
+    out = []
+    for i, r in enumerate(recs):
+        r = dict(r or {})
+        label = r.get("sport_label") or ""
+        # لو الاسم ركيك/جنريك.. أعد التسمية من الوصف/المهارات
+        if _is_forbidden_generic(label) or not label.strip():
+            hint = "تكتيكي تخفّي" if lang == "العربية" else "Tactical Stealth"
+            label = hint
+            r["sport_label"] = label
+
+        # إن كان الاسم موجودًا في البلاك ليست أو تكرر الآن → ولّد بديل
+        salt = 0
+        while _bl_has(bl, label) or _canon_label(label) in used_now:
+            label = _generate_variant_label(label, lang, salt=salt)
+            r = _perturb_phrasing(r, lang)
+            salt += 1
+        used_now.add(_canon_label(label))
+        r["sport_label"] = label
+        out.append(r)
+    return out
+
+def _persist_blacklist(recs: List[Dict[str, Any]], bl: dict) -> None:
+    """سجّل كل التسميات النهائية في البلاك ليست (منع أبدي)."""
+    for r in recs:
+        lab = r.get("sport_label") or ""
+        if lab.strip():
+            _bl_add(bl, lab, alias=lab)
+    _save_json_atomic(BL_PATH, bl)
+# ============================================================================
+  
     # بناء الكروت
     cards = [_format_card(cleaned[i], i, lang) for i in range(3)]
 
