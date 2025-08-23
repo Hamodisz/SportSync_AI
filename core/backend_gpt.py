@@ -8,12 +8,14 @@ core/backend_gpt.py
 - يحاول مرتين قبل السقوط للـ fallback. يدعم العربية/English.
 - يفرض حقول إلزامية لتحويل الغموض إلى رياضة واضحة:
   sport_label, what_it_looks_like, win_condition, core_skills, mode, variant_vr, variant_no_vr
+- جديد: منع تكرار الهوية منعًا قاطعًا + فحص تشابه دلالي بين الكروت (Jaccard) مع استبدال ذكي.
+- جديد: استيراد Z-intent (تحليل نوايا) مع fallback لغوي إن لم تتوفر دالة المشروع.
 """
 
 from __future__ import annotations
 
 import os, json, re, hashlib
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 # ========= OpenAI =========
 try:
@@ -57,8 +59,9 @@ def _normalize_ar(t: str) -> str:
     t = re.sub(r"\s+", " ", t).strip()
     return t
 
-# تحليل المستخدم — نحاول أكثر من توقيع دالة
+# ========= Analysis import (user traits) =========
 def _call_analyze_user_from_answers(user_id: str, answers: Dict[str, Any], lang: str) -> Dict[str, Any]:
+    """يحاول أكثر من توقيع/مسار لاستيراد تحليل المستخدم."""
     try:
         from analysis.user_analysis import analyze_user_from_answers as _ana
         try:
@@ -77,7 +80,7 @@ def _call_analyze_user_from_answers(user_id: str, answers: Dict[str, Any], lang:
         except Exception:
             return {"quick_profile": "fallback", "raw_answers": answers}
 
-# Layer Z قد تكون عندك في core أو analysis
+# ========= Layer Z (silent drivers) + Intent =========
 try:
     from core.layer_z_engine import analyze_silent_drivers_combined as analyze_silent_drivers
 except Exception:
@@ -87,7 +90,45 @@ except Exception:
         def analyze_silent_drivers(answers: Dict[str, Any], lang: str = "العربية") -> List[str]:
             return ["إنجازات قصيرة", "نفور من التكرار", "تفضيل تحدّي ذهني"]
 
-# ========= (جديد) مُشفِّر الإجابات (اختياري) =========
+def _call_analyze_intent(answers: Dict[str, Any], lang: str="العربية") -> List[str]:
+    """
+    يحاول استيراد محلّل نوايا من مشروعك؛ وإلا يستخدم fallback لغوي بسيط:
+    يستنتج Intentات مثل: تكتيكي/VR/فردي/جماعي/أدرينالين/هدوء/دقة/ألغاز/تخفّي...
+    """
+    # ❶ نحاول استيراد من مشروعك
+    for modpath in ("core.layer_z_engine", "analysis.layer_z_engine"):
+        try:
+            mod = _import_(modpath, fromlist=["analyze_user_intent"])
+            if hasattr(mod, "analyze_user_intent"):
+                return list(mod.analyze_user_intent(answers, lang=lang) or [])
+        except Exception:
+            pass
+
+    # ❷ Fallback لغوي
+    intents = set()
+    blob = " ".join(
+        (v["answer"] if isinstance(v, dict) and "answer" in v else str(v))
+        for v in (answers or {}).values()
+    ).lower()
+    blob_ar = _normalize_ar(blob)
+
+    def any_of(words: List[str]) -> bool:
+        return any(w in blob or w in blob_ar for w in words)
+
+    if any_of(["vr","واقع افتراضي","نظاره","افتراضي"]): intents.add("VR")
+    if any_of(["تكتيك","تكتيكي","tactic","ambush","كمين"]): intents.add("تكتيكي")
+    if any_of(["قتال","مبارزه","اشتباك","combat"]): intents.add("قتالي")
+    if any_of(["هدوء","تنفس","تنفّس","تركيز","صفاء","calm","breath"]): intents.add("هدوء/تنفّس")
+    if any_of(["سرعه","اندفاع","أدرينالين","انقضاض","strike","fast"]): intents.add("أدرينالين")
+    if any_of(["فردي","لوحدي","solo","وحيد"]): intents.add("فردي")
+    if any_of(["فريق","جماعي","team","group"]): intents.add("جماعي")
+    if any_of(["لغز","الغاز","puzzle","خدعه بصريه"]): intents.add("ألغاز/خداع")
+    if any_of(["دقه","تصويب","نشان","precision","mark"]): intents.add("دقة/تصويب")
+    if any_of(["تخفي","خفيف","stealth","ظل"]): intents.add("تخفّي")
+    if any_of(["توازن","قبضه","grip","balance","تسلق","climb"]): intents.add("قبضة/توازن")
+    return list(intents)
+
+# ========= (اختياري) مُشفِّر الإجابات =========
 def _extract_profile(answers: Dict[str, Any], lang: str) -> Optional[Dict[str, Any]]:
     prof = answers.get("profile")
     if isinstance(prof, dict):
@@ -137,6 +178,12 @@ _SENSORY = [
     "إحساس","امتداد","حرق لطيف","صفاء","تماسك"
 ]
 
+# أسماء/أنماط لا نسمح بها لأنها عامة/مشوشة تسبّب تكرارًا ممجوجًا
+_GENERIC_LABELS = {
+    "impressive compact", "impressive-compact", "generic sport", "sport identity",
+    "movement flow", "basic flow", "simple flow", "body flow"
+}
+
 _FORBIDDEN_SENT = re.compile(
     r"(\b\d+(\.\d+)?\s*(?:min|mins|minute|minutes|second|seconds|hour|hours|دقيقة|دقائق|ثانية|ثواني|ساعة|ساعات)\b|"
     r"(?:rep|reps|set|sets|تكرار|عدة|عدات|جولة|جولات|×)|"
@@ -147,14 +194,12 @@ _FORBIDDEN_SENT = re.compile(
 )
 
 def _contains_blocked_name(t: str) -> bool:
-    """مطابقة مزدوجة: خام + بعد التطبيع."""
     if not t: return False
     return bool(_name_re.search(t)) or bool(_name_re.search(_normalize_ar(t)))
 
 def _mask_names(t: str) -> str:
     if ALLOW_SPORT_NAMES:
         return t or ""
-    # استبدال خام + بعد التطبيع (تقريبي)
     s = t or ""
     s = _name_re.sub("—", s)
     if s == (t or "") and _contains_blocked_name(t):
@@ -240,6 +285,34 @@ def _mismatch_with_axes(rec: Dict[str, Any], axes: Dict[str, float], lang: str) 
             return True
     return False
 
+# ========= Label normalization / similarity =========
+def _canonical_label(label: str) -> str:
+    if not label: return ""
+    lab = re.sub(r"\s+", " ", label).strip(" -—:،").lower()
+    lab = _normalize_ar(lab)
+    return lab
+
+def _label_is_generic(label: str) -> bool:
+    lab = _canonical_label(label)
+    return (lab in _GENERIC_LABELS) or (len(lab) <= 3)
+
+def _tokenize(text: str) -> List[str]:
+    if not text: return []
+    t = _normalize_ar(text.lower())
+    # نقسم على غير الحروف/الأرقام
+    toks = re.split(r"[^a-zA-Z0-9\u0600-\u06FF]+", t)
+    return [w for w in toks if w and len(w) > 2]
+
+def _sig_for_rec(r: Dict[str, Any]) -> set:
+    toks = set(_tokenize(r.get("sport_label","")) + _tokenize(" ".join((r.get("core_skills") or []))))
+    return toks
+
+def _jaccard(a: set, b: set) -> float:
+    if not a and not b: return 1.0
+    inter = len(a & b)
+    union = len(a | b) or 1
+    return inter / union
+
 # ========= Sanitizers / Fallbacks =========
 def _sanitize_record(r: Dict[str, Any]) -> Dict[str, Any]:
     r = dict(r or {})
@@ -263,6 +336,7 @@ def _sanitize_record(r: Dict[str, Any]) -> Dict[str, Any]:
     return r
 
 def _fallback_identity(i: int, lang: str) -> Dict[str, Any]:
+    """فولباك قوي يعطي رياضة واضحة بدون أرقام/أماكن."""
     if lang == "العربية":
         presets = [
             {
@@ -270,13 +344,13 @@ def _fallback_identity(i: int, lang: str) -> Dict[str, Any]:
                 "what_it_looks_like":"ساحة محاكاة بصرية أو VR: تتبّع، كمين، قرار خاطف، اقتراب محسوب، انسحاب آمن.",
                 "inner_sensation":"اندماج ذهني مع يقظة عالية وثقة هادئة.",
                 "why_you":"تكره التكرار وتفضّل صراعًا تكتيكيًا يختبر الذكاء والأعصاب.",
-                "first_week":"ابدأ بجولة حسّية: تعرف على الإيقاع، جرّب مسار اقتراب/انسحاب، وثبّت تنفّسك قبل القرار.",
+                "first_week":"ابدأ بجولة حسّية: تعرّف على الإيقاع، جرّب اقتراب/انسحاب، وثبّت تنفّسك قبل القرار.",
                 "progress_markers":"قرارات أسرع، هدوء تحت الضغط، إحساس بسيطرة أعلى.",
                 "win_condition":"الوصول لهدف دون انكشاف أو تعطيل 'الخصم' بقرار خاطف.",
                 "core_skills":["تتبّع زاوية الرؤية","تغيير الإيقاع","قرار سريع","ثبات التوازن","تنفّس هادئ"],
                 "mode":"Solo/Team",
                 "variant_vr":"مبارزات تكتيكية في VR مع تتبع مجال رؤية الخصم.",
-                "variant_no_vr":"حلبة حواجز إسفنجية مع مسارات ظلّ وتمويه.",
+                "variant_no_vr":"عقبات خفيفة مع ممرات ظلّ.",
                 "difficulty":3
             },
             {
@@ -290,7 +364,7 @@ def _fallback_identity(i: int, lang: str) -> Dict[str, Any]:
                 "core_skills":["توقيت الظهور","قراءة الحواجز","تعديل الإيقاع","تنفّس صامت","توازن"],
                 "mode":"Solo",
                 "variant_vr":"تسلل افتراضي مع مؤشّر انكشاف بصري.",
-                "variant_no_vr":"حلبة خفيفة بعوائق وأشرطة ظل.",
+                "variant_no_vr":"عوائق خفيفة وأشرطة ظل.",
                 "difficulty":2
             },
             {
@@ -305,6 +379,34 @@ def _fallback_identity(i: int, lang: str) -> Dict[str, Any]:
                 "mode":"Solo",
                 "variant_vr":"أفخاخ بصرية تفاعلية.",
                 "variant_no_vr":"مسارات أرضية ذات إشارات مخفية.",
+                "difficulty":2
+            },
+            {
+                "sport_label":"Range Precision Circuit",
+                "what_it_looks_like":"دقة تصويب هادئة مع زوايا ثابتة وانتقال منظّم بين أهداف.",
+                "inner_sensation":"هدوء متمركز ونبض مستقر.",
+                "why_you":"تميل لتهذيب التقنية والاتقان الصامت.",
+                "first_week":"ثبّت النظرة، اضبط النفس، بدّل زواياك بسلاسة.",
+                "progress_markers":"ثبات يد، قرار أوضح، توتر أقل.",
+                "win_condition":"تحقيق دقة ثابتة عبر سلسلة أهداف دون أخطاء متتالية.",
+                "core_skills":["تثبيت نظرة","ضبط نفس","انتقال زوايا","تحكّم دقيق"],
+                "mode":"Solo",
+                "variant_vr":"تصويب افتراضي تفاعلي.",
+                "variant_no_vr":"لوحات أهداف إسفنجية آمنة.",
+                "difficulty":2
+            },
+            {
+                "sport_label":"Grip & Balance Ascent",
+                "what_it_looks_like":"مسار قبضات وتوازن تدريجي، قراءة مسك، تحويل وزن هادئ.",
+                "inner_sensation":"تماسك داخلي وثقة حركة.",
+                "why_you":"تحب تحدّي تحكّم الجسد بدون ضجيج.",
+                "first_week":"اقرأ موضع القبضة، وزّن الحمل، تحرّك ببطء صاعد.",
+                "progress_markers":"تعب أقل في الساعد، اتزان أوضح.",
+                "win_condition":"الوصول للنقطة العلوية دون إفلات.",
+                "core_skills":["قبضة","تحويل وزن","توازن","قراءة مسار"],
+                "mode":"Solo",
+                "variant_vr":"مسارات قبضات افتراضية.",
+                "variant_no_vr":"عناصر قبضة آمنة خفيفة.",
                 "difficulty":2
             }
         ]
@@ -321,21 +423,41 @@ def _fallback_identity(i: int, lang: str) -> Dict[str, Any]:
                 "core_skills":["angle tracking","tempo shifts","fast decision","balance","quiet breath"],
                 "mode":"Solo/Team",
                 "variant_vr":"Tactical VR duels with FOV tracking.",
-                "variant_no_vr":"Foam-obstacle arena with shadow lanes.",
+                "variant_no_vr":"Foam obstacles with shadow lanes.",
                 "difficulty":3
+            },
+            {
+                "sport_label":"Stealth-Flow Missions",
+                "what_it_looks_like":"Silent path: brief hide, measured reveal, tag and vanish.",
+                "inner_sensation":"Deep focus with smooth breathing.",
+                "why_you":"You want tangible progress without noise and love quiet mastery.",
+                "first_week":"Practice smooth tempo shifts and safe angles.",
+                "progress_markers":"Lower tension, smoother movement, clearer decisions.",
+                "win_condition":"Complete the mission without detection.",
+                "core_skills":["timed reveal","reading cover","tempo control","silent breath","balance"],
+                "mode":"Solo",
+                "variant_vr":"Stealth VR with exposure indicator.",
+                "variant_no_vr":"Light obstacles and shadow tapes.",
+                "difficulty":2
+            },
+            {
+                "sport_label":"Mind-Trap Puzzles in Motion",
+                "what_it_looks_like":"Decision puzzles in motion: route switch, visual feint, counter-move.",
+                "inner_sensation":"Curious mind with discovery joy.",
+                "why_you":"You enjoy deep understanding and identity duels—mind first.",
+                "first_week":"Solve a simple motion puzzle with breath tracking; add one feint.",
+                "progress_markers":"Sharper focus, steadier decisions, mind–body sync.",
+                "win_condition":"Solve without consecutive errors.",
+                "core_skills":["visual feint","path switch","gaze hold","intuitive decision","calm under stress"],
+                "mode":"Solo",
+                "variant_vr":"Interactive visual traps.",
+                "variant_no_vr":"Floor cues with hidden hints.",
+                "difficulty":2
             }
         ]
     return presets[i % len(presets)]
 
-# ========= Diversity & defaults =========
-def _canonical_label(label: str) -> str:
-    if not label: return ""
-    lab = re.sub(r"\s+", " ", label).strip(" -—:،")
-    # لا نحاول title case بالعربية؛ نتركها كما هي
-    return lab
-
 def _fill_defaults(r: Dict[str, Any], lang: str) -> Dict[str, Any]:
-    """ملء الحقول الناقصة سريعاً دون تغيير أسلوب الموديل."""
     r = dict(r or {})
     if not r.get("win_condition"):
         r["win_condition"] = ("إنجاز المهمة دون انكشاف." if lang=="العربية"
@@ -349,25 +471,63 @@ def _fill_defaults(r: Dict[str, Any], lang: str) -> Dict[str, Any]:
         r["variant_vr"] = ("مبارزات تكتيكية في VR مع مؤشّر مجال رؤية." if lang=="العربية"
                            else "Tactical VR duels with FOV indicator.")
     if not r.get("variant_no_vr"):
-        r["variant_no_vr"] = ("حلبة حواجز خفيفة مع ممرات ظل." if lang=="العربية"
+        r["variant_no_vr"] = ("عقبات خفيفة مع ممرات ظل." if lang=="العربية"
                               else "Light obstacle arena with shadow lanes.")
     return r
 
-def _enforce_diversity(recs: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]]:
-    """منع تكرار نفس الهوية/الملمح عبر الكروت الثلاثة."""
-    seen = set()
-    for i, r in enumerate(recs):
+# ======== HARD DEDUPE (no repeats, no near-duplicates) ========
+def _hard_dedupe_and_fill(recs: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]]:
+    """
+    يضمن عدم تكرار الهوية إطلاقًا:
+    - يمنع نفس label بالضبط (بعد التطبيع).
+    - يمنع labels العامة (generic) ويستبدلها.
+    - يمنع تشابهًا دلاليًا عاليًا (Jaccard > 0.6) باستخدام sport_label + core_skills.
+    - يستبدل أي تكرار/تشابه بفولباك مختلف غير مستخدم.
+    """
+    out: List[Dict[str, Any]] = []
+    used_labels = set()
+    used_sigs: List[set] = []
+
+    # مساعد لاختيار فولباك غير مستخدم
+    def pick_unique_fallback(idx: int) -> Dict[str, Any]:
+        for j in range(idx, idx+6):
+            fb = _fallback_identity(j, lang)
+            lab = _canonical_label(fb.get("sport_label",""))
+            sig = _sig_for_rec(fb)
+            if lab and (lab not in used_labels) and all(_jaccard(sig, s) <= 0.6 for s in used_sigs):
+                return fb
+        # لو تعذّر، خذ أي فولباك ثم عدّل العنوان قليلًا
+        fb = _fallback_identity(idx, lang)
+        fb["sport_label"] = (fb.get("sport_label","") + " — Alt")
+        return fb
+
+    for i in range(3):
+        r = recs[i] if i < len(recs) else {}
+        r = _fill_defaults(_sanitize_record(r), lang)
+
+        # إذا اللابل عام/فارغ → فولباك
         lab = _canonical_label(r.get("sport_label",""))
-        if not lab:
-            continue
-        if lab in seen:
-            # إن تكرر، نحافظ على الجوهر ونضيف تمايز واضح
-            if lang == "العربية":
-                r["sport_label"] = lab + " — نمط تخفّي فردي"
-            else:
-                r["sport_label"] = lab + " — Solo Infiltration"
-        seen.add(_canonical_label(r.get("sport_label","")))
-    return recs
+        if not lab or _label_is_generic(lab):
+            r = pick_unique_fallback(i)
+            lab = _canonical_label(r.get("sport_label",""))
+
+        # منع نفس اللابل
+        if lab in used_labels:
+            r = pick_unique_fallback(i)
+            lab = _canonical_label(r.get("sport_label",""))
+
+        # منع تشابه دلالي قوي مع أي سابق
+        sig = _sig_for_rec(r)
+        if any(_jaccard(sig, s) > 0.6 for s in used_sigs):
+            r = pick_unique_fallback(i)
+            lab = _canonical_label(r.get("sport_label",""))
+            sig = _sig_for_rec(r)
+
+        out.append(r)
+        used_labels.add(lab)
+        used_sigs.append(sig)
+
+    return out
 
 # ========= Prompt Builder =========
 def _style_seed(user_id: str, profile: Optional[Dict[str, Any]]) -> int:
@@ -394,6 +554,10 @@ def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
                 exp_lines.append(f"{title[k]}: {', '.join(words)}")
     axis_hint = ("\n".join(exp_lines)) if exp_lines else ""
 
+    # نوايا Z (Intent)
+    z_intent = analysis.get("z_intent", [])
+    intent_hint = ("، ".join(z_intent) if lang=="العربية" else ", ".join(z_intent)) if z_intent else ""
+
     if lang == "العربية":
         sys = (
             "أنت مدرّب SportSync AI بنبرة إنسانية لطيفة (صديق محترف).\n"
@@ -419,7 +583,8 @@ def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
             "\"difficulty\":1-5"
             "}]} "
             "قواعد إلزامية: اذكر win_condition و 3–5 core_skills على الأقل. "
-            "حاذِ Z-axes بالكلمات التالية إن أمكن:\n" + axis_hint + "\n\n"
+            "حاذِ Z-axes بالكلمات التالية إن أمكن:\n" + axis_hint +
+            ("\n\n— نوايا Z المحتملة: " + intent_hint if intent_hint else "") + "\n\n"
             f"— شخصية المدرب:\n{persona}\n\n"
             "— تحليل المستخدم:\n" + json.dumps(analysis, ensure_ascii=False) + "\n\n"
             "— إجابات موجزة:\n" + bullets + "\n\n"
@@ -437,7 +602,8 @@ def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
             "{\"recommendations\":[{\"sport_label\":\"...\",\"what_it_looks_like\":\"...\",\"inner_sensation\":\"...\","
             "\"why_you\":\"...\",\"first_week\":\"...\",\"progress_markers\":\"...\",\"win_condition\":\"...\","
             "\"core_skills\":[\"...\"],\"mode\":\"Solo/Team\",\"variant_vr\":\"...\",\"variant_no_vr\":\"...\",\"difficulty\":1-5}]} "
-            "Align with Z-axes using words:\n" + axis_hint + "\n\n"
+            "Align with Z-axes using words:\n" + axis_hint +
+            ( "\n\n— Z intents: " + intent_hint if intent_hint else "" ) + "\n\n"
             f"— Coach persona:\n{persona}\n— User analysis:\n" + json.dumps(analysis, ensure_ascii=False) + "\n"
             "— Bulleted answers:\n" + bullets + f"\n— style_seed: {style_seed}\nJSON only."
         )
@@ -544,7 +710,8 @@ def _format_card(rec: Dict[str, Any], i: int, lang: str) -> str:
         return "\n".join(out)
 
 def _sanitize_fill(recs: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]]:
-    out: List[Dict[str, Any]] = []
+    # تنظيف + ملء + فلاتر جودة دنيا
+    temp: List[Dict[str, Any]] = []
     for i in range(3):
         r = recs[i] if i < len(recs) else {}
         r = _fill_defaults(_sanitize_record(r), lang)
@@ -554,10 +721,12 @@ def _sanitize_fill(recs: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]
             r.get("progress_markers",""), r.get("win_condition","")
         ])
         if _too_generic(blob, 220) or not _has_sensory(blob) or not _is_meaningful(r) \
-           or not r.get("win_condition") or len(r.get("core_skills") or []) < 3:
+           or not r.get("win_condition") or len(r.get("core_skills") or []) < 3 \
+           or _label_is_generic(r.get("sport_label","")):
             r = _fallback_identity(i, lang)
-        out.append(r)
-    return _enforce_diversity(out, lang)
+        temp.append(r)
+    # منع التكرار/التشابه قاطعًا
+    return _hard_dedupe_and_fill(temp, lang)
 
 # ========= PUBLIC API =========
 def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العربية", user_id: str = "N/A") -> List[str]:
@@ -566,6 +735,7 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
 
     # تحليل المستخدم + طبقة Z
     analysis = _call_analyze_user_from_answers(user_id, answers, lang)
+
     silent = []
     try:
         silent = analyze_silent_drivers(answers, lang=lang) or []
@@ -573,7 +743,15 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         pass
     analysis["silent_drivers"] = silent
 
-    # (جديد) بروفايل مُرمّز (إن وُجد)
+    # نوايا Z
+    try:
+        z_intent = _call_analyze_intent(answers, lang=lang)
+    except Exception:
+        z_intent = []
+    if z_intent:
+        analysis["z_intent"] = z_intent
+
+    # بروفايل مُرمّز (إن وُجد)
     profile = _extract_profile(answers, lang)
     if profile:
         analysis["encoded_profile"] = profile
@@ -596,10 +774,10 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         resp = OpenAI_CLIENT.chat.completions.create(
             model=CHAT_MODEL,
             messages=msgs,
-            temperature=0.55,          # ↓ ثبات أعلى
+            temperature=0.5,           # ↓ ثبات أعلى
             top_p=0.9,
-            presence_penalty=0.2,      # تنويع طفيف
-            frequency_penalty=0.15,
+            presence_penalty=0.15,
+            frequency_penalty=0.1,
             max_tokens=1400
         )
         raw1 = (resp.choices[0].message.content or "").strip()
@@ -652,10 +830,10 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
             resp2 = OpenAI_CLIENT.chat.completions.create(
                 model=CHAT_MODEL,
                 messages=msgs + [{"role":"assistant","content":raw1}, repair_prompt],
-                temperature=0.6,
+                temperature=0.55,
                 top_p=0.9,
-                presence_penalty=0.2,
-                frequency_penalty=0.15,
+                presence_penalty=0.15,
+                frequency_penalty=0.1,
                 max_tokens=1400
             )
             raw2 = (resp2.choices[0].message.content or "").strip()
