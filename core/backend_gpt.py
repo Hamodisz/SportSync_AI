@@ -859,7 +859,7 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
 from pathlib import Path
 from datetime import datetime
 
-DATA_DIR = Path(_file_).resolve().parent.parent / "data"
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 BL_PATH = DATA_DIR / "blacklist.json"
 
