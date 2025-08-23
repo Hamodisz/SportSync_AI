@@ -1,0 +1,27 @@
+{
+  "version": "1.0",
+  "forbidden_generic": [
+    "impressive compact",
+    "impressive-compact",
+    "generic sport",
+    "sport identity",
+    "movement flow",
+    "basic flow",
+    "simple flow",
+    "body flow"
+  ],
+  "canonical": {
+    "tactical immersive combat": "tactical_immersive_combat",
+    "stealth flow missions": "stealth_flow_missions",
+    "mind trap puzzles in motion": "mind_trap_puzzles",
+    "precision circuit": "range_precision_circuit",
+    "grip & balance ascent": "grip_balance_ascent",
+
+    "climb": "climbing",
+    "bouldering": "climbing",
+    "bow": "archery",
+    "shooting sport (safe range)": "marksmanship",
+    "free diving": "free_diving",
+    "soccer": "football"
+  }
+}
