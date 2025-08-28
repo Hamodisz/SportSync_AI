@@ -3,11 +3,12 @@
 core/dynamic_chat.py
 --------------------
 محادثة تفاعلية ديناميكية مع المدرب الذكي، مدموجة مع:
-- تحليل المستخدم عبر طبقات التحليل (analysis/user_analysis.py)
-- طبقة Z (analysis/layer_z_engine.py)
-- ترميز الإجابات إلى بروفايل سريع (core/answers_encoder.py)
-- شخصية مدرّب ديناميكية (core/shared_utils.py) مع كاش (core/memory_cache.py)
-- تسجيل الأثر (core/user_logger.py)
+- تحليل المستخدم عبر طبقات التحليل
+- طبقة Z
+- ترميز الإجابات إلى بروفايل سريع
+- شخصية مدرّب ديناميكية مع كاش
+- تسجيل الأثر (user_logger + DataPipe)
+- قراءة الإعدادات من data/app_config.json (model/temperature/max_tokens/..)
 
 ملاحظات:
 - يعتمد على OPENAI_API_KEY.
@@ -15,18 +16,39 @@ core/dynamic_chat.py
 - يحافظ على سجل المحادثة مختصر لتقليل التكلفة.
 """
 
-from __future__ import annotations
+from _future_ import annotations
 
 import os
 import json
 import logging
-from typing import List, Dict, Any, Optional, Generator  # ← إضافة Generator
+from typing import List, Dict, Any, Optional, Generator
 
 # ============== إعداد اللوجينغ ==============
 logging.basicConfig(
     level=logging.INFO,
     format="%(levelname)s | %(asctime)s | dynamic_chat | %(message)s"
 )
+
+# ============== App Config ==============
+try:
+    from core.app_config import get_config
+    CFG = get_config()
+except Exception as e:
+    logging.warning(f"app_config unavailable: {e}")
+    CFG = {}
+
+def _cfg_chat() -> Dict[str, Any]:
+    """قراءة حية لإعدادات المحادثة من الكونفيج (تتحدّث أثناء التشغيل)."""
+    cfg = get_config() if 'get_config' in globals() else (CFG or {})
+    chat = (cfg.get("chat") or {})
+    llm  = (cfg.get("llm") or {})
+    return {
+        "model": llm.get("model", os.getenv("CHAT_MODEL", "gpt-4o")),
+        "temperature": float(chat.get("temperature", 0.8)),
+        "max_tokens": int(chat.get("max_tokens", 450)),
+        "stream_temperature": float(chat.get("stream_temperature", chat.get("temperature", 0.8))),
+        "app_version": cfg.get("app_version", "dev")
+    }
 
 # ============== OpenAI Client ==============
 try:
@@ -39,26 +61,27 @@ except Exception as e:
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     logging.warning("⚠ OPENAI_API_KEY غير مضبوط. ستفشل الدالة عند أول استدعاء لنموذج الدردشة.")
-
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
-CHAT_MODEL = os.getenv("CHAT_MODEL", "gpt-4o")  # غيّرها لـ gpt-4o-mini لتكلفة أقل إن رغبت
+
+# ============== Telemetry (DataPipe) ==============
+try:
+    from core.data_pipe import get_pipe
+    _PIPE = get_pipe()
+except Exception as e:
+    logging.info(f"DataPipe unavailable ({e})")
+    _PIPE = None
 
 # ============== استيرادات من مشروعك ==============
 # طبقات التحليل + طبقة Z
-# ✅ تعديل مهم: نلفّ analyze_user_from_answers بتوقيع apply_all_analysis_layers المتوقع
 try:
     from analysis.user_analysis import analyze_user_from_answers as _ua
     def apply_all_analysis_layers(text: str, user_id: str = "web_user", lang: str = "العربية") -> Dict[str, Any]:
-        """
-        غلاف بسيط يقرأ answers من النص JSON ويستدعي analyze_user_from_answers الموجود عندك.
-        يرجّع dict فيه quick_profile + raw answers (متوافق مع بقية الكود).
-        """
         try:
             answers = json.loads(text) if text and text.strip().startswith("{") else {"_raw": text or ""}
         except Exception:
             answers = {"_raw": text or ""}
         try:
-            traits = _ua(user_id=user_id, answers=answers, lang=lang)  # ← يطابق توقيع ملفك الحالي
+            traits = _ua(user_id=user_id, answers=answers, lang=lang)
         except Exception as e:
             logging.info(f"user_analysis fallback: {e}")
             traits = []
@@ -199,14 +222,22 @@ def start_dynamic_chat(
         if client is None:
             return "❌ لا يمكن تشغيل المحادثة: مفتاح OPENAI_API_KEY غير مضبوط."
 
+        # إعدادات المحادثة الحية من الكونفيج
+        C = _cfg_chat()
+        CHAT_MODEL = C["model"]
+        TEMP = C["temperature"]
+        MAXTOK = C["max_tokens"]
+
         # 1) ترميز الإجابات أولًا (Z-axes/Z-markers/scores)
         try:
             encoded = encode_answers(answers, lang=lang)
+            if not isinstance(encoded, dict):
+                encoded = {"scores": {}, "axes": {}, "z_markers": [], "prefs": {}, "signals": []}
         except Exception as e:
             logging.warning(f"answers_encoder failed: {e}")
             encoded = {"scores": {}, "axes": {}, "z_markers": [], "prefs": {}, "signals": []}
 
-        # 2) تحليل المستخدم الكامل (باستخدام اللفّاف الجديد، مع user_id و lang)
+        # 2) تحليل المستخدم الكامل
         user_analysis = apply_all_analysis_layers(_safe_json(answers), user_id=user_id, lang=lang)
 
         # 3) ضمّ البروفايل المرمّز داخل التحليل
@@ -223,7 +254,7 @@ def start_dynamic_chat(
             z = []
         user_analysis["silent_drivers"] = z
 
-        # 5) شخصية المدرب مع كاش (مفتاح الكاش يتضمن البروفايل لضمان ثبات الأسلوب)
+        # 5) شخصية المدرب مع كاش
         cache_key = f"{lang}:{hash(_safe_json({'ua': user_analysis.get('quick_profile',''), 'scores': encoded.get('scores', {}), 'prefs': encoded.get('prefs', {})}))}"
         personality = get_cached_personality(cache_key)
         if not personality:
@@ -287,33 +318,42 @@ def start_dynamic_chat(
             })
 
         # 8) استدعاء نموذج الدردشة
-        logging.info("Calling OpenAI chat completion...")
+        logging.info(f"Calling OpenAI chat completion (model={CHAT_MODEL})...")
         resp = client.chat.completions.create(
             model=CHAT_MODEL,
             messages=messages,
-            temperature=0.8,
-            max_tokens=450
+            temperature=TEMP,
+            max_tokens=MAXTOK
         )
         reply = (resp.choices[0].message.content or "").strip()
 
-        # 9) تسجيل التفاعل
+        # 9) تسجيل التفاعل (user_logger + DataPipe)
+        payload_log = {
+            "language": lang,
+            "answers": answers,
+            "ratings": ratings,
+            "user_analysis": user_analysis,
+            "previous_recommendation": previous_recommendation,
+            "personality_used": personality,
+            "user_message": user_message,
+            "ai_reply": reply,
+        }
         try:
-            log_user_insight(
-                user_id=user_id,
-                content={
-                    "language": lang,
-                    "answers": answers,
-                    "ratings": ratings,
-                    "user_analysis": user_analysis,
-                    "previous_recommendation": previous_recommendation,
-                    "personality_used": personality,
-                    "user_message": user_message,
-                    "ai_reply": reply,
-                },
-                event_type="chat_interaction"
-            )
+            log_user_insight(user_id=user_id, content=payload_log, event_type="chat_interaction")
         except Exception as e:
             logging.warning(f"Logging failed: {e}")
+
+        if _PIPE:
+            try:
+                _PIPE.send(
+                    event_type="chat_interaction",
+                    payload=payload_log,
+                    user_id=user_id,
+                    lang=lang,
+                    model=CHAT_MODEL
+                )
+            except Exception as e:
+                logging.info(f"DataPipe send failed: {e}")
 
         return reply if reply else (
             "✅ تم تحديث الخطة بخطوتين عمليتين. جرّب أول خطوة اليوم."
@@ -350,9 +390,17 @@ def start_dynamic_chat_stream(
                "❌ Streaming unavailable: OPENAI_API_KEY is missing.")
         return
 
+    # إعدادات المحادثة الحية من الكونفيج
+    C = _cfg_chat()
+    CHAT_MODEL = C["model"]
+    TEMP = C["stream_temperature"]
+    MAXTOK = C["max_tokens"]
+
     # 1) ترميز + تحليل مختصر
     try:
         encoded = encode_answers(answers, lang=lang)
+        if not isinstance(encoded, dict):
+            encoded = {"scores": {}, "axes": {}, "z_markers": [], "prefs": {}, "signals": []}
     except Exception:
         encoded = {"scores": {}, "axes": {}, "z_markers": [], "prefs": {}, "signals": []}
 
@@ -432,8 +480,8 @@ def start_dynamic_chat_stream(
         stream = client.chat.completions.create(
             model=CHAT_MODEL,
             messages=messages,
-            temperature=0.8,
-            max_tokens=450,
+            temperature=TEMP,
+            max_tokens=MAXTOK,
             stream=True
         )
     except Exception as e:
@@ -455,30 +503,46 @@ def start_dynamic_chat_stream(
     finally:
         # تسجيل التفاعل بعد اكتمال البث
         reply_full = "".join(final_buf).strip()
+        payload_log = {
+            "language": lang,
+            "answers": answers,
+            "ratings": ratings,
+            "user_analysis": ua,
+            "previous_recommendation": previous_recommendation,
+            "personality_used": personality,
+            "user_message": user_message,
+            "ai_reply": reply_full,
+            "streaming": True
+        }
         try:
             log_user_insight(
                 user_id=user_id,
-                content={
-                    "language": lang,
-                    "answers": answers,
-                    "ratings": ratings,
-                    "user_analysis": ua,
-                    "previous_recommendation": previous_recommendation,
-                    "personality_used": personality,
-                    "user_message": user_message,
-                    "ai_reply": reply_full,
-                    "streaming": True
-                },
+                content=payload_log,
                 event_type="chat_interaction"
             )
         except Exception:
             pass
+        if _PIPE:
+            try:
+                _PIPE.send(
+                    event_type="chat_interaction",
+                    payload=payload_log,
+                    user_id=user_id,
+                    lang=lang,
+                    model=CHAT_MODEL
+                )
+            except Exception:
+                pass
 
 
 # (اختياري) فحص صحة سريع
 def healthcheck() -> Dict[str, Any]:
+    C = _cfg_chat()
     return {
         "openai_key_set": bool(OPENAI_API_KEY),
-        "model": CHAT_MODEL,
-        "client_ready": client is not None
+        "model": C["model"],
+        "client_ready": client is not None,
+        "temperature": C["temperature"],
+        "max_tokens": C["max_tokens"],
+        "app_version": C["app_version"]
     }
