@@ -1,0 +1,21 @@
+{
+  "app_version": "exp-0.3",
+  "llm": {
+    "model": "gpt-4o"
+  },
+  "recommendations": {
+    "allow_sport_names": true,
+    "min_chars": 220,
+    "require_win_condition": true,
+    "min_core_skills": 3
+  },
+  "sinks": {
+    "disk":   { "enabled": true,  "path": "./data/events.jsonl" },
+    "webhook":{ "enabled": false, "url": "" },
+    "gsheets":{ "enabled": false, "sheet_id": "", "service_account_json": "" }
+  },
+  "remote": {
+    "config_url": "",
+    "refresh_secs": 900
+  }
+}
