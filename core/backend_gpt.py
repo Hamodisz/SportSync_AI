@@ -28,8 +28,20 @@ except Exception as e:
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OpenAI_CLIENT = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
-CHAT_MODEL = os.getenv("CHAT_MODEL", "gpt-4o")  # بدّل إلى gpt-4o-mini لتكلفة أقل
-ALLOW_SPORT_NAMES = True  # ✅ السماح بأسماء الأنماط/الرياضات عند الحاجة
+# ========= App Config =========
+try:
+    from core.app_config import get_config
+    CFG = get_config()
+except Exception:
+    CFG = {}
+
+CHAT_MODEL = (CFG.get("llm") or {}).get("model", os.getenv("CHAT_MODEL", "gpt-4o"))
+ALLOW_SPORT_NAMES = (CFG.get("recommendations") or {}).get("allow_sport_names", True)
+
+REC_RULES = CFG.get("recommendations") or {}
+_MIN_CHARS = int(REC_RULES.get("min_chars", 220))
+_REQUIRE_WIN = bool(REC_RULES.get("require_win_condition", True))
+_MIN_CORE_SKILLS = int(REC_RULES.get("min_core_skills", 3))
 
 # ========= Project imports (with safe fallbacks) =========
 try:
@@ -51,7 +63,7 @@ except Exception:
 
 # ========= Paths / Data =========
 try:
-    HERE = Path(__file__).resolve().parent
+    HERE = Path(_file_).resolve().parent
 except NameError:
     HERE = Path.cwd()
 ROOT = HERE.parent if HERE.name == "core" else HERE
@@ -252,10 +264,10 @@ def _answers_to_bullets(answers: Dict[str, Any]) -> str:
             q, a = v.get("question", k), v.get("answer", "")
         else:
             q, a = str(k), v
-        if isinstance(a, list): a = ", ".join(map(str, a))
+        if isinstance(a, list):
+            a = ", ".join(map(str, a))
         out.append(f"- {q}: {a}")
-    return "\n".i
-oin(out)
+    return "\n".join(out)
 
 def _too_generic(text: str, min_chars: int = 280) -> bool:
     t = (text or "").strip()
@@ -646,7 +658,7 @@ def _parse_json(text: str) -> Optional[List[Dict[str, Any]]]:
             return recs
     except Exception:
         pass
-    m = re.search(r"\{[\s\S]*\}", text or "")
+    m = re.search(r"\{[\س\S]*\}", text or "")
     if m:
         try:
             obj = json.loads(m.group(0))
@@ -749,8 +761,9 @@ def _sanitize_fill(recs: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]
             r.get("why_you",""), r.get("first_week",""),
             r.get("progress_markers",""), r.get("win_condition","")
         ])
-        if _too_generic(blob, 220) or not _has_sensory(blob) or not _is_meaningful(r) \
-           or not r.get("win_condition") or len(r.get("core_skills") or []) < 3 \
+        if _too_generic(blob, _MIN_CHARS) or not _has_sensory(blob) or not _is_meaningful(r) \
+           or (_REQUIRE_WIN and not r.get("win_condition")) \
+           or len(r.get("core_skills") or []) < _MIN_CORE_SKILLS \
            or _label_is_generic(r.get("sport_label","")):
             r = _fallback_identity(i, lang)
         temp.append(r)
@@ -939,8 +952,8 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     # ===== محاذاة Z-axes + إصلاح ثانٍ إذا لزم =====
     axes = (analysis.get("z_axes") or {}) if isinstance(analysis, dict) else {}
     mismatch_axes = any(_mismatch_with_axes(rec, axes, lang) for rec in cleaned)
-    need_repair_generic = any(_too_generic(" ".join([c.get("what_it_looks_like",""), c.get("why_you","")]), 220) for c in cleaned)
-    missing_fields = any((not c.get("win_condition") or len(c.get("core_skills") or []) < 3) for c in cleaned)
+    need_repair_generic = any(_too_generic(" ".join([c.get("what_it_looks_like",""), c.get("why_you","")]), _MIN_CHARS) for c in cleaned)
+    missing_fields = any(((_REQUIRE_WIN and not c.get("win_condition")) or len(c.get("core_skills") or []) < _MIN_CORE_SKILLS) for c in cleaned)
     need_repair = mismatch_axes or need_repair_generic or missing_fields
 
     if need_repair:
@@ -1011,10 +1024,10 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
 
     # لوق مع أعلام الجودة
     quality_flags = {
-        "generic": any(_too_generic(" ".join([c.get("what_it_looks_like",""), c.get("why_you","")]), 220) for c in cleaned),
+        "generic": any(_too_generic(" ".join([c.get("what_it_looks_like",""), c.get("why_you","")]), _MIN_CHARS) for c in cleaned),
         "low_sensory": any(not _has_sensory(" ".join([c.get("what_it_looks_like",""), c.get("inner_sensation","")])) for c in cleaned),
         "mismatch_axes": any(_mismatch_with_axes(c, axes, lang) for c in cleaned),
-        "missing_fields": any((not c.get("win_condition") or len(c.get("core_skills") or []) < 3) for c in cleaned)
+        "missing_fields": any(((_REQUIRE_WIN and not c.get("win_condition")) or len(c.get("core_skills") or []) < _MIN_CORE_SKILLS) for c in cleaned)
     }
 
     try:
