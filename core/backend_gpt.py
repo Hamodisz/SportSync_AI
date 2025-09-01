@@ -272,7 +272,7 @@ def _egate_fallback(answers: Dict[str, Any], lang: str = "العربية") -> Di
     # followups (قصيرة ومباشرة)
     if lang == "العربية":
         followups = [
-            "تفضّل اللعب: فردي أم جماعي؟ ولماذا بش一句.",
+           "تفضّل اللعب: فردي أم جماعي؟ ولماذا بجملة قصيرة.",
             "تميل لهدوء وانسياب أم أدرينالين وقرارات خاطفة؟",
             "هل تحب دقّة/تصويب أم ألغاز/خداع بصري أثناء الحركة؟"
         ]
@@ -1165,24 +1165,5 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
             cards = [scrub_unknown_urls(c, CFG) for c in cards]
     except Exception:
         pass
-
-    # Telemetry: recommendation_emitted
-    if _PIPE:
-        try:
-            _PIPE.send(
-                event_type="recommendation_emitted",
-                payload={
-                    "language": lang,
-                    "quality_flags": quality_flags,
-                    "labels": [c.get("sport_label") for c in cleaned],
-                    "z_axes": analysis.get("z_axes", {}),
-                    "z_intent": analysis.get("z_intent", [])
-                },
-                user_id=user_id,
-                model=CHAT_MODEL,
-                lang=lang
-            )
-        except Exception:
-            pass
-
+      
     return cards
