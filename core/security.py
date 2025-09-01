@@ -16,7 +16,7 @@ core/security.py
 }
 """
 
-from _future_ import annotations
+from __future__ import annotations
 import re
 from urllib.parse import urlparse, ParseResult
 from typing import Any, Dict
