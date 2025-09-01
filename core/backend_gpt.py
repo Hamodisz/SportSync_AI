@@ -1217,4 +1217,31 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         except Exception:
             pass
 
+  # تنظيف روابط غير مسموح بها (اختياري حسب الإعدادات)
+    try:
+        sec = (CFG.get("security") or {})
+        if sec.get("scrub_urls", True):
+            cards = [scrub_unknown_urls(c, CFG) for c in cards]
+    except Exception:
+        pass
+
+    # Telemetry: recommendation_emitted
+    if _PIPE:
+        try:
+            _PIPE.send(
+                event_type="recommendation_emitted",
+                payload={
+                    "language": lang,
+                    "quality_flags": quality_flags,
+                    "labels": [c.get("sport_label") for c in cleaned],
+                    "z_axes": analysis.get("z_axes", {}),
+                    "z_intent": analysis.get("z_intent", [])
+                },
+                user_id=user_id,
+                model=CHAT_MODEL,
+                lang=lang
+            )
+        except Exception:
+            pass
+
     return cards
