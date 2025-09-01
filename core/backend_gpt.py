@@ -10,6 +10,9 @@ core/backend_gpt.py
   sport_label, what_it_looks_like, win_condition, core_skills, mode, variant_vr, variant_no_vr
 - منع تكرار الهوية منعًا قاطعًا (داخل الجلسة + عالميًا عبر data/blacklist.json) مع فحص تشابه دلالي.
 - استيراد Z-intent (تحليل النوايا) مع fallback لغوي إذا تعذر.
+- قبل أي توليد: Evidence Gate — لا توصيات بدون أدلة كافية (حل جذري).
+- أمان: تنظيف الروابط غير الموثوقة بحسب CFG.security.
+- تليمتري: إرسال أحداث إلى DataPipe (Zapier/ملف محلي).
 """
 
 from __future__ import annotations
@@ -43,12 +46,38 @@ _MIN_CHARS = int(REC_RULES.get("min_chars", 220))
 _REQUIRE_WIN = bool(REC_RULES.get("require_win_condition", True))
 _MIN_CORE_SKILLS = int(REC_RULES.get("min_core_skills", 3))
 
+# Evidence Gate thresholds (defaults if not provided)
+EGCFG = (CFG.get("analysis") or {}).get("egate", {}) if isinstance(CFG.get("analysis"), dict) else {}
+_EG_MIN_ANSWERS = int(EGCFG.get("min_answered", 3))
+_EG_MIN_TOTAL_CHARS = int(EGCFG.get("min_total_chars", 120))
+_EG_REQUIRED_KEYS = list(EGCFG.get("required_keys", []))  # مثال: ["goal","injury_history"]
+
 # ========= Project imports (with safe fallbacks) =========
 try:
     from core.user_logger import log_user_insight
 except Exception:
     def log_user_insight(user_id: str, content: Dict[str, Any], event_type: str = "event") -> None:
         print(f"[LOG:{event_type}] {user_id}: {list(content.keys())}")
+
+# DataPipe (Zapier/Webhook/Disk)
+try:
+    from core.data_pipe import get_pipe
+    _PIPE = get_pipe()
+except Exception:
+    _PIPE = None
+
+# Security scrubber
+try:
+    from core.security import scrub_unknown_urls
+except Exception:
+    def scrub_unknown_urls(text_or_card: str, cfg: Dict[str, Any]) -> str:
+        return text_or_card
+
+# Evidence Gate (external) + fallback داخلي
+try:
+    from core.evidence_gate import evaluate as egate_evaluate
+except Exception:
+    egate_evaluate = None  # سنستخدم fallback أدناه
 
 try:
     from core.memory_cache import get_cached_personality, save_cached_personality
@@ -134,8 +163,7 @@ except Exception:
 # ========= Intent (Z-intent) =========
 def _call_analyze_intent(answers: Dict[str, Any], lang: str="العربية") -> List[str]:
     """
-    يحاول استيراد محلّل نوايا من مشروعك؛ وإلا يستخدم fallback لغوي بسيط:
-    يستنتج Intentات مثل: تكتيكي/VR/فردي/جماعي/أدرينالين/هدوء/دقة/ألغاز/تخفّي...
+    يحاول استيراد محلّل نوايا من مشروعك؛ وإلا يستخدم fallback لغوي بسيط.
     """
     for modpath in ("core.layer_z_engine", "analysis.layer_z_engine"):
         try:
@@ -171,7 +199,7 @@ def _call_analyze_intent(answers: Dict[str, Any], lang: str="العربية") ->
 
 # ========= (اختياري) مُشفِّر الإجابات =========
 def _extract_profile(answers: Dict[str, Any], lang: str) -> Optional[Dict[str, Any]]:
-    prof = answers.get("profile")
+    prof = answers.get("profile") if isinstance(answers, dict) else None
     if isinstance(prof, dict):
         return prof
     encode_answers = None
@@ -205,6 +233,85 @@ def _extract_profile(answers: Dict[str, Any], lang: str) -> Optional[Dict[str, A
     except Exception:
         return None
 
+# ========= Evidence Gate (fallback) =========
+def _norm_answer_value(v: Any) -> str:
+    if v is None: return ""
+    if isinstance(v, dict):
+        if "answer" in v: return str(v.get("answer") or "")
+        if "value" in v: return str(v.get("value") or "")
+        return json.dumps(v, ensure_ascii=False)
+    if isinstance(v, list):
+        return ", ".join(map(str, v))
+    return str(v)
+
+def _egate_fallback(answers: Dict[str, Any], lang: str = "العربية") -> Dict[str, Any]:
+    """تقييم أدلة بسيط إذا لم يتوفر core/evidence_gate.py."""
+    if not isinstance(answers, dict) or not answers:
+        status = "fail"
+        total_chars = 0
+        answered = 0
+    else:
+        vals = [_norm_answer_value(v) for v in answers.values() if str(v).strip()]
+        total_chars = sum(len(s.strip()) for s in vals)
+        answered = sum(1 for s in vals if len(s.strip()) >= 3)
+
+        # required keys إن وُجدت
+        if _EG_REQUIRED_KEYS:
+            if any(not _norm_answer_value(answers.get(k, "")).strip() for k in _EG_REQUIRED_KEYS):
+                status = "fail"
+            else:
+                status = "pass" if (answered >= _EG_MIN_ANSWERS and total_chars >= _EG_MIN_TOTAL_CHARS) else "borderline"
+        else:
+            if answered == 0 or total_chars < 40:
+                status = "fail"
+            elif answered < _EG_MIN_ANSWERS or total_chars < _EG_MIN_TOTAL_CHARS:
+                status = "borderline"
+            else:
+                status = "pass"
+
+    # followups (قصيرة ومباشرة)
+    if lang == "العربية":
+        followups = [
+            "تفضّل اللعب: فردي أم جماعي؟ ولماذا بش一句.",
+            "تميل لهدوء وانسياب أم أدرينالين وقرارات خاطفة؟",
+            "هل تحب دقّة/تصويب أم ألغاز/خداع بصري أثناء الحركة؟"
+        ]
+    else:
+        followups = [
+            "Do you prefer solo or team play — and why, in one short line?",
+            "Do you want calm/flow or adrenaline/snap decisions?",
+            "Are you more into precision/aim or puzzles/visual feints in motion?"
+        ]
+
+    return {
+        "status": "fail" if answered == 0 or total_chars < 40 else status,
+        "answered": int(answered),
+        "total_chars": int(total_chars),
+        "required_missing": [k for k in _EG_REQUIRED_KEYS if not _norm_answer_value((answers or {}).get(k, "")).strip()],
+        "followup_questions": followups[:3]
+    }
+
+def _run_egate(answers: Dict[str, Any], lang: str = "العربية") -> Dict[str, Any]:
+    if callable(egate_evaluate):
+        try:
+            res = egate_evaluate(answers=answers, lang=lang, cfg=EGCFG)
+            if isinstance(res, dict) and "status" in res:
+                return res
+        except Exception:
+            pass
+    return _egate_fallback(answers, lang=lang)
+
+def _format_followup_card(followups: List[str], lang: str) -> str:
+    head = "🧭 نحتاج إجابات قصيرة قبل التوصية" if lang == "العربية" else "🧭 I need a few quick answers first"
+    tips = "اكتب سطر واحد لكل سؤال." if lang == "العربية" else "One short line per question."
+    lines = [head, "", tips, ""]
+    for q in followups:
+        lines.append(f"- {q}")
+    lines.append("")
+    lines.append("أرسل إجاباتك وسنقترح هوية رياضية واضحة فورًا." if lang == "العربية"
+                 else "Send your answers and I’ll propose a clear sport-identity right away.")
+    return "\n".join(lines)
+
 # ========= Rules & helpers =========
 _BLOCKLIST = r"(جري|ركض|سباحة|كرة|قدم|سلة|طائرة|تنس|ملاكمة|كاراتيه|كونغ فو|يوجا|يوغا|بيلاتس|رفع|أثقال|تزلج|دراج|دراجة|ركوب|خيول|باركور|جودو|سكواش|بلياردو|جولف|كرة طائرة|كرة اليد|هوكي|سباق|ماراثون|مصارعة|MMA|Boxing|Karate|Judo|Taekwondo|Soccer|Football|Basketball|Tennis|Swim|Swimming|Running|Run|Cycle|Cycling|Bike|Biking|Yoga|Pilates|Rowing|Row|Skate|Skating|Ski|Skiing|Climb|Climbing|Surf|Surfing|Golf|Volleyball|Handball|Hockey|Parkour|Wrestling)"
 _name_re = re.compile(_BLOCKLIST, re.IGNORECASE)
@@ -219,7 +326,7 @@ _SENSORY = [
     "إحساس","امتداد","حرق لطيف","صفاء","تماسك"
 ]
 
-# أسماء/أنماط عامة نمنعها لأنها ركيكة وتسبّب تكرارًا ممجوجًا
+# أسماء/أنماط عامة نمنعها لأنها ركيكة
 _GENERIC_LABELS = {
     "impressive compact", "impressive-compact", "generic sport", "sport identity",
     "movement flow", "basic flow", "simple flow", "body flow"
@@ -346,10 +453,7 @@ def _tokenize(text: str) -> List[str]:
 
 def _sig_for_rec(r: Dict[str, Any]) -> set:
     core = r.get("core_skills") or []
-    if isinstance(core, list):
-        core_txt = " ".join(core)
-    else:
-        core_txt = str(core)
+    core_txt = " ".join(core) if isinstance(core, list) else str(core)
     toks = set(_tokenize(r.get("sport_label","")) + _tokenize(core_txt))
     return toks
 
@@ -452,7 +556,7 @@ def _fallback_identity(i: int, lang: str) -> Dict[str, Any]:
                 "core_skills":["قبضة","تحويل وزن","توازن","قراءة مسار"],
                 "mode":"Solo",
                 "variant_vr":"مسارات قبضات افتراضية.",
-                "variant_no_vr":"عناصر قبضة آمنة خفيفة.",
+                "variant_no_vر":"عناصر قبضة آمنة خفيفة.",
                 "difficulty":2
             }
         ]
@@ -523,13 +627,6 @@ def _fill_defaults(r: Dict[str, Any], lang: str) -> Dict[str, Any]:
 
 # ======== HARD DEDUPE (no repeats, no near-duplicates) ========
 def _hard_dedupe_and_fill(recs: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]]:
-    """
-    يضمن عدم تكرار الهوية داخل الرد:
-    - يمنع نفس label بالضبط (بعد التطبيع).
-    - يمنع labels العامة (generic) ويستبدلها.
-    - يمنع تشابهًا دلاليًا عاليًا (Jaccard > 0.6) باستخدام sport_label + core_skills.
-    - يستبدل أي تكرار/تشابه بفولباك مختلف غير مستخدم.
-    """
     out: List[Dict[str, Any]] = []
     used_labels = set()
     used_sigs: List[set] = []
@@ -658,7 +755,8 @@ def _parse_json(text: str) -> Optional[List[Dict[str, Any]]]:
             return recs
     except Exception:
         pass
-    m = re.search(r"\{[\س\S]*\}", text or "")
+    # إصلاح ريجكس: \s وليس "س"
+    m = re.search(r"\{[\s\S]*\}", text or "")
     if m:
         try:
             obj = json.loads(m.group(0))
@@ -751,7 +849,6 @@ def _format_card(rec: Dict[str, Any], i: int, lang: str) -> str:
         return "\n".join(out)
 
 def _sanitize_fill(recs: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]]:
-    # تنظيف + ملء + فلاتر جودة دنيا
     temp: List[Dict[str, Any]] = []
     for i in range(3):
         r = recs[i] if i < len(recs) else {}
@@ -767,7 +864,6 @@ def _sanitize_fill(recs: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]
            or _label_is_generic(r.get("sport_label","")):
             r = _fallback_identity(i, lang)
         temp.append(r)
-    # منع التكرار/التشابه قاطعًا داخل نفس الرد
     return _hard_dedupe_and_fill(temp, lang)
 
 # ====== Blacklist (persistent, JSON) =========================================
@@ -778,7 +874,7 @@ def _load_blacklist() -> dict:
     bl.setdefault("version", "1.0")
     return bl
 
-# — aliases/canonicalization helpers (اختياري: يستفيد من KB إن وجد)
+# — aliases/canonicalization helpers
 KB = _load_json_safe(KB_PATH)
 _ALIAS_MAP = {}
 if isinstance(KB.get("label_aliases"), dict):
@@ -854,12 +950,6 @@ def _perturb_phrasing(rec: Dict[str, Any], lang: str) -> Dict[str, Any]:
     return r
 
 def _ensure_unique_labels_v_global(recs: List[Dict[str, Any]], lang: str, bl: dict) -> List[Dict[str, Any]]:
-    """
-    1) منع تكرار أي اسم ظهر سابقًا (blacklist).
-    2) منع العناوين العامة/الركيكة (generic).
-    3) لو محجوز → اصنع اسمًا مختلفًا + عدّل الصياغة قليلًا.
-    4) ضمان عدم تكرار داخل نفس الرد أيضًا.
-    """
     used_now = set()
     out = []
     for i, r in enumerate(recs):
@@ -889,6 +979,27 @@ def _persist_blacklist(recs: List[Dict[str, Any]], bl: dict) -> None:
 
 # ========= PUBLIC API =========
 def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العربية", user_id: str = "N/A") -> List[str]:
+    # Evidence Gate أولًا — لا توصيات بدون أدلة كافية
+    eg = _run_egate(answers or {}, lang=lang)
+    if _PIPE:
+        try:
+            _PIPE.send(
+                event_type="egate_decision",
+                payload={"status": eg.get("status"), "answered": eg.get("answered"), "total_chars": eg.get("total_chars"),
+                         "required_missing": eg.get("required_missing", [])},
+                user_id=user_id, lang=("العربية" if lang=="العربية" else "English"),
+                model=CHAT_MODEL
+            )
+        except Exception:
+            pass
+
+    if eg.get("status") != "pass":
+        # نرجع بطاقة أسئلة متابعة فقط (بدون توصيات)
+        card = _format_followup_card(eg.get("followup_questions", []), lang=lang)
+        # فلترة روابط (لو أي نص فيه روابط)
+        card = scrub_unknown_urls(card, CFG)
+        return [card, "—", "—"]
+
     if OpenAI_CLIENT is None:
         return ["❌ OPENAI_API_KEY غير مضبوط في خدمة الـ Quiz.", "—", "—"]
 
@@ -941,7 +1052,13 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         raw1 = (resp.choices[0].message.content or "").strip()
         print(f"[AI] model={CHAT_MODEL} len={len(raw1)} raw[:140]={raw1[:140]!r}")
     except Exception as e:
-        return [f"❌ خطأ اتصال النموذج: {e}", "—", "—"]
+        err = f"❌ خطأ اتصال النموذج: {e}"
+        if _PIPE:
+            try:
+                _PIPE.send("model_error", {"error": str(e)}, user_id=user_id, lang=lang, model=CHAT_MODEL)
+            except Exception:
+                pass
+        return [err, "—", "—"]
 
     # Parsing + Sanitize
     if not ALLOW_SPORT_NAMES and _contains_blocked_name(raw1):
@@ -1022,7 +1139,13 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     # بناء الكروت
     cards = [_format_card(cleaned[i], i, lang) for i in range(3)]
 
-    # لوق مع أعلام الجودة
+    # أمان الروابط بحسب CFG.security
+    try:
+        cards = [scrub_unknown_urls(c, CFG) for c in cards]
+    except Exception:
+        pass
+
+    # لوق مع أعلام الجودة + تليمتري
     quality_flags = {
         "generic": any(_too_generic(" ".join([c.get("what_it_looks_like",""), c.get("why_you","")]), _MIN_CHARS) for c in cleaned),
         "low_sensory": any(not _has_sensory(" ".join([c.get("what_it_looks_like",""), c.get("inner_sensation","")])) for c in cleaned),
@@ -1035,7 +1158,7 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
             user_id=user_id,
             content={
                 "language": lang,
-                "answers": {k: v for k, v in answers.items() if k != "profile"},
+                "answers": {k: v for k, v in (answers or {}).items() if k != "profile"},
                 "analysis": analysis,
                 "silent_drivers": silent,
                 "encoded_profile": profile,
@@ -1047,5 +1170,16 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         )
     except Exception:
         pass
+
+    if _PIPE:
+        try:
+            _PIPE.send(
+                event_type="recommendation_emitted",
+                payload={"quality_flags": quality_flags, "labels": [c.get("sport_label","") for c in cleaned]},
+                user_id=user_id, lang=("العربية" if lang=="العربية" else "English"),
+                model=CHAT_MODEL
+            )
+        except Exception:
+            pass
 
     return cards
