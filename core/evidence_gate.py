@@ -12,7 +12,7 @@ from core.evidence_gate import evaluate
 res = evaluate(answers, lang="العربية", cfg=get_config())
 """
 
-from _future_ import annotations
+from __future__ import annotations
 import re, json, statistics
 from typing import Dict, Any, List, Tuple, Set, Optional
 
