@@ -1003,65 +1003,6 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     if OpenAI_CLIENT is None:
         return ["❌ OPENAI_API_KEY غير مضبوط في خدمة الـ Quiz.", "—", "—"]
 
-  # === Evidence Gate: امنع التوصيات بدون أدلة كافية
-    try:
-        gate = egate_evaluate(answers, cfg=CFG, lang=lang)
-    except TypeError:
-        # في حال كانت نسخة evaluate تقبل (answers, lang) فقط
-        gate = egate_evaluate(answers, lang=lang)
-
-    if _PIPE:
-        try:
-            _PIPE.send(
-                event_type="egate_decision",
-                payload={
-                    "status": gate.get("status"),
-                    "score": gate.get("score"),
-                    "reasons": gate.get("reasons"),
-                    "missing_keys": gate.get("missing_keys"),
-                    "followup": gate.get("followup_questions")
-                },
-                user_id=user_id,
-                model=CHAT_MODEL,
-                lang=lang
-            )
-        except Exception:
-            pass
-
-    status = (gate or {}).get("status", "fail")
-    if status in ("fail", "borderline"):
-        # رجّع فقط أسئلة إكمال قصيرة بدل التوصيات
-        q = (gate or {}).get("followup_questions") or []
-        if lang == "العربية":
-            msg = "قبل ما أعطيك توصيات دقيقة، احتاج إجابات سريعة على:\n" + "\n".join([f"- {i+1}) {t}" for i, t in enumerate(q[:3])])
-        else:
-            msg = "Before I can recommend precisely, I need quick answers:\n" + "\n".join([f"- {i+1}) {t}" for i, t in enumerate(q[:3])])
-        return [msg, "—", "—"]
-      
-    # تحليل المستخدم + طبقة Z + Intent
-    analysis = _call_analyze_user_from_answers(user_id, answers, lang)
-
-    silent = []
-    try:
-        silent = analyze_silent_drivers(answers, lang=lang) or []
-    except Exception:
-        pass
-    analysis["silent_drivers"] = silent
-
-    try:
-        z_intent = _call_analyze_intent(answers, lang=lang)
-    except Exception:
-        z_intent = []
-    if z_intent:
-        analysis["z_intent"] = z_intent
-
-    # بروفايل مُرمّز (إن وُجد)
-    profile = _extract_profile(answers, lang)
-    if profile:
-        analysis["encoded_profile"] = profile
-        if "axes" in profile: analysis["z_axes"] = profile["axes"]
-        if "scores" in profile: analysis["z_scores"] = profile["scores"]
-
     # شخصية المدرب من الكاش
     persona = get_cached_personality(analysis, lang=lang)
     if not persona:
