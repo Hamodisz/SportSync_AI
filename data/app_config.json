@@ -11,7 +11,7 @@
   },
   "sinks": {
     "disk":   { "enabled": true,  "path": "./data/events.jsonl" },
-    "webhook":{ "enabled": false, "url": "" },
+    "webhook":{ "enabled": true,  "url": "https://hooks.zapier.com/hooks/catch/24441864/uhqcg4b/" },
     "gsheets":{ "enabled": false, "sheet_id": "", "service_account_json": "" }
   },
   "remote": {
