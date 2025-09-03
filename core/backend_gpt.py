@@ -2,23 +2,23 @@
 """
 core/backend_gpt.py
 -------------------
-توصيات "هوية رياضية" بثلاث كروت حسّية منظمة + Layer-Z + خطة أسبوع (نوعية فقط) + فكرة VR.
-- ممنوع ذكر (الوقت/التكلفة/العدّات/الجولات/الدقائق/المكان المباشر).
-- يُسمح بذكر "اسم رياضة/نمط" عند الحاجة لزيادة الوضوح (فكّ الحظر الذكي).
-- يحاول مرتين قبل السقوط للـ fallback. يدعم العربية/English.
-- يفرض حقول إلزامية لتحويل الغموض إلى رياضة واضحة:
-  sport_label, what_it_looks_like, win_condition, core_skills, mode, variant_vr, variant_no_vr
-- منع تكرار الهوية منعًا قاطعًا (داخل الجلسة + عالميًا عبر data/blacklist.json) مع فحص تشابه دلالي.
-- استيراد Z-intent (تحليل النوايا) مع fallback لغوي إذا تعذر.
-- قبل أي توليد: Evidence Gate — لا توصيات بدون أدلة كافية (حل جذري).
-- أمان: تنظيف الروابط غير الموثوقة بحسب CFG.security.
-- تليمتري: إرسال أحداث إلى DataPipe (Zapier/ملف محلي).
+Sport identity recommendations (3 cards) with Layer-Z, first-week (qualitative),
+and VR/no-VR variants. Arabic/English.
+
+Key guarantees:
+- Evidence Gate first: no recs if answers are insufficient (returns follow-up Qs).
+- No time/cost/reps/place mentions.
+- Sport names allowed (configurable).
+- Hard de-dup (local + global via data/blacklist.json).
+- URL scrubbing by CFG.security.
+- Telemetry via core.data_pipe (Zapier/disk).
+
 """
 
 from __future__ import annotations
 
 import os, json, re, hashlib, importlib
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 from pathlib import Path
 from datetime import datetime
 
@@ -79,6 +79,7 @@ try:
 except Exception:
     egate_evaluate = None  # سنستخدم fallback أدناه
 
+# Soft persona cache
 try:
     from core.memory_cache import get_cached_personality, save_cached_personality
 except Exception:
@@ -120,7 +121,6 @@ def _save_json_atomic(p: Path, payload: dict) -> None:
 # ========= Helpers: Arabic normalization =========
 _AR_DIAC = r"[ًٌٍَُِّْـ]"
 def _normalize_ar(t: str) -> str:
-    """تطبيع مبسّط للنص العربي لتحسين المطابقة/المنع."""
     if not t: return ""
     t = re.sub(_AR_DIAC, "", t)
     t = t.replace("أ","ا").replace("إ","ا").replace("آ","ا")
@@ -131,7 +131,6 @@ def _normalize_ar(t: str) -> str:
 
 # ========= Analysis import (user traits) =========
 def _call_analyze_user_from_answers(user_id: str, answers: Dict[str, Any], lang: str) -> Dict[str, Any]:
-    """يحاول أكثر من توقيع/مسار لاستيراد تحليل المستخدم."""
     try:
         from analysis.user_analysis import analyze_user_from_answers as _ana
         try:
@@ -162,9 +161,6 @@ except Exception:
 
 # ========= Intent (Z-intent) =========
 def _call_analyze_intent(answers: Dict[str, Any], lang: str="العربية") -> List[str]:
-    """
-    يحاول استيراد محلّل نوايا من مشروعك؛ وإلا يستخدم fallback لغوي بسيط.
-    """
     for modpath in ("core.layer_z_engine", "analysis.layer_z_engine"):
         try:
             mod = importlib.import_module(modpath)
@@ -173,7 +169,6 @@ def _call_analyze_intent(answers: Dict[str, Any], lang: str="العربية") ->
         except Exception:
             pass
 
-    # Fallback لغوي بسيط
     intents = set()
     blob = " ".join(
         (v["answer"] if isinstance(v, dict) and "answer" in v else str(v))
@@ -245,17 +240,12 @@ def _norm_answer_value(v: Any) -> str:
     return str(v)
 
 def _egate_fallback(answers: Dict[str, Any], lang: str = "العربية") -> Dict[str, Any]:
-    """تقييم أدلة بسيط إذا لم يتوفر core/evidence_gate.py."""
     if not isinstance(answers, dict) or not answers:
-        status = "fail"
-        total_chars = 0
-        answered = 0
+        status = "fail"; total_chars = 0; answered = 0
     else:
         vals = [_norm_answer_value(v) for v in answers.values() if str(v).strip()]
         total_chars = sum(len(s.strip()) for s in vals)
         answered = sum(1 for s in vals if len(s.strip()) >= 3)
-
-        # required keys إن وُجدت
         if _EG_REQUIRED_KEYS:
             if any(not _norm_answer_value(answers.get(k, "")).strip() for k in _EG_REQUIRED_KEYS):
                 status = "fail"
@@ -269,20 +259,17 @@ def _egate_fallback(answers: Dict[str, Any], lang: str = "العربية") -> Di
             else:
                 status = "pass"
 
-    # followups (قصيرة ومباشرة)
-    if lang == "العربية":
-        followups = [
-           "تفضّل اللعب: فردي أم جماعي؟ ولماذا بجملة قصيرة.",
+    followups = (
+        [
+            "تفضّل اللعب: فردي أم جماعي؟ ولماذا بسطر واحد.",
             "تميل لهدوء وانسياب أم أدرينالين وقرارات خاطفة؟",
-            "هل تحب دقّة/تصويب أم ألغاز/خداع بصري أثناء الحركة؟"
-        ]
-    else:
-        followups = [
+            "تحب دقّة/تصويب أم ألغاز/خداع بصري أثناء الحركة؟"
+        ] if lang == "العربية" else [
             "Do you prefer solo or team play — and why, in one short line?",
             "Do you want calm/flow or adrenaline/snap decisions?",
             "Are you more into precision/aim or puzzles/visual feints in motion?"
         ]
-
+    )
     return {
         "status": "fail" if answered == 0 or total_chars < 40 else status,
         "answered": int(answered),
@@ -326,7 +313,6 @@ _SENSORY = [
     "إحساس","امتداد","حرق لطيف","صفاء","تماسك"
 ]
 
-# أسماء/أنماط عامة نمنعها لأنها ركيكة
 _GENERIC_LABELS = {
     "impressive compact", "impressive-compact", "generic sport", "sport identity",
     "movement flow", "basic flow", "simple flow", "body flow"
@@ -486,7 +472,6 @@ def _sanitize_record(r: Dict[str, Any]) -> Dict[str, Any]:
     return r
 
 def _fallback_identity(i: int, lang: str) -> Dict[str, Any]:
-    """فولباك قوي يعطي رياضة واضحة بدون أرقام/أماكن."""
     if lang == "العربية":
         presets = [
             {
@@ -556,7 +541,7 @@ def _fallback_identity(i: int, lang: str) -> Dict[str, Any]:
                 "core_skills":["قبضة","تحويل وزن","توازن","قراءة مسار"],
                 "mode":"Solo",
                 "variant_vr":"مسارات قبضات افتراضية.",
-                "variant_no_vر":"عناصر قبضة آمنة خفيفة.",
+                "variant_no_vr":"عناصر قبضة آمنة خفيفة.",
                 "difficulty":2
             }
         ]
@@ -648,18 +633,14 @@ def _hard_dedupe_and_fill(recs: List[Dict[str, Any]], lang: str) -> List[Dict[st
 
         lab = _canonical_label(r.get("sport_label",""))
         if not lab or _label_is_generic(lab):
-            r = pick_unique_fallback(i)
-            lab = _canonical_label(r.get("sport_label",""))
+            r = pick_unique_fallback(i); lab = _canonical_label(r.get("sport_label",""))
 
         if lab in used_labels:
-            r = pick_unique_fallback(i)
-            lab = _canonical_label(r.get("sport_label",""))
+            r = pick_unique_fallback(i); lab = _canonical_label(r.get("sport_label",""))
 
         sig = _sig_for_rec(r)
         if any(_jaccard(sig, s) > 0.6 for s in used_sigs):
-            r = pick_unique_fallback(i)
-            lab = _canonical_label(r.get("sport_label",""))
-            sig = _sig_for_rec(r)
+            r = pick_unique_fallback(i); lab = _canonical_label(r.get("sport_label","")); sig = _sig_for_rec(r)
 
         out.append(r)
         used_labels.add(lab)
@@ -692,7 +673,6 @@ def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
                 exp_lines.append(f"{title[k]}: {', '.join(words)}")
     axis_hint = ("\n".join(exp_lines)) if exp_lines else ""
 
-    # نوايا Z (Intent)
     z_intent = analysis.get("z_intent", [])
     intent_hint = ("، ".join(z_intent) if lang=="العربية" else ", ".join(z_intent)) if z_intent else ""
 
@@ -700,25 +680,16 @@ def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
         sys = (
             "أنت مدرّب SportSync AI بنبرة إنسانية لطيفة (صديق محترف).\n"
             "ممنوع ذكر (الوقت/التكلفة/العدّات/الجولات/الدقائق/المكان المباشر).\n"
-            "سَمِّ 'هوية/رياضة' واضحة عند الحاجة (مثال: Tactical Immersive Combat).\n"
+            "سَمِّ 'هوية/رياضة' واضحة عند الحاجة.\n"
             "أعِد JSON فقط."
         )
         usr = (
             "حوّل بيانات المستخدم إلى ثلاث توصيات «هوية رياضية واضحة». "
             "أعِد JSON بالمفاتيح: "
             "{\"recommendations\":[{"
-            "\"sport_label\":\"...\","
-            "\"what_it_looks_like\":\"...\","
-            "\"inner_sensation\":\"...\","
-            "\"why_you\":\"...\","
-            "\"first_week\":\"...\","
-            "\"progress_markers\":\"...\","
-            "\"win_condition\":\"...\","
-            "\"core_skills\":[\"...\",\"...\"],"
-            "\"mode\":\"Solo/Team\","
-            "\"variant_vr\":\"...\","
-            "\"variant_no_vr\":\"...\","
-            "\"difficulty\":1-5"
+            "\"sport_label\":\"...\",\"what_it_looks_like\":\"...\",\"inner_sensation\":\"...\",\"why_you\":\"...\","
+            "\"first_week\":\"...\",\"progress_markers\":\"...\",\"win_condition\":\"...\","
+            "\"core_skills\":[\"...\",\"...\"],\"mode\":\"Solo/Team\",\"variant_vr\":\"...\",\"variant_no_vr\":\"...\",\"difficulty\":1-5"
             "}]} "
             "قواعد إلزامية: اذكر win_condition و 3–5 core_skills على الأقل. "
             "حاذِ Z-axes بالكلمات التالية إن أمكن:\n" + axis_hint +
@@ -732,15 +703,14 @@ def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
     else:
         sys = (
             "You are a warm, human SportSync coach. "
-            "No time/cost/reps/sets/minutes/place. "
-            "Name the sport/identity if clarity needs it. Return JSON only."
+            "No time/cost/reps/sets/minutes/place. Name the sport/identity if clarity needs it. JSON only."
         )
         usr = (
             "Create THREE clear sport-like identities with required keys: "
-            "{\"recommendations\":[{\"sport_label\":\"...\",\"what_it_looks_like\":\"...\",\"inner_sensation\":\"...\","
-            "\"why_you\":\"...\",\"first_week\":\"...\",\"progress_markers\":\"...\",\"win_condition\":\"...\","
-            "\"core_skills\":[\"...\"],\"mode\":\"Solo/Team\",\"variant_vr\":\"...\",\"variant_no_vr\":\"...\",\"difficulty\":1-5}]} "
-            "Align with Z-axes using words:\n" + axis_hint +
+            "{\"recommendations\":[{\"sport_label\":\"...\",\"what_it_looks_like\":\"...\",\"inner_sensation\":\"...\",\"why_you\":\"...\","
+            "\"first_week\":\"...\",\"progress_markers\":\"...\",\"win_condition\":\"...\",\"core_skills\":[\"...\"],"
+            "\"mode\":\"Solo/Team\",\"variant_vr\":\"...\",\"variant_no_vr\":\"...\",\"difficulty\":1-5}]}"
+            " Align with Z-axes using words:\n" + axis_hint +
             ( "\n\n— Z intents: " + intent_hint if intent_hint else "" ) + "\n\n"
             f"— Coach persona:\n{persona}\n— User analysis:\n" + json.dumps(analysis, ensure_ascii=False) + "\n"
             "— Bulleted answers:\n" + bullets + f"\n— style_seed: {style_seed}\nJSON only."
@@ -755,7 +725,6 @@ def _parse_json(text: str) -> Optional[List[Dict[str, Any]]]:
             return recs
     except Exception:
         pass
-    # إصلاح ريجكس: \s وليس "س"
     m = re.search(r"\{[\s\S]*\}", text or "")
     if m:
         try:
@@ -874,7 +843,6 @@ def _load_blacklist() -> dict:
     bl.setdefault("version", "1.0")
     return bl
 
-# — aliases/canonicalization helpers
 KB = _load_json_safe(KB_PATH)
 _ALIAS_MAP = {}
 if isinstance(KB.get("label_aliases"), dict):
@@ -952,12 +920,11 @@ def _perturb_phrasing(rec: Dict[str, Any], lang: str) -> Dict[str, Any]:
 def _ensure_unique_labels_v_global(recs: List[Dict[str, Any]], lang: str, bl: dict) -> List[Dict[str, Any]]:
     used_now = set()
     out = []
-    for i, r in enumerate(recs):
+    for r in recs:
         r = dict(r or {})
         label = r.get("sport_label") or ""
         if _is_forbidden_generic(label) or not label.strip():
-            hint = "تكتيكي تخفّي" if lang == "العربية" else "Tactical Stealth"
-            label = hint
+            label = "تكتيكي تخفّي" if lang == "العربية" else "Tactical Stealth"
             r["sport_label"] = label
 
         salt = 0
@@ -979,6 +946,10 @@ def _persist_blacklist(recs: List[Dict[str, Any]], bl: dict) -> None:
 
 # ========= PUBLIC API =========
 def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العربية", user_id: str = "N/A") -> List[str]:
+    # Predeclare (أمان)
+    analysis: Dict[str, Any] = {}
+    silent: List[str] = []
+
     # Evidence Gate أولًا — لا توصيات بدون أدلة كافية
     eg = _run_egate(answers or {}, lang=lang)
     if _PIPE:
@@ -986,7 +957,7 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
             _PIPE.send(
                 event_type="egate_decision",
                 payload={"status": eg.get("status"), "answered": eg.get("answered"), "total_chars": eg.get("total_chars"),
-                         "required_missing": eg.get("required_missing", [])},
+                         "required_missing": eg.get("required_keys", []) or eg.get("required_missing", [])},
                 user_id=user_id, lang=("العربية" if lang=="العربية" else "English"),
                 model=CHAT_MODEL
             )
@@ -994,16 +965,38 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
             pass
 
     if eg.get("status") != "pass":
-        # نرجع بطاقة أسئلة متابعة فقط (بدون توصيات)
         card = _format_followup_card(eg.get("followup_questions", []), lang=lang)
-        # فلترة روابط (لو أي نص فيه روابط)
-        card = scrub_unknown_urls(card, CFG)
+        try:
+            sec = (CFG.get("security") or {})
+            if sec.get("scrub_urls", True):
+                card = scrub_unknown_urls(card, CFG)
+        except Exception:
+            pass
         return [card, "—", "—"]
 
     if OpenAI_CLIENT is None:
         return ["❌ OPENAI_API_KEY غير مضبوط في خدمة الـ Quiz.", "—", "—"]
 
-    # شخصية المدرب من الكاش
+    # تحليل المستخدم + طبقة Z + Intent
+    analysis = _call_analyze_user_from_answers(user_id, answers, lang)
+    try:
+        silent = analyze_silent_drivers(answers, lang=lang) or []
+    except Exception:
+        silent = []
+    analysis["silent_drivers"] = silent
+    try:
+        z_intent = _call_analyze_intent(answers, lang=lang)
+    except Exception:
+        z_intent = []
+    if z_intent:
+        analysis["z_intent"] = z_intent
+
+    profile = _extract_profile(answers, lang)
+    if profile:
+        analysis["encoded_profile"] = profile
+        if "axes" in profile: analysis["z_axes"] = profile["axes"]
+        if "scores" in profile: analysis["z_scores"] = profile["scores"]
+
     persona = get_cached_personality(analysis, lang=lang)
     if not persona:
         persona = {"name":"SportSync Coach","tone":"حازم-هادئ","style":"حسّي واقعي إنساني","philosophy":"هوية حركة بلا أسماء مع وضوح هويّة"}
@@ -1019,7 +1012,7 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         resp = OpenAI_CLIENT.chat.completions.create(
             model=CHAT_MODEL,
             messages=msgs,
-            temperature=0.5,           # ↓ ثبات أعلى
+            temperature=0.5,
             top_p=0.9,
             presence_penalty=0.15,
             frequency_penalty=0.1,
@@ -1107,7 +1100,7 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         except Exception:
             pass
 
-    # ===== تأكيد عدم التكرار عالميًا + تسجيل في البلاك ليست =====
+    # ===== تأكيد عدم التكرار عالميًا + تسجيل =====
     bl = _load_blacklist()
     cleaned = _ensure_unique_labels_v_global(cleaned, lang, bl)
     _persist_blacklist(cleaned, bl)
@@ -1115,13 +1108,15 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     # بناء الكروت
     cards = [_format_card(cleaned[i], i, lang) for i in range(3)]
 
-    # أمان الروابط بحسب CFG.security
+    # أمان الروابط (مرّة واحدة وحسب الإعدادات)
     try:
-        cards = [scrub_unknown_urls(c, CFG) for c in cards]
+        sec = (CFG.get("security") or {})
+        if sec.get("scrub_urls", True):
+            cards = [scrub_unknown_urls(c, CFG) for c in cards]
     except Exception:
         pass
 
-    # لوق مع أعلام الجودة + تليمتري
+    # جودة + تليمتري
     quality_flags = {
         "generic": any(_too_generic(" ".join([c.get("what_it_looks_like",""), c.get("why_you","")]), _MIN_CHARS) for c in cleaned),
         "low_sensory": any(not _has_sensory(" ".join([c.get("what_it_looks_like",""), c.get("inner_sensation","")])) for c in cleaned),
@@ -1151,19 +1146,18 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         try:
             _PIPE.send(
                 event_type="recommendation_emitted",
-                payload={"quality_flags": quality_flags, "labels": [c.get("sport_label","") for c in cleaned]},
-                user_id=user_id, lang=("العربية" if lang=="العربية" else "English"),
-                model=CHAT_MODEL
+                payload={
+                    "language": lang,
+                    "quality_flags": quality_flags,
+                    "labels": [c.get("sport_label") for c in cleaned],
+                    "z_axes": analysis.get("z_axes", {}),
+                    "z_intent": analysis.get("z_intent", [])
+                },
+                user_id=user_id,
+                model=CHAT_MODEL,
+                lang=lang
             )
         except Exception:
             pass
 
-  # تنظيف روابط غير مسموح بها (اختياري حسب الإعدادات)
-    try:
-        sec = (CFG.get("security") or {})
-        if sec.get("scrub_urls", True):
-            cards = [scrub_unknown_urls(c, CFG) for c in cards]
-    except Exception:
-        pass
-      
     return cards
