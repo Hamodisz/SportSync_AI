@@ -93,7 +93,7 @@ except Exception:
 
 # ========= Paths / Data =========
 try:
-    HERE = Path(_file_).resolve().parent
+    HERE = Path(__file__).resolve().parent
 except NameError:
     HERE = Path.cwd()
 ROOT = HERE.parent if HERE.name == "core" else HERE
