@@ -37,12 +37,10 @@ def process_pending_requests():
                 "analyzed_at": time.time()
             }
 
-            # Save result
             result_path = os.path.join(RESULTS_DIR, f"{user_id}.json")
             with open(result_path, "w", encoding="utf-8") as out_f:
                 json.dump(result_data, out_f, ensure_ascii=False, indent=2)
 
-            # Delete the processed file
             os.remove(path)
             print(f"✅ Done: {user_id}")
         except Exception as e:
