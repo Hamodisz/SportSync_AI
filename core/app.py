@@ -1,12 +1,11 @@
-# app.py
-
 import streamlit as st
 import json
+import os
+import uuid
+import urllib.parse
 
-from core.backend_gpt import generate_sport_recommendation
-from core.dynamic_chat import start_dynamic_chat
-from analysis.layer_z_engine import analyze_silent_drivers_combined as analyze_silent_drivers
-from core.user_logger import log_user_insight
+from core.submit_answers_to_queue import submit_to_queue
+from core.check_result_ready import check_result
 
 # -------------------
 # اللغة
@@ -22,91 +21,105 @@ with open(question_file, "r", encoding="utf-8") as f:
     questions = json.load(f)
 
 # -------------------
-# العنوان
+# عنوان الصفحة
 # -------------------
 st.title("🎯 توصيتك الرياضية الذكية" if is_arabic else "🎯 Your Smart Sport Recommendation")
 
 # -------------------
-# جمع الإجابات
+# معالجة user_id من الرابط أو توليد جديد
 # -------------------
-answers = {}
-for q in questions:
-    q_key = q["key"]
-    q_text = q["question_ar"] if is_arabic else q["question_en"]
-    q_type = q["type"]
-    allow_custom = q.get("allow_custom", False)
-    options = q.get("options", [])
+query_params = st.experimental_get_query_params()
+user_id = query_params.get("user_id", [None])[0]
 
-    if q_type == "multiselect":
-        selected = st.multiselect(q_text, options, key=q_key)
-        if allow_custom:
-            custom_input = st.text_input("✏ " + ("إجابتك الخاصة (اختياري)" if is_arabic else "Your own answer (optional)"), key=q_key+"_custom")
-            if custom_input:
-                selected.append(custom_input)
-        answers[q_text] = selected
-
-    elif q_type == "text":
-        answers[q_text] = st.text_input(q_text, key=q_key)
+if not user_id:
+    if "user_id" not in st.session_state:
+        st.session_state.user_id = f"user_{uuid.uuid4().hex[:6]}"
+    user_id = st.session_state.user_id
 
 # -------------------
-# زر التوصية
+# حالة العرض
 # -------------------
-if st.button("🔍 اعرض التوصيات" if is_arabic else "🔍 Show Recommendations"):
-    user_id = "test_user"
+if "view" not in st.session_state:
+    # هل عنده توصية جاهزة؟
+    result = check_result(user_id)
+    if result:
+        st.session_state.result = result
+        st.session_state.view = "result"
+    elif os.path.exists(f"data/pending_requests/{user_id}.json"):
+        st.session_state.view = "waiting"
+    else:
+        st.session_state.view = "quiz"
 
-    # ✅ توليد التوصيات
-    recs = generate_sport_recommendation(answers, lang=lang)
+# -------------------
+# صفحة الأسئلة
+# -------------------
+if st.session_state.view == "quiz":
+    st.session_state.answers = {}
+    for q in questions:
+        q_key = q["key"]
+        q_text = q["question_ar"] if is_arabic else q["question_en"]
+        q_type = q["type"]
+        allow_custom = q.get("allow_custom", False)
+        options = q.get("options", [])
 
-    # ✅ تحليل Layer Z
-    silent_drivers = analyze_silent_drivers(answers, lang=lang)
-    if silent_drivers:
-        st.markdown("---")
-        st.subheader("🧭 ما يحركك دون أن تدري" if is_arabic else "🧭 Your Silent Drivers")
-        for s in silent_drivers:
-            st.write("• " + s)
+        if q_type == "multiselect":
+            selected = st.multiselect(q_text, options, key=q_key)
+            if allow_custom:
+                custom_input = st.text_input("✏ " + ("إجابتك الخاصة (اختياري)" if is_arabic else "Your own answer (optional)"), key=q_key+"_custom")
+                if custom_input:
+                    selected.append(custom_input)
+            st.session_state.answers[q_text] = selected
 
-    # ✅ عرض التوصيات الثلاثة
-    for i, rec in enumerate(recs):
-        if is_arabic:
-            st.subheader(f"🟢 التوصية رقم {i+1}" if i == 0 else f"🌿 التوصية رقم {i+1}" if i == 1 else f"🔮 التوصية رقم {i+1} (ابتكارية)")
+        elif q_type == "text":
+            st.session_state.answers[q_text] = st.text_input(q_text, key=q_key)
+
+    if st.button("🔍 اعرض التوصيات" if is_arabic else "🔍 Show Recommendations"):
+        submit_to_queue(user_id=user_id, answers=st.session_state.answers, lang=lang)
+        st.session_state.view = "waiting"
+        st.rerun()
+
+# -------------------
+# شاشة الانتظار
+# -------------------
+elif st.session_state.view == "waiting":
+    st.markdown("### ⏳ " + ("تحليل شخصيتك قيد المعالجة..." if is_arabic else "Analyzing your sport identity..."))
+    st.info("🔬 " + ("نحن نغوص في أعماق شخصيتك الرياضية... قد يستغرق ذلك أقل من دقيقة." if is_arabic else "We're diving deep into your sport identity. Please wait..."))
+
+    if st.button("🔄 تحديث النتيجة" if is_arabic else "🔄 Refresh Result"):
+        result = check_result(user_id)
+        if result:
+            st.session_state.result = result
+            st.session_state.view = "result"
+            st.rerun()
         else:
-            st.subheader(f"🟢 Recommendation #{i+1}" if i == 0 else f"🌿 Recommendation #{i+1}" if i == 1 else f"🔮 Recommendation #{i+1} (Creative)")
+            st.warning("🚧 " + ("لم تجهز التوصية بعد." if is_arabic else "Recommendation not ready yet."))
+
+# -------------------
+# عرض النتيجة
+# -------------------
+elif st.session_state.view == "result":
+    result = st.session_state.result
+    profile = result.get("profile", {})
+    recs = result.get("recommendations", [])
+
+    for i, rec in enumerate(recs):
+        st.subheader(
+            f"🟢 التوصية رقم {i+1}" if is_arabic else
+            f"🟢 Recommendation #{i+1}" if i == 0 else
+            f"🌿 التوصية رقم {i+1}" if i == 1 else
+            f"🔮 التوصية رقم {i+1} (Creative)"
+        )
         st.write(rec)
 
-        # تقييم المستخدم لكل توصية
-        rating = st.slider("⭐ " + ("قيّم هذه التوصية" if is_arabic else "Rate this recommendation"), 1, 5, key=f"rating_{i}")
-        st.session_state[f"rating_{i}"] = rating
-
-    # ✅ محادثة ديناميكية مع المدرب
-    st.markdown("---")
-    st.subheader("🧠 تحدث مع المدرب الذكي" if is_arabic else "🧠 Talk to the AI Coach")
-    user_input = st.text_input("💬 اكتب ردّك أو تعليقك هنا..." if is_arabic else "💬 Type your response or ask a question...")
-
-    if user_input:
-        prev_ratings = [st.session_state.get(f"rating_{i}", 3) for i in range(3)]
-        reply = start_dynamic_chat(
-            answers=answers,
-            previous_recommendation=recs,
-            ratings=prev_ratings,
-            user_id=user_id,
-            lang=lang,
-            chat_history=[],
-            user_message=user_input
-        )
-        st.markdown("🤖 AI Coach:")
-        st.success(reply)
-
-    # ✅ توقيع البراند
     st.markdown("---")
     st.caption("🚀 Powered by SportSync AI – Your identity deserves its own sport.")
 
-    # ✅ زر المشاركة
-    st.markdown("📤 شارك هذا التحليل مع صديق!" if is_arabic else "📤 Share this analysis with a friend!")
-    share_text = f"https://sportsync.ai/recommendation?lang={lang}&user=test_user"
-    st.code(share_text)
+    share_url = f"https://sportsync.ai/recommendation?user_id={user_id}&lang={lang}"
+    st.markdown("📤 شارك توصيتك مع صديق!" if is_arabic else "📤 Share your recommendation with a friend!")
+    st.code(share_url)
 
 # -------------------
-# إعادة الاختبار
+# زر إعادة الاختبار
 # -------------------
 if st.button("🔄 أعد الاختبار من البداية" if is_arabic else "🔄 Restart the test"):
     st.session_state.clear()
