@@ -1,21 +1,17 @@
 {
-  "app_version": "exp-0.3",
-  "llm": {
-    "model": "gpt-4o"
-  },
+  "llm": { "model": "gpt-4o" },
   "recommendations": {
     "allow_sport_names": true,
     "min_chars": 220,
     "require_win_condition": true,
     "min_core_skills": 3
   },
-  "sinks": {
-    "disk":   { "enabled": true,  "path": "./data/events.jsonl" },
-    "webhook":{ "enabled": true,  "url": "https://hooks.zapier.com/hooks/catch/24441864/uhqcg4b/" },
-    "gsheets":{ "enabled": false, "sheet_id": "", "service_account_json": "" }
+  "analysis": {
+    "egate": { "min_answered": 3, "min_total_chars": 120, "required_keys": [] }
   },
-  "remote": {
-    "config_url": "",
-    "refresh_secs": 900
+  "security": { "scrub_urls": true, "allowed_domains": ["sportsync.ai"] },
+  "sinks": {
+    "disk": { "enabled": true, "path": "./data/events.jsonl" },
+    "webhook": { "enabled": false, "url": "" }
   }
 }
