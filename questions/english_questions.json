@@ -1,7 +1,7 @@
 [
   {
     "key": "q1",
-    "question_en": "When do you enter flow and lose track of time?",
+    "question_en": "When do you feel time fly while you’re engaged in an activity?",
     "multiple_choices": ["Calm focus on one detail", "Instant interaction & speed", "Variety and surprises", "Collaborating with a group"],
     "allow_custom": true,
     "bucket": "Z-core",
