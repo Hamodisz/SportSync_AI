@@ -91,6 +91,29 @@ except Exception:
         key = f"{lang}:{hash(json.dumps(analysis, ensure_ascii=False, sort_keys=True))}"
         _PERS_CACHE[key] = personality
 
+# ✅ Recommendations cache (optional external import + safe fallback)
+#   يحفظ/يسترجع الكروت (3 توصيات) بناءً على user_id + answers + lang
+try:
+    # إن وجد لديك نفس الأسماء في core.memory_cache
+    from core.memory_cache import get_cached_recommendation, save_cached_recommendation  # type: ignore
+    _HAS_EXT_REC_CACHE = True
+except Exception:
+    _HAS_EXT_REC_CACHE = False
+    _REC_CACHE: Dict[str, List[str]] = {}
+    def _answers_fingerprint(answers: Dict[str, Any], lang: str) -> str:
+        try:
+            blob = json.dumps(answers or {}, ensure_ascii=False, sort_keys=True)
+        except Exception:
+            blob = str(answers)
+        h = hashlib.sha256((lang + "::" + blob).encode("utf-8")).hexdigest()[:24]
+        return h
+    def get_cached_recommendation(user_id: str, answers: Dict[str, Any], lang: str) -> Optional[List[str]]:
+        key = f"{user_id}:{_answers_fingerprint(answers, lang)}"
+        return _REC_CACHE.get(key)
+    def save_cached_recommendation(user_id: str, answers: Dict[str, Any], lang: str, cards: List[str]) -> None:
+        key = f"{user_id}:{_answers_fingerprint(answers, lang)}"
+        _REC_CACHE[key] = list(cards or [])
+
 # ========= Paths / Data =========
 try:
     HERE = Path(__file__).resolve().parent
@@ -499,7 +522,7 @@ def _fallback_identity(i: int, lang: str) -> Dict[str, Any]:
                 "core_skills":["توقيت الظهور","قراءة الحواجز","تعديل الإيقاع","تنفّس صامت","توازن"],
                 "mode":"Solo",
                 "variant_vr":"تسلل افتراضي مع مؤشّر انكشاف بصري.",
-                "variant_no_vr":"عوائق خفيفة وأشرطة ظل.",
+                "variant_no_vر":"عوائق خفيفة وأشرطة ظل.",
                 "difficulty":2
             },
             {
@@ -950,6 +973,18 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     analysis: Dict[str, Any] = {}
     silent: List[str] = []
 
+    # ✅ كاش: إن كانت هناك توصيات لنفس user_id ونفس الإجابات واللغة — أعدها فورًا
+    try:
+        cached_cards = get_cached_recommendation(user_id, answers, lang)
+    except TypeError:
+        # في حال كانت نسخة الاستيراد الخارجي تختلف بالواجهة
+        try:
+            cached_cards = get_cached_recommendation(user_id)  # type: ignore
+        except Exception:
+            cached_cards = None
+    if cached_cards:
+        return cached_cards
+
     # Evidence Gate أولًا — لا توصيات بدون أدلة كافية
     eg = _run_egate(answers or {}, lang=lang)
     if _PIPE:
@@ -1157,6 +1192,15 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
                 model=CHAT_MODEL,
                 lang=lang
             )
+        except Exception:
+            pass
+
+    # ✅ خزّن التوصيات (الكروت) في الكاش لتسريع الزيارات التالية
+    try:
+        save_cached_recommendation(user_id, answers, lang, cards)
+    except TypeError:
+        try:
+            save_cached_recommendation(user_id, cards)  # type: ignore
         except Exception:
             pass
 
