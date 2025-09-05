@@ -5,9 +5,6 @@ from datetime import datetime
 PENDING_DIR = "data/pending_requests"
 
 def submit_to_queue(user_id, answers, lang="ar"):
-    """
-    يحفظ إجابات المستخدم في مجلد الانتظار ليتم تحليلها لاحقًا.
-    """
     os.makedirs(PENDING_DIR, exist_ok=True)
 
     payload = {
