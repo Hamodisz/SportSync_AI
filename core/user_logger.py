@@ -123,7 +123,7 @@ def log_user_insight(user_id: str, content: Dict[str, Any], event_type: str = "u
     derived_meta = _extract_meta(clean_content)
 
     entry = {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.utcnow().isoformat() + "Z",
         "event_type": event_type,
         "user_id": user_id,
         # حقول مشتقة لتسهيل التحليل دون الرجوع لكل الشجرة
