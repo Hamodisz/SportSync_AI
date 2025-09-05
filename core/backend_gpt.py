@@ -17,7 +17,8 @@ Key guarantees:
 
 from __future__ import annotations
 
-import os, json, re, hashlib, importlib
+import os, json, re, hashlib, importlib, time
+from time import perf_counter, sleep
 from typing import Any, Dict, List, Optional
 from pathlib import Path
 from datetime import datetime
@@ -30,6 +31,20 @@ except Exception as e:
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OpenAI_CLIENT = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+
+# ========= Runtime Guards / Tunables =========
+# ميزانية زمنية للتحليل (ثواني)
+REC_BUDGET_S = float(os.getenv("REC_BUDGET_S", "22"))
+# تعطيل/تفعيل إصلاح الجولة الثانية
+REC_REPAIR_ENABLED = os.getenv("REC_REPAIR_ENABLED", "1") == "1"
+# وضع سريع لتقليل التوكنز وتخطي الإصلاح الثاني
+REC_FAST_MODE = os.getenv("REC_FAST_MODE", "0") == "1"
+# لوج تشخيصي بسيط
+REC_DEBUG = os.getenv("REC_DEBUG", "0") == "1"
+
+def _dbg(msg: str) -> None:
+    if REC_DEBUG:
+        print(f"[RECDBG] {msg}")
 
 # ========= App Config =========
 try:
@@ -92,13 +107,9 @@ except Exception:
         _PERS_CACHE[key] = personality
 
 # ✅ Recommendations cache (optional external import + safe fallback)
-#   يحفظ/يسترجع الكروت (3 توصيات) بناءً على user_id + answers + lang
 try:
-    # إن وجد لديك نفس الأسماء في core.memory_cache
     from core.memory_cache import get_cached_recommendation, save_cached_recommendation  # type: ignore
-    _HAS_EXT_REC_CACHE = True
 except Exception:
-    _HAS_EXT_REC_CACHE = False
     _REC_CACHE: Dict[str, List[str]] = {}
     def _answers_fingerprint(answers: Dict[str, Any], lang: str) -> str:
         try:
@@ -522,7 +533,7 @@ def _fallback_identity(i: int, lang: str) -> Dict[str, Any]:
                 "core_skills":["توقيت الظهور","قراءة الحواجز","تعديل الإيقاع","تنفّس صامت","توازن"],
                 "mode":"Solo",
                 "variant_vr":"تسلل افتراضي مع مؤشّر انكشاف بصري.",
-                "variant_vr":"عوائق خفيفة وأشرطة ظل.",
+                "variant_no_vr":"عوائق خفيفة وأشرطة ظل.",
                 "difficulty":2
             },
             {
@@ -967,9 +978,44 @@ def _persist_blacklist(recs: List[Dict[str, Any]], bl: dict) -> None:
             _bl_add(bl, lab, alias=lab)
     _save_json_atomic(BL_PATH, bl)
 
+# ========= OpenAI helper with timeout + retry =========
+def _chat_with_retry(messages: List[Dict[str, str]], max_tokens: int, temperature: float) -> str:
+    """
+    ينفّذ مكالمة واحدة مع مهلة REC_BUDGET_S وريترای خفيف.
+    """
+    # استخدم عميل بمهلة (timeout) لكل طلب
+    timeout_s = max(4.0, min(REC_BUDGET_S, 30.0))
+    client = OpenAI_CLIENT.with_options(timeout=timeout_s) if OpenAI_CLIENT else None
+    if client is None:
+        raise RuntimeError("OPENAI_API_KEY غير مضبوط")
+
+    attempts = 3 if not REC_FAST_MODE else 2
+    last_err = None
+    for i in range(1, attempts + 1):
+        try:
+            resp = client.chat.completions.create(
+                model=CHAT_MODEL,
+                messages=messages,
+                temperature=temperature,
+                top_p=0.9,
+                presence_penalty=0.15,
+                frequency_penalty=0.1,
+                max_tokens=max_tokens
+            )
+            return (resp.choices[0].message.content or "").strip()
+        except Exception as e:
+            last_err = e
+            es = str(e)
+            # backoff بسيط لأخطاء المهلة/الضغط
+            if any(t in es.lower() for t in ["timeout", "rate limit", "overloaded", "503", "504"]):
+                sleep(min(1.5 * i, 3.0))
+                continue
+            break
+    raise RuntimeError(f"LLM call failed after retries: {last_err}")
+
 # ========= PUBLIC API =========
 def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العربية", user_id: str = "N/A") -> List[str]:
-    # Predeclare (أمان)
+    t0 = perf_counter()
     analysis: Dict[str, Any] = {}
     silent: List[str] = []
 
@@ -977,15 +1023,16 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     try:
         cached_cards = get_cached_recommendation(user_id, answers, lang)
     except TypeError:
-        # في حال كانت نسخة الاستيراد الخارجي تختلف بالواجهة
         try:
             cached_cards = get_cached_recommendation(user_id)  # type: ignore
         except Exception:
             cached_cards = None
     if cached_cards:
+        _dbg("cache HIT for recommendations")
         return cached_cards
+    _dbg("cache MISS for recommendations")
 
-    # Evidence Gate أولًا — لا توصيات بدون أدلة كافية
+    # Evidence Gate
     eg = _run_egate(answers or {}, lang=lang)
     if _PIPE:
         try:
@@ -1040,21 +1087,17 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         except Exception:
             pass
 
-    # === أول محاولة
+    # === الجولة الأولى
     seed = _style_seed(user_id, profile or {})
     msgs = _json_prompt(analysis, answers, persona, lang, seed)
+
+    # تقليل التوكنز في الوضع السريع
+    max_toks_1 = 900 if REC_FAST_MODE else 1400
+
     try:
-        resp = OpenAI_CLIENT.chat.completions.create(
-            model=CHAT_MODEL,
-            messages=msgs,
-            temperature=0.5,
-            top_p=0.9,
-            presence_penalty=0.15,
-            frequency_penalty=0.1,
-            max_tokens=1400
-        )
-        raw1 = (resp.choices[0].message.content or "").strip()
-        print(f"[AI] model={CHAT_MODEL} len={len(raw1)} raw[:140]={raw1[:140]!r}")
+        _dbg("calling LLM - round #1")
+        raw1 = _chat_with_retry(messages=msgs, max_tokens=max_toks_1, temperature=0.5)
+        _dbg(f"round #1 ok, len={len(raw1)}")
     except Exception as e:
         err = f"❌ خطأ اتصال النموذج: {e}"
         if _PIPE:
@@ -1071,11 +1114,14 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     cleaned = _sanitize_fill(parsed, lang)
 
     # ===== محاذاة Z-axes + إصلاح ثانٍ إذا لزم =====
+    elapsed = perf_counter() - t0
+    time_left = REC_BUDGET_S - elapsed
     axes = (analysis.get("z_axes") or {}) if isinstance(analysis, dict) else {}
+
     mismatch_axes = any(_mismatch_with_axes(rec, axes, lang) for rec in cleaned)
     need_repair_generic = any(_too_generic(" ".join([c.get("what_it_looks_like",""), c.get("why_you","")]), _MIN_CHARS) for c in cleaned)
     missing_fields = any(((_REQUIRE_WIN and not c.get("win_condition")) or len(c.get("core_skills") or []) < _MIN_CORE_SKILLS) for c in cleaned)
-    need_repair = mismatch_axes or need_repair_generic or missing_fields
+    need_repair = (mismatch_axes or need_repair_generic or missing_fields) and REC_REPAIR_ENABLED and (time_left >= (6 if not REC_FAST_MODE else 4))
 
     if need_repair:
         exp = _axes_expectations(axes or {}, lang)
@@ -1106,16 +1152,11 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
             )
         }
         try:
-            resp2 = OpenAI_CLIENT.chat.completions.create(
-                model=CHAT_MODEL,
-                messages=msgs + [{"role":"assistant","content":raw1}, repair_prompt],
-                temperature=0.55,
-                top_p=0.9,
-                presence_penalty=0.15,
-                frequency_penalty=0.1,
-                max_tokens=1400
-            )
-            raw2 = (resp2.choices[0].message.content or "").strip()
+            _dbg("calling LLM - round #2 (repair)")
+            # جولة الإصلاح بتوكنز أقل قليلًا
+            raw2 = _chat_with_retry(messages=msgs + [{"role":"assistant","content":raw1}, repair_prompt],
+                                    max_tokens=(700 if REC_FAST_MODE else 1100),
+                                    temperature=0.55)
             if not ALLOW_SPORT_NAMES and _contains_blocked_name(raw2):
                 raw2 = _mask_names(raw2)
             parsed2 = _parse_json(raw2) or []
@@ -1132,8 +1173,9 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
 
             if sum(map(score, cleaned2)) > sum(map(score, cleaned)):
                 cleaned = cleaned2
-        except Exception:
-            pass
+                _dbg("repair improved result")
+        except Exception as e:
+            _dbg(f"repair skipped due to error: {e}")
 
     # ===== تأكيد عدم التكرار عالميًا + تسجيل =====
     bl = _load_blacklist()
@@ -1143,7 +1185,7 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     # بناء الكروت
     cards = [_format_card(cleaned[i], i, lang) for i in range(3)]
 
-    # أمان الروابط (مرّة واحدة وحسب الإعدادات)
+    # أمان الروابط
     try:
         sec = (CFG.get("security") or {})
         if sec.get("scrub_urls", True):
@@ -1152,6 +1194,7 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         pass
 
     # جودة + تليمتري
+    axes = (analysis.get("z_axes") or {}) if isinstance(analysis, dict) else {}
     quality_flags = {
         "generic": any(_too_generic(" ".join([c.get("what_it_looks_like",""), c.get("why_you","")]), _MIN_CHARS) for c in cleaned),
         "low_sensory": any(not _has_sensory(" ".join([c.get("what_it_looks_like",""), c.get("inner_sensation","")])) for c in cleaned),
@@ -1170,7 +1213,9 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
                 "encoded_profile": profile,
                 "recommendations": cleaned,
                 "quality_flags": quality_flags,
-                "seed": seed
+                "seed": seed,
+                "elapsed_s": round(perf_counter() - t0, 3),
+                "fast_mode": REC_FAST_MODE
             },
             event_type="initial_recommendation"
         )
