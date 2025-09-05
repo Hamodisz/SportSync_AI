@@ -78,7 +78,7 @@
   },
   {
     "key": "q8",
-    "question_en": "With one extra hour, you’d…",
+    "question_en": "Let’s imagine you’ve got an hour just for yourself to move—what would you try? Keep it simple, no sleep or screens",
     "multiple_choices": ["Do a short intense session", "Study technique/details", "Free creative play", "Calm breath & recovery"],
     "allow_custom": true,
     "bucket": "Logistics",
