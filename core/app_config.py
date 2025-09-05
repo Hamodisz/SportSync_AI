@@ -84,7 +84,24 @@ def get_config() -> Dict[str, Any]:
         # Defaults
         _cache.setdefault("app_version", "dev")
         _cache.setdefault("llm", {}).setdefault("model", "gpt-4o")
-        _cache.setdefault("recommendations", {}).setdefault("allow_sport_names", True)
+
+        rec = _cache.setdefault("recommendations", {})
+        rec.setdefault("allow_sport_names", True)
+        rec.setdefault("min_chars", 220)
+        rec.setdefault("require_win_condition", True)
+        rec.setdefault("min_core_skills", 3)
+
+        ana = _cache.setdefault("analysis", {})
+        eg  = ana.setdefault("egate", {})
+        eg.setdefault("min_answered", 3)
+        eg.setdefault("min_total_chars", 120)
+        eg.setdefault("required_keys", [])
+
+        sec = _cache.setdefault("security", {})
+        sec.setdefault("scrub_urls", True)
+        sec.setdefault("allowed_domains", ["sportsync.ai"])  # للسماح بروابط محدّدة فقط
+
+        # sinks افتراضات للتليمتري
         _cache["sinks"] = _cache.get("sinks") or {
             "disk": {"enabled": True, "path": "./data/events.jsonl"},
             "webhook": {"enabled": False, "url": ""},
