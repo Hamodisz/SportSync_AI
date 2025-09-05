@@ -3,6 +3,9 @@ import json
 import os
 import uuid
 import urllib.parse
+import qrcode
+from io import BytesIO
+from PIL import Image
 
 from core.submit_answers_to_queue import submit_to_queue
 from core.check_result_ready import check_result
@@ -26,7 +29,7 @@ with open(question_file, "r", encoding="utf-8") as f:
 st.title("🎯 توصيتك الرياضية الذكية" if is_arabic else "🎯 Your Smart Sport Recommendation")
 
 # -------------------
-# معالجة user_id من الرابط أو توليد جديد
+# user_id من الرابط أو توليد جديد
 # -------------------
 query_params = st.experimental_get_query_params()
 user_id = query_params.get("user_id", [None])[0]
@@ -35,12 +38,13 @@ if not user_id:
     if "user_id" not in st.session_state:
         st.session_state.user_id = f"user_{uuid.uuid4().hex[:6]}"
     user_id = st.session_state.user_id
+else:
+    st.session_state.user_id = user_id  # نحفظه للجلسة
 
 # -------------------
-# حالة العرض
+# الحالة الحالية
 # -------------------
 if "view" not in st.session_state:
-    # هل عنده توصية جاهزة؟
     result = check_result(user_id)
     if result:
         st.session_state.result = result
@@ -51,7 +55,7 @@ if "view" not in st.session_state:
         st.session_state.view = "quiz"
 
 # -------------------
-# صفحة الأسئلة
+# عرض الأسئلة
 # -------------------
 if st.session_state.view == "quiz":
     st.session_state.answers = {}
@@ -95,7 +99,7 @@ elif st.session_state.view == "waiting":
             st.warning("🚧 " + ("لم تجهز التوصية بعد." if is_arabic else "Recommendation not ready yet."))
 
 # -------------------
-# عرض النتيجة
+# عرض التوصية النهائية
 # -------------------
 elif st.session_state.view == "result":
     result = st.session_state.result
@@ -114,9 +118,28 @@ elif st.session_state.view == "result":
     st.markdown("---")
     st.caption("🚀 Powered by SportSync AI – Your identity deserves its own sport.")
 
+    # مشاركة الرابط
     share_url = f"https://sportsync.ai/recommendation?user_id={user_id}&lang={lang}"
     st.markdown("📤 شارك توصيتك مع صديق!" if is_arabic else "📤 Share your recommendation with a friend!")
     st.code(share_url)
+
+    # نسخ الرابط
+    st.text_input("انسخ الرابط:", share_url, key="share_link")
+
+    # QR Code
+    qr = qrcode.make(share_url)
+    buf = BytesIO()
+    qr.save(buf)
+    st.image(buf.getvalue(), caption="📱 امسح QR Code لفتح التوصية", width=200)
+
+    # تعديل التوصية
+    if st.button("✏ عدّل إجاباتك" if is_arabic else "✏ Modify your answers"):
+        result_file = f"data/ready_results/{user_id}.json"
+        if os.path.exists(result_file):
+            os.remove(result_file)
+        st.session_state.view = "quiz"
+        st.session_state.answers = {}
+        st.rerun()
 
 # -------------------
 # زر إعادة الاختبار
