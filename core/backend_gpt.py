@@ -522,7 +522,7 @@ def _fallback_identity(i: int, lang: str) -> Dict[str, Any]:
                 "core_skills":["توقيت الظهور","قراءة الحواجز","تعديل الإيقاع","تنفّس صامت","توازن"],
                 "mode":"Solo",
                 "variant_vr":"تسلل افتراضي مع مؤشّر انكشاف بصري.",
-               "variant_vr":"عوائق خفيفة وأشرطة ظل.",
+                "variant_vr":"عوائق خفيفة وأشرطة ظل.",
                 "difficulty":2
             },
             {
