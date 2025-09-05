@@ -11,8 +11,8 @@ core/security.py
 "security": {
   "scrub_urls": true,
   "require_https": true,
-  "allowed_domains": ["sportsync.ai", "yourdomain.com"],
-  "blocked_domains": []
+  "allowed_domains": ["sportsync.ai", "*.yourdomain.com"],
+  "blocked_domains": ["bad.com", "*.evil.net"]
 }
 """
 
@@ -29,7 +29,6 @@ def _host(url: str) -> str:
     """إرجاع النطاق دون منفذ/اعتماديات."""
     try:
         u = urlparse(url)
-        # نتخلّص من user:pass@host:port
         netloc = (u.netloc or "").split("@")[-1].split(":")[0]
         return netloc.lower()
     except Exception:
@@ -47,13 +46,30 @@ def _obfuscate(u: ParseResult) -> str:
     return f"{scheme}://{host}{path}{q}{f}"
 
 
+def _matches(host: str, rule: str) -> bool:
+    """
+    يطابق دومينًا مع قاعدة:
+      - مطابقة تامة: rule == host
+      - ساب دومين: host ينتهي بـ '.' + rule
+      - وايلدكارد: rule يبدأ بـ '*.' → host ينتهي بسِفكس rule[2:]
+    """
+    host = (host or "").lower()
+    rule = (rule or "").lower().lstrip(".")
+    if not host or not rule:
+        return False
+    if rule.startswith("*."):
+        suffix = rule[2:]
+        return host == suffix or host.endswith("." + suffix)
+    return host == rule or host.endswith("." + rule)
+
+
 def is_allowed_url(url: str, cfg: Dict) -> bool:
     """
     قرار السماح/المنع:
       - إن scrub_urls=false → اسمح بكل شيء (تعطيل مؤقت).
       - إن require_https=true → امنع غير HTTPS.
-      - إن host ضمن blocked_domains → امنع.
-      - إن allowed_domains غير فارغة → اسمح فقط لما بداخلها.
+      - إن host ضمن blocked_domains (يدعم *.wildcard) → امنع.
+      - إن allowed_domains غير فارغة (تدعم *.wildcard) → اسمح فقط لما يطابقها.
       - إن allowed_domains فارغة → امنع افتراضيًا (صارم).
     """
     try:
@@ -72,14 +88,16 @@ def is_allowed_url(url: str, cfg: Dict) -> bool:
             return False
 
         host = _host(url)
-        allowed = {x.lower() for x in (sec.get("allowed_domains") or [])}
-        blocked = {x.lower() for x in (sec.get("blocked_domains") or [])}
+        allowed = [str(x).lower() for x in (sec.get("allowed_domains") or [])]
+        blocked = [str(x).lower() for x in (sec.get("blocked_domains") or [])]
 
-        if host in blocked:
+        # blocked أولًا
+        if any(_matches(host, r) for r in blocked):
             return False
 
+        # لو فيه allowed → لازم يطابق واحدة منها
         if allowed:
-            return host in allowed
+            return any(_matches(host, r) for r in allowed)
 
         # لا توجد قائمة سماح → منع افتراضيًا
         return False
@@ -113,21 +131,14 @@ def scrub_unknown_urls(obj: Any, cfg: Dict) -> Any:
       - dict: ينظّف القيم (لا يلمس المفاتيح)
     يُعيد نفس النوع.
     """
-    # نص
     if isinstance(obj, str):
         return _scrub_text(obj, cfg)
 
-    # قائمة/تربل
     if isinstance(obj, (list, tuple)):
         cleaned = [scrub_unknown_urls(x, cfg) for x in obj]
         return type(obj)(cleaned)
 
-    # قاموس
     if isinstance(obj, dict):
-        out = {}
-        for k, v in obj.items():
-            out[k] = scrub_unknown_urls(v, cfg)
-        return out
+        return {k: scrub_unknown_urls(v, cfg) for k, v in obj.items()}
 
-    # أنواع أخرى نعيدها كما هي
     return obj
