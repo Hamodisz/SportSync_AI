@@ -1014,12 +1014,15 @@ def _chat_with_retry(messages: List[Dict[str, str]], max_tokens: int, temperatur
     raise RuntimeError(f"LLM call failed after retries: {last_err}")
 
 # ========= PUBLIC API =========
-def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العربية", user_id: str = "N/A") -> List[str]:
+def generate_sport_recommendation(answers: Dict[str, Any],
+                                  lang: str = "العربية",
+                                  user_id: str = "N/A",
+                                  job_id: str = "") -> List[str]:
     t0 = perf_counter()
     analysis: Dict[str, Any] = {}
     silent: List[str] = []
 
-    # ✅ كاش: إن كانت هناك توصيات لنفس user_id ونفس الإجابات واللغة — أعدها فورًا
+    # ✅ كاش
     try:
         cached_cards = get_cached_recommendation(user_id, answers, lang)
     except TypeError:
@@ -1038,8 +1041,13 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         try:
             _PIPE.send(
                 event_type="egate_decision",
-                payload={"status": eg.get("status"), "answered": eg.get("answered"), "total_chars": eg.get("total_chars"),
-                         "required_missing": eg.get("required_keys", []) or eg.get("required_missing", [])},
+                payload={
+                    "status": eg.get("status"),
+                    "answered": eg.get("answered"),
+                    "total_chars": eg.get("total_chars"),
+                    "required_missing": eg.get("required_keys", []) or eg.get("required_missing", []),
+                    "job_id": job_id
+                },
                 user_id=user_id, lang=("العربية" if lang=="العربية" else "English"),
                 model=CHAT_MODEL
             )
@@ -1090,8 +1098,6 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     # === الجولة الأولى
     seed = _style_seed(user_id, profile or {})
     msgs = _json_prompt(analysis, answers, persona, lang, seed)
-
-    # تقليل التوكنز في الوضع السريع
     max_toks_1 = 900 if REC_FAST_MODE else 1400
 
     try:
@@ -1102,7 +1108,7 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         err = f"❌ خطأ اتصال النموذج: {e}"
         if _PIPE:
             try:
-                _PIPE.send("model_error", {"error": str(e)}, user_id=user_id, lang=lang, model=CHAT_MODEL)
+                _PIPE.send("model_error", {"error": str(e), "job_id": job_id}, user_id=user_id, lang=lang, model=CHAT_MODEL)
             except Exception:
                 pass
         return [err, "—", "—"]
@@ -1113,7 +1119,7 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     parsed = _parse_json(raw1) or []
     cleaned = _sanitize_fill(parsed, lang)
 
-    # ===== محاذاة Z-axes + إصلاح ثانٍ إذا لزم =====
+    # إصلاح إن لزم
     elapsed = perf_counter() - t0
     time_left = REC_BUDGET_S - elapsed
     axes = (analysis.get("z_axes") or {}) if isinstance(analysis, dict) else {}
@@ -1153,7 +1159,6 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         }
         try:
             _dbg("calling LLM - round #2 (repair)")
-            # جولة الإصلاح بتوكنز أقل قليلًا
             raw2 = _chat_with_retry(messages=msgs + [{"role":"assistant","content":raw1}, repair_prompt],
                                     max_tokens=(700 if REC_FAST_MODE else 1100),
                                     temperature=0.55)
@@ -1177,15 +1182,13 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         except Exception as e:
             _dbg(f"repair skipped due to error: {e}")
 
-    # ===== تأكيد عدم التكرار عالميًا + تسجيل =====
+    # عدم التكرار + تسجيل
     bl = _load_blacklist()
     cleaned = _ensure_unique_labels_v_global(cleaned, lang, bl)
     _persist_blacklist(cleaned, bl)
 
-    # بناء الكروت
     cards = [_format_card(cleaned[i], i, lang) for i in range(3)]
 
-    # أمان الروابط
     try:
         sec = (CFG.get("security") or {})
         if sec.get("scrub_urls", True):
@@ -1193,7 +1196,6 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     except Exception:
         pass
 
-    # جودة + تليمتري
     axes = (analysis.get("z_axes") or {}) if isinstance(analysis, dict) else {}
     quality_flags = {
         "generic": any(_too_generic(" ".join([c.get("what_it_looks_like",""), c.get("why_you","")]), _MIN_CHARS) for c in cleaned),
@@ -1215,7 +1217,8 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
                 "quality_flags": quality_flags,
                 "seed": seed,
                 "elapsed_s": round(perf_counter() - t0, 3),
-                "fast_mode": REC_FAST_MODE
+                "fast_mode": REC_FAST_MODE,
+                "job_id": job_id
             },
             event_type="initial_recommendation"
         )
@@ -1231,7 +1234,8 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
                     "quality_flags": quality_flags,
                     "labels": [c.get("sport_label") for c in cleaned],
                     "z_axes": analysis.get("z_axes", {}),
-                    "z_intent": analysis.get("z_intent", [])
+                    "z_intent": analysis.get("z_intent", []),
+                    "job_id": job_id
                 },
                 user_id=user_id,
                 model=CHAT_MODEL,
@@ -1240,7 +1244,6 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         except Exception:
             pass
 
-    # ✅ خزّن التوصيات (الكروت) في الكاش لتسريع الزيارات التالية
     try:
         save_cached_recommendation(user_id, answers, lang, cards)
     except TypeError:
