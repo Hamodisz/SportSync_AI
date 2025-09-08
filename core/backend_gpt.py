@@ -17,7 +17,7 @@ Key guarantees:
 
 from __future__ import annotations
 
-import os, json, re, hashlib, importlib, time
+import os, json, re, hashlib, importlib
 from time import perf_counter, sleep
 from typing import Any, Dict, List, Optional
 from pathlib import Path
@@ -29,8 +29,14 @@ try:
 except Exception as e:
     raise RuntimeError("أضف الحزمة في requirements: openai>=1.6.1,<2") from e
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OpenAI_CLIENT = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+OPENAI_API_KEY   = os.getenv("OPENAI_API_KEY")
+OPENAI_BASE_URL  = os.getenv("OPENAI_BASE_URL")  # اختياري (Azure/OpenRouter...)
+OPENAI_ORG       = os.getenv("OPENAI_ORG")       # اختياري
+
+OpenAI_CLIENT = (
+    OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL, organization=OPENAI_ORG)
+    if OPENAI_API_KEY else None
+)
 
 # ========= Runtime Guards / Tunables =========
 # ميزانية زمنية للتحليل (ثواني)
@@ -41,6 +47,10 @@ REC_REPAIR_ENABLED = os.getenv("REC_REPAIR_ENABLED", "1") == "1"
 REC_FAST_MODE = os.getenv("REC_FAST_MODE", "0") == "1"
 # لوج تشخيصي بسيط
 REC_DEBUG = os.getenv("REC_DEBUG", "0") == "1"
+# موديل احتياطي لتقليل الـ timeouts
+CHAT_MODEL_FALLBACK = os.getenv("CHAT_MODEL_FALLBACK", "gpt-4o-mini")
+# قصّ مكوّنات الـ prompt حتى لا تكبر الطلبات
+MAX_PROMPT_CHARS = int(os.getenv("MAX_PROMPT_CHARS", "6000"))
 
 def _dbg(msg: str) -> None:
     if REC_DEBUG:
@@ -382,6 +392,11 @@ def _scrub_forbidden(text: str) -> str:
     kept = [s for s in _split_sentences(text) if not _FORBIDDEN_SENT.search(_normalize_ar(s))]
     return "، ".join(kept).strip(" .،")
 
+def _clip(s: str, n: int) -> str:
+    if not s: return ""
+    s = s.strip()
+    return s if len(s) <= n else (s[: max(0, n - 1)] + "…")
+
 def _answers_to_bullets(answers: Dict[str, Any]) -> str:
     out = []
     for k, v in (answers or {}).items():
@@ -393,8 +408,9 @@ def _answers_to_bullets(answers: Dict[str, Any]) -> str:
             q, a = str(k), v
         if isinstance(a, list):
             a = ", ".join(map(str, a))
-        out.append(f"- {q}: {a}")
-    return "\n".join(out)
+        out.append(f"- {q}: {_clip(str(a), 160)}")
+    txt = "\n".join(out)
+    return _clip(txt, 1800)  # لا نضخّم البرومبت
 
 def _too_generic(text: str, min_chars: int = 280) -> bool:
     t = (text or "").strip()
@@ -690,13 +706,47 @@ def _style_seed(user_id: str, profile: Optional[Dict[str, Any]]) -> int:
     h = hashlib.sha256(s.encode("utf-8")).hexdigest()
     return int(h[:8], 16)
 
+def _compact_analysis_for_prompt(analysis: Dict[str, Any], profile: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    نُمرّر فقط الأجزاء الأكثر إفادة للبرومبت (لتقليل الحجم).
+    """
+    p_axes   = (profile or {}).get("axes", {})
+    p_signals= (profile or {}).get("signals", [])
+    hints    = (profile or {}).get("hints_for_prompt", "")
+    out = {
+        "silent_drivers": analysis.get("silent_drivers", []),
+        "z_axes": analysis.get("z_axes", p_axes),
+        "z_intent": analysis.get("z_intent", []),
+        "encoded_profile": {"axes": p_axes, "signals": p_signals, "hints": _clip(str(hints), 300)},
+    }
+    # قصّه النهائي
+    blob = json.dumps(out, ensure_ascii=False)
+    if len(blob) > MAX_PROMPT_CHARS // 2:
+        out["encoded_profile"]["signals"] = out["encoded_profile"]["signals"][:10]
+    return out
+
+def _strip_code_fence(s: str) -> str:
+    if not s: return s
+    s = s.strip()
+    if s.startswith("```"):
+        s = re.sub(r"^```(?:json)?\s*", "", s)
+        s = re.sub(r"\s*```$", "", s)
+    return s
+
 def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
                  personality: Any, lang: str, style_seed: int) -> List[Dict[str, str]]:
     bullets = _answers_to_bullets(answers)
     persona = personality if isinstance(personality, str) else json.dumps(personality, ensure_ascii=False)
     profile = analysis.get("encoded_profile") or {}
-    axes = profile.get("axes", {})
-    exp = _axes_expectations(axes, lang)
+    compact_analysis = _compact_analysis_for_prompt(analysis, profile)
+
+    # قصّ إضافي لو تخطّى الحد
+    comp_blob = json.dumps(compact_analysis, ensure_ascii=False)
+    if len(comp_blob) > MAX_PROMPT_CHARS:
+        compact_analysis = {"z_axes": compact_analysis.get("z_axes", {}), "z_intent": compact_analysis.get("z_intent", [])}
+
+    axis = compact_analysis.get("z_axes", {})
+    exp = _axes_expectations(axis, lang)
     exp_lines = []
     if exp:
         title = {"calm_adrenaline":"هدوء/أدرينالين","solo_group":"فردي/جماعي","tech_intuition":"تقني/حدسي"} \
@@ -707,7 +757,7 @@ def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
                 exp_lines.append(f"{title[k]}: {', '.join(words)}")
     axis_hint = ("\n".join(exp_lines)) if exp_lines else ""
 
-    z_intent = analysis.get("z_intent", [])
+    z_intent = compact_analysis.get("z_intent", [])
     intent_hint = ("، ".join(z_intent) if lang=="العربية" else ", ".join(z_intent)) if z_intent else ""
 
     if lang == "العربية":
@@ -721,15 +771,15 @@ def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
             "حوّل بيانات المستخدم إلى ثلاث توصيات «هوية رياضية واضحة». "
             "أعِد JSON بالمفاتيح: "
             "{\"recommendations\":[{"
-            "\"sport_label\":\"...\",\"what_it_looks_like\":\"...\",\"inner_sensation\":\"...\",\"why_you\":\"...\","
-            "\"first_week\":\"...\",\"progress_markers\":\"...\",\"win_condition\":\"...\","
+            "\"sport_label\":\"...\",\"what_it_looks_like\":\"...\",\"inner_sensation\":\"...\",\"why_you\":\"...\"," 
+            "\"first_week\":\"...\",\"progress_markers\":\"...\",\"win_condition\":\"...\"," 
             "\"core_skills\":[\"...\",\"...\"],\"mode\":\"Solo/Team\",\"variant_vr\":\"...\",\"variant_no_vr\":\"...\",\"difficulty\":1-5"
             "}]} "
             "قواعد إلزامية: اذكر win_condition و 3–5 core_skills على الأقل. "
             "حاذِ Z-axes بالكلمات التالية إن أمكن:\n" + axis_hint +
             ("\n\n— نوايا Z المحتملة: " + intent_hint if intent_hint else "") + "\n\n"
             f"— شخصية المدرب:\n{persona}\n\n"
-            "— تحليل المستخدم:\n" + json.dumps(analysis, ensure_ascii=False) + "\n\n"
+            "— تحليل موجز:\n" + json.dumps(compact_analysis, ensure_ascii=False) + "\n\n"
             "— إجابات موجزة:\n" + bullets + "\n\n"
             f"— style_seed: {style_seed}\n"
             "أعِد JSON فقط."
@@ -741,17 +791,21 @@ def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
         )
         usr = (
             "Create THREE clear sport-like identities with required keys: "
-            "{\"recommendations\":[{\"sport_label\":\"...\",\"what_it_looks_like\":\"...\",\"inner_sensation\":\"...\",\"why_you\":\"...\","
-            "\"first_week\":\"...\",\"progress_markers\":\"...\",\"win_condition\":\"...\",\"core_skills\":[\"...\"],"
+            "{\"recommendations\":[{\"sport_label\":\"...\",\"what_it_looks_like\":\"...\",\"inner_sensation\":\"...\",\"why_you\":\"...\"," 
+            "\"first_week\":\"...\",\"progress_markers\":\"...\",\"win_condition\":\"...\",\"core_skills\":[\"...\"]," 
             "\"mode\":\"Solo/Team\",\"variant_vr\":\"...\",\"variant_no_vr\":\"...\",\"difficulty\":1-5}]}"
             " Align with Z-axes using words:\n" + axis_hint +
             ( "\n\n— Z intents: " + intent_hint if intent_hint else "" ) + "\n\n"
-            f"— Coach persona:\n{persona}\n— User analysis:\n" + json.dumps(analysis, ensure_ascii=False) + "\n"
+            f"— Coach persona:\n{persona}\n— Compact analysis:\n" + json.dumps(compact_analysis, ensure_ascii=False) + "\n"
             "— Bulleted answers:\n" + bullets + f"\n— style_seed: {style_seed}\nJSON only."
         )
     return [{"role": "system", "content": sys}, {"role": "user", "content": usr}]
 
 def _parse_json(text: str) -> Optional[List[Dict[str, Any]]]:
+    if not text:
+        return None
+    text = _strip_code_fence(text)
+    # محاولة مباشرة
     try:
         obj = json.loads(text)
         recs = obj.get("recommendations", [])
@@ -759,6 +813,7 @@ def _parse_json(text: str) -> Optional[List[Dict[str, Any]]]:
             return recs
     except Exception:
         pass
+    # اقتناص أول جسم JSON
     m = re.search(r"\{[\s\S]*\}", text or "")
     if m:
         try:
@@ -981,34 +1036,41 @@ def _persist_blacklist(recs: List[Dict[str, Any]], bl: dict) -> None:
 # ========= OpenAI helper with timeout + retry =========
 def _chat_with_retry(messages: List[Dict[str, str]], max_tokens: int, temperature: float) -> str:
     """
-    ينفّذ مكالمة واحدة مع مهلة REC_BUDGET_S وريترای خفيف.
+    ينفّذ مكالمة واحدة مع مهلة REC_BUDGET_S وريترای ذكي (تقليص التوكنز + موديل احتياطي).
     """
-    # استخدم عميل بمهلة (timeout) لكل طلب
-    timeout_s = max(4.0, min(REC_BUDGET_S, 30.0))
-    client = OpenAI_CLIENT.with_options(timeout=timeout_s) if OpenAI_CLIENT else None
-    if client is None:
+    if OpenAI_CLIENT is None:
         raise RuntimeError("OPENAI_API_KEY غير مضبوط")
 
-    attempts = 3 if not REC_FAST_MODE else 2
+    attempts = 4 if not REC_FAST_MODE else 3
     last_err = None
+    model_local = CHAT_MODEL
+    max_tokens_local = max_tokens
+
+    # نستخدم مهلة متوازنة لكل محاولة (أقل من الميزانية الكلّية)
+    timeout_s = max(4.0, min(REC_BUDGET_S, 26.0))
+    client = OpenAI_CLIENT.with_options(timeout=timeout_s)
+
     for i in range(1, attempts + 1):
         try:
             resp = client.chat.completions.create(
-                model=CHAT_MODEL,
+                model=model_local,
                 messages=messages,
                 temperature=temperature,
                 top_p=0.9,
                 presence_penalty=0.15,
                 frequency_penalty=0.1,
-                max_tokens=max_tokens
+                max_tokens=max_tokens_local
             )
             return (resp.choices[0].message.content or "").strip()
         except Exception as e:
             last_err = e
-            es = str(e)
-            # backoff بسيط لأخطاء المهلة/الضغط
-            if any(t in es.lower() for t in ["timeout", "rate limit", "overloaded", "503", "504"]):
-                sleep(min(1.5 * i, 3.0))
+            es = (str(e) or "").lower()
+            # backoff بسيط + تقليص التوكنز + تبديل موديل قبل المحاولة الأخيرة
+            if any(t in es for t in ["timeout", "rate limit", "overloaded", "503", "504", "gateway", "temporar"]):
+                sleep(min(1.2 * i, 2.5))
+                max_tokens_local = max(256, int(max_tokens_local * 0.75))
+                if i == attempts - 1 and model_local != CHAT_MODEL_FALLBACK:
+                    model_local = CHAT_MODEL_FALLBACK
                 continue
             break
     raise RuntimeError(f"LLM call failed after retries: {last_err}")
@@ -1098,7 +1160,7 @@ def generate_sport_recommendation(answers: Dict[str, Any],
     # === الجولة الأولى
     seed = _style_seed(user_id, profile or {})
     msgs = _json_prompt(analysis, answers, persona, lang, seed)
-    max_toks_1 = 900 if REC_FAST_MODE else 1400
+    max_toks_1 = 800 if REC_FAST_MODE else 1200  # تخفيض بسيط لتقليل الأخطاء تحت الضغط
 
     try:
         _dbg("calling LLM - round #1")
@@ -1114,6 +1176,7 @@ def generate_sport_recommendation(answers: Dict[str, Any],
         return [err, "—", "—"]
 
     # Parsing + Sanitize
+    raw1 = _strip_code_fence(raw1)
     if not ALLOW_SPORT_NAMES and _contains_blocked_name(raw1):
         raw1 = _mask_names(raw1)
     parsed = _parse_json(raw1) or []
@@ -1160,8 +1223,9 @@ def generate_sport_recommendation(answers: Dict[str, Any],
         try:
             _dbg("calling LLM - round #2 (repair)")
             raw2 = _chat_with_retry(messages=msgs + [{"role":"assistant","content":raw1}, repair_prompt],
-                                    max_tokens=(700 if REC_FAST_MODE else 1100),
+                                    max_tokens=(650 if REC_FAST_MODE else 950),
                                     temperature=0.55)
+            raw2 = _strip_code_fence(raw2)
             if not ALLOW_SPORT_NAMES and _contains_blocked_name(raw2):
                 raw2 = _mask_names(raw2)
             parsed2 = _parse_json(raw2) or []
