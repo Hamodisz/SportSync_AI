@@ -1,66 +1,99 @@
-import streamlit as st
-import json, os, uuid, urllib.parse
-import qrcode
+# -- coding: utf-8 --
+import os, json, uuid, urllib.parse
+from pathlib import Path
 from io import BytesIO
+
+import streamlit as st
+import qrcode
+from PIL import Image  # noqa: F401  (مطلوبة لـ qrcode.save)
 
 from core.submit_answers_to_queue import submit_to_queue
 from core.check_result_ready import check_result
 
-# -------------------
-# اللغة
-# -------------------
-lang = st.sidebar.radio("🌐 اختر اللغة / Choose Language", ["العربية", "English"])
+# ===================== إعداد عام =====================
+# لو عندك دومين/رندر حطه هنا أو في secrets كـ PUBLIC_BASE، وإلا بيستخدم رابط نسبي
+PUBLIC_BASE = st.secrets.get("PUBLIC_BASE", os.getenv("PUBLIC_BASE", "")).rstrip("/")
+
+DATA_DIR = Path("data")
+DRAFTS_DIR = DATA_DIR / "drafts"
+PENDING_DIR = DATA_DIR / "pending_requests"
+READY_DIR = DATA_DIR / "ready_results"
+for d in (DATA_DIR, DRAFTS_DIR, PENDING_DIR, READY_DIR):
+    d.mkdir(parents=True, exist_ok=True)
+
+def build_share_url(user_id: str, lang: str) -> str:
+    qs = f"user_id={urllib.parse.quote(user_id)}&lang={urllib.parse.quote(lang)}"
+    return f"{PUBLIC_BASE}/?{qs}" if PUBLIC_BASE else f"?{qs}"
+
+def _draft_path(uid: str) -> Path:
+    return DRAFTS_DIR / f"{uid}.json"
+
+def save_draft(user_id: str, answers: dict) -> None:
+    try:
+        with _draft_path(user_id).open("w", encoding="utf-8") as f:
+            json.dump(answers, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+def load_draft(user_id: str) -> dict:
+    p = _draft_path(user_id)
+    if p.exists():
+        try:
+            return json.load(p.open("r", encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+# ===================== لغة + هوية ثابتة بالرابط =====================
+params = st.experimental_get_query_params()
+lang_from_url = params.get("lang", [None])[0] or "العربية"
+lang = st.sidebar.radio("🌐 اختر اللغة / Choose Language",
+                        ["العربية", "English"],
+                        index=0 if lang_from_url != "English" else 1,
+                        key="lang")
 is_arabic = (lang == "العربية")
 
-# -------------------
-# تحميل الأسئلة
-# -------------------
-question_file = "questions/arabic_questions.json" if is_arabic else "questions/english_questions.json"
-with open(question_file, "r", encoding="utf-8") as f:
-    questions = json.load(f)
-
-# -------------------
-# عنوان الصفحة
-# -------------------
-st.title("🎯 توصيتك الرياضية الذكية" if is_arabic else "🎯 Your Smart Sport Recommendation")
-
-# -------------------
-# user_id من الرابط أو توليد جديد (يدعم user_id أو user)
-# -------------------
-qp = st.experimental_get_query_params()
-user_id = qp.get("user_id", [None])[0] or qp.get("user", [None])[0]
-
+user_id = params.get("user_id", [None])[0]
 if not user_id:
     if "user_id" not in st.session_state:
-        st.session_state.user_id = f"user_{uuid.uuid4().hex[:6]}"
+        st.session_state.user_id = f"user_{uuid.uuid4().hex[:10]}"
     user_id = st.session_state.user_id
 else:
     st.session_state.user_id = user_id
 
-# قاعدة الرابط (للمشاركة)
-APP_BASE = os.getenv("APP_BASE_URL", "https://sportsync.ai")
-url_lang = urllib.parse.quote(lang)
-share_url = f"{APP_BASE}/recommendation?user_id={user_id}&lang={url_lang}"
+# ثبّت القيم في شريط العنوان دائماً
+st.experimental_set_query_params(user_id=user_id, lang=lang)
 
-# -------------------
-# الحالة الحالية
-# -------------------
+# ===================== تحميل الأسئلة =====================
+question_file = "questions/arabic_questions.json" if is_arabic else "questions/english_questions.json"
+with open(question_file, "r", encoding="utf-8") as f:
+    questions = json.load(f)
+
+st.title("🎯 توصيتك الرياضية الذكية" if is_arabic else "🎯 Your Smart Sport Recommendation")
+
+# ===================== حالة الواجهة =====================
 if "view" not in st.session_state:
+    # عند الدخول بالرابط: لو فيه نتيجة جاهزة → اعرضها، لو فيه طلب معلق → انتظار
     result = check_result(user_id)
     if result:
         st.session_state.result = result
         st.session_state.view = "result"
-    elif os.path.exists(f"data/pending_requests/{user_id}.json"):
+    elif (PENDING_DIR / f"{user_id}.json").exists():
         st.session_state.view = "waiting"
     else:
         st.session_state.view = "quiz"
 
-# -------------------
-# عرض الأسئلة
-# -------------------
+# حضّر answers (من المسودة إن وجدت)
+if "answers" not in st.session_state or not isinstance(st.session_state.answers, dict):
+    st.session_state.answers = load_draft(user_id)
+
+def _on_change_any():
+    # احفظ المسودة أولاً بأول
+    save_draft(user_id, st.session_state.answers)
+
+# ===================== عرض الأسئلة =====================
 if st.session_state.view == "quiz":
-    # نجمع الإجابات بمفاتيح ثابتة (key) مع نص السؤال
-    answers = {}
+    st.session_state.answers = st.session_state.answers or {}
     for q in questions:
         q_key = q["key"]
         q_text = q["question_ar"] if is_arabic else q["question_en"]
@@ -68,96 +101,91 @@ if st.session_state.view == "quiz":
         allow_custom = q.get("allow_custom", False)
         options = q.get("options", [])
 
+        # استرجاع قيمة محفوظة إن وُجدت
+        current_val = st.session_state.answers.get(q_text)
+
         if q_type == "multiselect":
-            selected = st.multiselect(q_text, options, key=q_key)
+            selected = st.multiselect(q_text, options, default=current_val or [], key=q_key)
             if allow_custom:
-                custom_input = st.text_input("✏ " + ("إجابتك الخاصة (اختياري)" if is_arabic else "Your own answer (optional)"),
-                                             key=f"{q_key}_custom")
-                if custom_input:
-                    selected = list(selected) + [custom_input]
-            answers[q_key] = {"question": q_text, "answer": selected}
+                custom_val = st.text_input("✏ " + ("إجابتك الخاصة (اختياري)" if is_arabic else "Your own answer (optional)"),
+                                           value="", key=f"{q_key}_custom")
+                if custom_val:
+                    selected = list(selected) + [custom_val]
+            st.session_state.answers[q_text] = selected
 
         elif q_type == "text":
-            txt = st.text_input(q_text, key=q_key)
-            answers[q_key] = {"question": q_text, "answer": txt}
+            st.session_state.answers[q_text] = st.text_input(q_text, value=current_val or "", key=q_key)
+
+    # احفظ بعد بناء كل النموذج
+    _on_change_any()
 
     if st.button("🔍 اعرض التوصيات" if is_arabic else "🔍 Show Recommendations"):
-        submit_to_queue(user_id=user_id, answers=answers, lang=lang)
+        submit_to_queue(user_id=user_id, answers=st.session_state.answers, lang=lang)
         st.session_state.view = "waiting"
+        st.session_state.share_url = build_share_url(user_id, lang)
+        st.success("تم إرسال طلبك ✅")
         st.rerun()
 
-# -------------------
-# شاشة الانتظار
-# -------------------
+# ===================== شاشة الانتظار =====================
 elif st.session_state.view == "waiting":
     st.markdown("### ⏳ " + ("تحليل شخصيتك قيد المعالجة..." if is_arabic else "Analyzing your sport identity..."))
-    st.info("🔬 " + ("نغوص في شخصيتك الرياضية بعمق… قد يأخذ قليل وقت." if is_arabic else "Digging deep into your sport identity…"))
+    st.info("🔬 " + ("نحن نغوص في أعماق شخصيتك الرياضية..." if is_arabic else "We’re diving into your sport identity..."))
 
-    # أعطِ المستخدم رابط الرجوع + QR (المغزى الأساسي)
-    st.markdown("**🔗 " + ("رابط المتابعة:" if is_arabic else "Follow-up link:") + "**")
+    share_url = st.session_state.get("share_url", build_share_url(user_id, lang))
+    st.markdown("📤 هذا رابطك—احفظه وارجع له متى ما بغيت:")
     st.code(share_url)
-    st.text_input("انسخ الرابط:", share_url, key="share_link_wait")
 
-    qr = qrcode.make(share_url)
-    buf = BytesIO(); qr.save(buf)
-    st.image(buf.getvalue(), caption=("📱 امسح الكود لفتح التوصية لاحقًا" if is_arabic else "📱 Scan to open later"), width=200)
+    # QR (يحتاج PUBLIC_BASE عشان يكون رابط مطلق)
+    if PUBLIC_BASE:
+        qr = qrcode.make(share_url)
+        buf = BytesIO()
+        qr.save(buf)
+        st.image(buf.getvalue(), width=180, caption="امسح لفتح النتيجة")
 
-    col1, col2 = st.columns(2)
-    if col1.button("🔄 تحديث النتيجة" if is_arabic else "🔄 Refresh Result"):
+    if st.button("🔄 تحديث النتيجة" if is_arabic else "🔄 Refresh Result"):
         result = check_result(user_id)
         if result:
             st.session_state.result = result
             st.session_state.view = "result"
+            # إزالة المسودة بعد اكتمال النتيجة (اختياري)
+            try: _draft_path(user_id).unlink(missing_ok=True)
+            except Exception: pass
             st.rerun()
         else:
-            st.warning("🚧 " + ("لم تجهز التوصية بعد." if is_arabic else "Recommendation not ready yet."))
-    if col2.button("✏ عدّل إجاباتك" if is_arabic else "✏ Modify your answers"):
-        # إلغاء الطلب المعلّق اختياريًا بترك الملف كما هو، أو امسحه لو تبغى
-        st.session_state.view = "quiz"
-        st.rerun()
+            st.warning("… لسه يجهّز")
 
-# -------------------
-# عرض التوصية النهائية
-# -------------------
+# ===================== عرض النتيجة =====================
 elif st.session_state.view == "result":
-    result = st.session_state.result or {}
-    profile = result.get("profile", {})
-    recs = result.get("cards") or result.get("recommendations") or []
+    # تأكيد تحميل النتيجة (لو دخلت بالرابط مباشرة)
+    result = st.session_state.get("result") or check_result(user_id) or {}
+    st.session_state.result = result
 
+    recs = result.get("recommendations", []) or result.get("cards", [])
     if not recs:
-        st.warning("لم تصلنا كروت التوصية بعد.")
+        st.warning("لم يتم العثور على نتيجة. ارجع لشاشة الأسئلة.")
     else:
-        for rec in recs:
-            # الكروت عندنا نصوص منسّقة — اعرضها كما هي
-            if isinstance(rec, str):
-                st.markdown(rec)
-            else:
-                # لو كانت Dict (صيغة JSON خام)، نعرِضها كما هي
-                st.write(rec)
-            st.markdown("---")
+        for i, rec in enumerate(recs):
+            st.subheader(["🟢 التوصية رقم 1", "🌿 التوصية رقم 2", "🔮 التوصية رقم 3 (ابتكارية)"][i]
+                         if is_arabic else
+                         ["🟢 Recommendation 1", "🌿 Recommendation 2", "🔮 Recommendation 3 (Creative)"][i])
+            # النص جاهز كـ Markdown من الباك إند
+            st.markdown(rec if isinstance(rec, str) else json.dumps(rec, ensure_ascii=False, indent=2))
 
-    st.caption("🚀 Powered by SportSync AI – Your identity deserves its own sport.")
+    st.markdown("---")
+    st.caption("🚀 Powered by SportSync AI")
 
-    # مشاركة الرابط
-    st.markdown("📤 " + ("شارك توصيتك مع صديق!" if is_arabic else "Share your recommendation!"))
-    st.code(share_url)
-    st.text_input("انسخ الرابط:", share_url, key="share_link_done")
+    share_url = st.session_state.get("share_url", build_share_url(user_id, lang))
+    st.markdown("📤 رابط مشاركتك:"); st.code(share_url)
 
-    qr = qrcode.make(share_url)
-    buf = BytesIO(); qr.save(buf)
-    st.image(buf.getvalue(), caption=("📱 امسح QR Code لفتح التوصية" if is_arabic else "📱 Scan QR to open"), width=200)
-
+    # زر تعديل
     if st.button("✏ عدّل إجاباتك" if is_arabic else "✏ Modify your answers"):
-        # امسح نتيجة المستخدم عشان يطلب تحليل جديد
-        result_file = f"data/ready_results/{user_id}.json"
-        if os.path.exists(result_file):
-            os.remove(result_file)
+        # امسح النتيجة الجاهزة حتى يُعاد التوليد
+        try: (READY_DIR / f"{user_id}.json").unlink(missing_ok=True)
+        except Exception: pass
         st.session_state.view = "quiz"
         st.rerun()
 
-# -------------------
-# زر إعادة الاختبار
-# -------------------
-if st.button("🔄 أعد الاختبار من البداية" if is_arabic else "🔄 Restart the test"):
+# ===================== إعادة الاختبار بالكامل =====================
+if st.button("🔄 أعد الاختبار من البداية" if is_arabic else "🔄 Restart"):
     st.session_state.clear()
     st.rerun()
