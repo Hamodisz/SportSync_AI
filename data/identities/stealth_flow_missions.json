@@ -1,0 +1,29 @@
+{
+  "sport_label": { "ar": "Stealth-Flow Missions", "en": "Stealth-Flow Missions" },
+  "what_it_looks_like": {
+    "ar": "مسار صامت: اختباء قصير، ظهور محسوب، لمس علامة ثم اختفاء.",
+    "en": "Silent path: brief hide, measured reveal, tag and vanish."
+  },
+  "inner_sensation": { "ar": "تركيز عميق وتنظيم نفس.", "en": "Deep focus and breath control." },
+  "why_you": {
+    "ar": "- تفضّل التقدم الهادئ\n- تحب الإتقان بلا ضجيج",
+    "en": "- Prefer quiet, tangible progress\n- Enjoy mastery without noise"
+  },
+  "first_week": {
+    "ar": "- تبديل سرعات بسلاسة\n- قراءة زوايا آمنة",
+    "en": "- Smooth tempo shifts\n- Reading safe angles"
+  },
+  "progress_markers": {
+    "ar": "- توتر أقل\n- نعومة حركة\n- وضوح قرار",
+    "en": "- Lower tension\n- Smoother motion\n- Clearer decision"
+  },
+  "win_condition": { "ar": "إنجاز المهمة دون انكشاف.", "en": "Complete the mission undetected." },
+  "core_skills": {
+    "ar": ["توقيت الظهور","قراءة الحواجز","تعديل الإيقاع","تنفّس صامت","توازن"],
+    "en": ["timed reveal","reading cover","tempo control","silent breath","balance"]
+  },
+  "mode": { "ar": "فردي", "en": "Solo" },
+  "variant_vr": { "ar": "تسلل افتراضي مع مؤشّر انكشاف.", "en": "Stealth VR with exposure meter." },
+  "variant_no_vr": { "ar": "عوائق خفيفة وأشرطة ظل.", "en": "Light obstacles and shadow tape." },
+  "difficulty": 2
+}
