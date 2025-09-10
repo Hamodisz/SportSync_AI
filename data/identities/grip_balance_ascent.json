@@ -1,0 +1,29 @@
+{
+  "sport_label": { "ar": "Grip & Balance Ascent", "en": "Grip & Balance Ascent" },
+  "what_it_looks_like": {
+    "ar": "مسار قبضات وتوازن تدريجي، قراءة مسك، تحويل وزن هادئ.",
+    "en": "Progressive holds and balance route; read grips, shift weight calmly."
+  },
+  "inner_sensation": { "ar": "تماسك داخلي وثقة حركة.", "en": "Inner cohesion with confident movement." },
+  "why_you": {
+    "ar": "- تحب تحدّي تحكّم الجسد بدون ضجيج",
+    "en": "- Enjoy quiet body-control challenges"
+  },
+  "first_week": {
+    "ar": "- قراءة موضع القبضة\n- وزن الحمل\n- صعود بطيء محسوب",
+    "en": "- Read grip positions\n- Balance the load\n- Slow, deliberate ascent"
+  },
+  "progress_markers": {
+    "ar": "- تعب ساعد أقل\n- اتزان أوضح",
+    "en": "- Less forearm fatigue\n- Clearer balance"
+  },
+  "win_condition": { "ar": "الوصول للنقطة العلوية دون إفلات.", "en": "Reach the top point without a slip." },
+  "core_skills": {
+    "ar": ["قبضة","تحويل وزن","توازن","قراءة مسار"],
+    "en": ["grip","weight shift","balance","route reading"]
+  },
+  "mode": { "ar": "فردي", "en": "Solo" },
+  "variant_vr": { "ar": "مسارات قبضات افتراضية.", "en": "Virtual hold routes." },
+  "variant_no_vr": { "ar": "عناصر قبضة آمنة خفيفة.", "en": "Light, safe grip elements." },
+  "difficulty": 2
+}
