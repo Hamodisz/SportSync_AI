@@ -1,0 +1,41 @@
+{
+  "sport_label": { "ar": "Tactical Immersive Combat", "en": "Tactical Immersive Combat" },
+  "what_it_looks_like": {
+    "ar": "ساحة محاكاة ذكية أو VR: تتبّع زوايا، كمين قصير، اقتراب محسوب، انسحاب آمن.",
+    "en": "Arena/VR: angle tracking, brief ambush, calculated approach and safe exit."
+  },
+  "inner_sensation": {
+    "ar": "يقظة عالية مع ثقة هادئة.",
+    "en": "High alert with calm confidence."
+  },
+  "why_you": {
+    "ar": "- عقل تكتيكي\n- تفضّل قرارات خاطفة على التكرار الممل\n- تحب مبارزة ذهنية/جسدية عادلة",
+    "en": "- Tactical mind\n- Prefer snap decisions over dull repetition\n- Enjoy fair mind–body duels"
+  },
+  "first_week": {
+    "ar": "- جولة حسّية للتعرّف على الإيقاع\n- اقتراب/انسحاب بنَفَس ثابت\n- تثبيت نظرة قبل القرار",
+    "en": "- Sensory lap to learn rhythm\n- Approach/retreat with steady breath\n- Gaze anchor before decision"
+  },
+  "progress_markers": {
+    "ar": "- قرارات أسرع\n- هدوء تحت الضغط\n- سيطرة أعلى",
+    "en": "- Faster decisions\n- Calmer under pressure\n- Greater control"
+  },
+  "win_condition": {
+    "ar": "تحقيق الهدف دون انكشاف أو تعطيل الخصم بقرار خاطف.",
+    "en": "Reach the objective unseen or neutralize via a snap decision."
+  },
+  "core_skills": {
+    "ar": ["تتبّع زاوية الرؤية","تغيير الإيقاع","قرار سريع","توازن","تنفّس هادئ"],
+    "en": ["angle tracking","tempo shifts","fast decision","balance","quiet breath"]
+  },
+  "mode": { "ar": "فردي/جماعي", "en": "Solo/Team" },
+  "variant_vr": {
+    "ar": "مبارزات تكتيكية في VR مع مؤشّر مجال رؤية.",
+    "en": "Tactical VR duels with FOV indicator."
+  },
+  "variant_no_vr": {
+    "ar": "عوائق رغوية مع ممرات ظلّ.",
+    "en": "Foam obstacles with shadow lanes."
+  },
+  "difficulty": 3
+}
