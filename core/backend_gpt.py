@@ -245,7 +245,7 @@ def _extract_signals(answers: Dict[str, Any], lang: str) -> Dict[str, int]:
     def any_kw(keys: List[str]) -> bool:
         return any((k.lower() in blob_l) or (_normalize_ar(k).lower() in blob_n) for k in keys)
     # إشارات عامة
-    if any_kw(zi.get("VR", ["vr","virtual reality","headset","واقع افتراضي","نظاره"])): res["vr"] = 1
+    if any_kw(zi.get("VR", ["vr","virtual reality","headset","واقع افتراضي","نظاره","نظارة"])): res["vr"] = 1
     if any_kw(zi.get("دقة/تصويب", []) + zi.get("Precision", []) + ["precision","aim","نشان","دقه"]): res["precision"] = 1
     if any_kw(zi.get("تخفّي", []) + zi.get("Stealth", []) + ["stealth","ظل","تخفي"]): res["stealth"] = 1
     if any_kw(zi.get("قتالي", []) + zi.get("Combat", []) + ["قتال","مبارزه","اشتباك","combat"]): res["combat"] = 1
@@ -759,6 +759,14 @@ def _derive_binary_traits(analysis: Dict[str, Any], answers: Dict[str, Any], lan
     if sg >=  0.35: traits["extrovert"] = 1.0; traits["prefers_team"] = 1.0
     if sig.get("solo_pref"): traits["prefers_solo"] = max(1.0, traits.get("prefers_solo", 0))
     if sig.get("team_pref"): traits["prefers_team"] = max(1.0, traits.get("prefers_team", 0))
+    # حلّ تعارض (فردي/جماعي) إن ظهر الاثنان من الكلمات المفتاحية:
+    if traits.get("prefers_solo", 0) and traits.get("prefers_team", 0):
+        if sg >= 0.0:
+            traits["prefers_solo"] = 0.0
+            traits["prefers_team"] = 1.0
+        else:
+            traits["prefers_solo"] = 1.0
+            traits["prefers_team"] = 0.0
 
     # calm/adrenaline -> calm_regulation / sensation_seeking
     ca = float(axes.get("calm_adrenaline", 0.0)) if isinstance(axes, dict) else 0.0
@@ -1035,7 +1043,7 @@ def _template_for_label(label: str, lang: str) -> Optional[Dict[str, Any]]:
                            ["gaze tracking","snap decision","coordination"],
             "mode": "Solo/Team",
             "variant_vr": "سيناريو تكتيكي افتراضي.",
-            "variant_no_vر": "تمارين دقة قصيرة.",
+            "variant_no_vr": "تمارين دقة قصيرة.",
             "difficulty": 3
         }, lang))
     if L in (_canon_label("football"),):
@@ -1291,7 +1299,7 @@ def _parse_json(text: str) -> Optional[List[Dict[str, Any]]]:
 
 def _to_bullets(text: str, max_items: int = 6) -> List[str]:
     if not text: return []
-    raw = re.split(r"[;\n\.،]+", text)
+    raw = re.split(r"[;\n\.،؛\!\?؟]+", text)
     items = [i.strip(" -•\t ") for i in raw if i.strip()]
     return items[:max_items]
 
