@@ -12,7 +12,7 @@ Key guarantees:
 - Hard de-dup (local + global via data/blacklist.json).
 - URL scrubbing by CFG.security.
 - Telemetry via core.data_pipe (Zapier/disk).
-
+- KB-first (real/rule-based), LLM as LAST fallback. No "soft repair" by default.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from datetime import datetime
 try:
     from openai import OpenAI
 except Exception as e:
-    raise RuntimeError("أضف الحزمة في requirements: openai>=1.6.1,<2") from e
+        raise RuntimeError("أضف الحزمة في requirements: openai>=1.6.1,<2") from e
 
 OPENAI_API_KEY   = os.getenv("OPENAI_API_KEY")
 OPENAI_BASE_URL  = os.getenv("OPENAI_BASE_URL")  # اختياري (Azure/OpenRouter...)
@@ -39,18 +39,12 @@ OpenAI_CLIENT = (
 )
 
 # ========= Runtime Guards / Tunables =========
-# ميزانية زمنية للتحليل (ثواني)
-REC_BUDGET_S = float(os.getenv("REC_BUDGET_S", "22"))
-# تعطيل/تفعيل إصلاح الجولة الثانية
-REC_REPAIR_ENABLED = os.getenv("REC_REPAIR_ENABLED", "1") == "1"
-# وضع سريع لتقليل التوكنز وتخطي الإصلاح الثاني
-REC_FAST_MODE = os.getenv("REC_FAST_MODE", "0") == "1"
-# لوج تشخيصي بسيط
-REC_DEBUG = os.getenv("REC_DEBUG", "0") == "1"
-# موديل احتياطي لتقليل الـ timeouts
+REC_BUDGET_S = float(os.getenv("REC_BUDGET_S", "22"))           # ميزانية زمنية للتحليل (ثواني)
+REC_REPAIR_ENABLED = os.getenv("REC_REPAIR_ENABLED", "0") == "1" # 🚫 إيقاف الإصلاح الناعم افتراضيًا
+REC_FAST_MODE = os.getenv("REC_FAST_MODE", "0") == "1"           # وضع سريع لتقليل التوكنز
+REC_DEBUG = os.getenv("REC_DEBUG", "0") == "1"                   # لوج تشخيصي بسيط
 CHAT_MODEL_FALLBACK = os.getenv("CHAT_MODEL_FALLBACK", "gpt-4o-mini")
-# قصّ مكوّنات الـ prompt حتى لا تكبر الطلبات
-MAX_PROMPT_CHARS = int(os.getenv("MAX_PROMPT_CHARS", "6000"))
+MAX_PROMPT_CHARS = int(os.getenv("MAX_PROMPT_CHARS", "6000"))   # قصّ البرومبت
 
 def _dbg(msg: str) -> None:
     if REC_DEBUG:
@@ -410,7 +404,7 @@ def _answers_to_bullets(answers: Dict[str, Any]) -> str:
             a = ", ".join(map(str, a))
         out.append(f"- {q}: {_clip(str(a), 160)}")
     txt = "\n".join(out)
-    return _clip(txt, 1800)  # لا نضخّم البرومبت
+    return _clip(txt, 1800)
 
 def _too_generic(text: str, min_chars: int = 280) -> bool:
     t = (text or "").strip()
@@ -591,7 +585,7 @@ def _fallback_identity(i: int, lang: str) -> Dict[str, Any]:
                 "core_skills":["قبضة","تحويل وزن","توازن","قراءة مسار"],
                 "mode":"Solo",
                 "variant_vr":"مسارات قبضات افتراضية.",
-                "variant_no_vr":"عناصر قبضة آمنة خفيفة.",
+                "variant_no_vر":"عناصر قبضة آمنة خفيفة.",
                 "difficulty":2
             }
         ]
@@ -698,6 +692,262 @@ def _hard_dedupe_and_fill(recs: List[Dict[str, Any]], lang: str) -> List[Dict[st
 
     return out
 
+# ====== Blacklist (persistent, JSON) & KB load =================================
+def _load_blacklist() -> dict:
+    bl = _load_json_safe(BL_PATH)
+    if not isinstance(bl.get("labels"), dict):
+        bl["labels"] = {}
+    bl.setdefault("version", "1.0")
+    return bl
+
+KB = _load_json_safe(KB_PATH)
+_ALIAS_MAP = {}
+if isinstance(KB.get("label_aliases"), dict):
+    for canon, alist in KB["label_aliases"].items():
+        for a in alist:
+            _ALIAS_MAP[_normalize_ar(a).lower()] = canon
+AL2 = _load_json_safe(AL_PATH)
+if isinstance(AL2.get("canonical"), dict):
+    for a, canon in AL2["canonical"].items():
+        _ALIAS_MAP[_normalize_ar(a).lower()] = canon
+
+_FORBIDDEN_GENERIC = set(
+    KB.get("guards", {}).get("forbidden_generic_labels", [])
+) | set(AL2.get("forbidden_generic", []) or [])
+
+# ====== identities الغنية من قاعدة المعرفة (إن وُجدت) ======
+# راجع README: يُفضَّل إضافة مصفوفة "identities" داخل sportsync_knowledge.json بالحقول المذكورة.
+KB_IDENTITIES: List[Dict[str, Any]] = list(KB.get("identities") or [])
+
+def _canon_label(label: str) -> str:
+    lab = _normalize_ar(label or "").lower().strip(" -—:،")
+    if not lab:
+        return ""
+    if lab in _ALIAS_MAP:
+        return _ALIAS_MAP[lab]
+    lab = re.sub(r"[^a-z0-9\u0600-\u06FF]+", " ", lab)
+    lab = re.sub(r"\s+", " ", lab).strip()
+    return lab
+
+def _is_forbidden_generic(label: str) -> bool:
+    base = _normalize_ar((label or "")).lower()
+    return any(g in base for g in _FORBIDDEN_GENERIC)
+
+def _bl_has(bl: dict, label: str) -> bool:
+    c = _canon_label(label)
+    return bool(c and c in bl["labels"])
+
+def _bl_add(bl: dict, label: str, alias: str = "") -> None:
+    c = _canon_label(label)
+    if not c:
+        return
+    rec = bl["labels"].get(c, {"aliases": [], "count": 0, "first_seen": None})
+    if alias and alias not in rec["aliases"]:
+        rec["aliases"].append(alias)
+    rec["count"] = int(rec.get("count", 0)) + 1
+    if not rec.get("first_seen"):
+        rec["first_seen"] = datetime.utcnow().isoformat() + "Z"
+    rec["last_used"] = datetime.utcnow().isoformat() + "Z"
+    bl["labels"][c] = rec
+
+_AR_VARIANTS = [
+    "نسخة ظلّية", "نمط مراوغة", "خط تحكّم هادئ", "نسخة تفكيك تكتيكي",
+    "مناورة عكسية", "زاوية صامتة", "طيف التتبع", "تدفق خفي"
+]
+_EN_VARIANTS = [
+    "Shadow Variant", "Evasive Pattern", "Calm-Control Line", "Tactical Deconstruction",
+    "Counter-Maneuver", "Silent Angle", "Tracking Flux", "Stealth Flow"
+]
+
+def _generate_variant_label(base: str, lang: str, salt: int = 0) -> str:
+    base = (base or "").strip(" -—:،")
+    pool = _AR_VARIANTS if lang == "العربية" else _EN_VARIANTS
+    joiner = " — "
+    idx = abs(hash(_normalize_ar(base) + str(salt))) % len(pool)
+    return f"{base}{joiner}{pool[idx]}"
+
+def _perturb_phrasing(rec: Dict[str, Any], lang: str) -> Dict[str, Any]:
+    r = dict(rec)
+    tacky_add_ar = " ركّز على قراءة الزوايا بدل مطاردة الحركة. اجعل القرار يظهر فجأة عندما يهدأ الإيقاع."
+    tacky_add_en = " Emphasize reading angles over chasing motion; let decisions snap when the rhythm calms."
+    if lang == "العربية":
+        r["what_it_looks_like"] = (r.get("what_it_looks_like","") + tacky_add_ar).strip()
+        r["why_you"] = (r.get("why_you","") + " تحب الاختصار الذكي وإخفاء نواياك حتى اللحظة المناسبة.").strip()
+    else:
+        r["what_it_looks_like"] = (r.get("what_it_looks_like","") + tacky_add_en).strip()
+        r["why_you"] = (r.get("why_you","") + " You like smart brevity and hiding intent until the decisive beat.").strip()
+    return r
+
+def _ensure_unique_labels_v_global(recs: List[Dict[str, Any]], lang: str, bl: dict) -> List[Dict[str, Any]]:
+    used_now = set()
+    out = []
+    for r in recs:
+        r = dict(r or {})
+        label = r.get("sport_label") or ""
+        if _is_forbidden_generic(label) or not label.strip():
+            label = "تكتيكي تخفّي" if lang == "العربية" else "Tactical Stealth"
+            r["sport_label"] = label
+
+        salt = 0
+        while _bl_has(bl, label) or _canon_label(label) in used_now:
+            label = _generate_variant_label(label, lang, salt=salt)
+            r = _perturb_phrasing(r, lang)
+            salt += 1
+        used_now.add(_canon_label(label))
+        r["sport_label"] = label
+        out.append(r)
+    return out
+
+def _persist_blacklist(recs: List[Dict[str, Any]], bl: dict) -> None:
+    for r in recs:
+        lab = r.get("sport_label") or ""
+        if lab.strip():
+            _bl_add(bl, lab, alias=lab)
+    _save_json_atomic(BL_PATH, bl)
+
+# ====== KB-first: إشارات + سكورينغ ==========================================
+def _extract_signals(answers: Dict[str, Any], lang: str) -> set:
+    text_raw = " ".join(_norm_answer_value(v) for v in (answers or {}).values())
+    text = _normalize_ar(text_raw.lower())
+
+    sig = set()
+    def mark_if(any_words, tag):
+        if any(w in text or w in text_raw.lower() for w in any_words):
+            sig.add(tag)
+
+    # اجتماعي
+    mark_if(["فردي","لوحدي","solo","alone","وحيد"], "solo_pref")
+    mark_if(["فريق","جماعي","team","group","شريك"], "team_pref")
+
+    # هدوء/أدرينالين
+    mark_if(["هدوء","تنفس","تنفّس","صفاء","calm","breath","flow"], "calm")
+    mark_if(["سرعه","اندفاع","أدرينالين","fast","adrenaline","snap"], "adrenaline")
+
+    # تقني/حدسي
+    mark_if(["تقنيه","تقنية","تفاصيل","precision","دقه","تصويب","drill","detail"], "technical")
+    mark_if(["حدس","بديه","بديهي","improvise","by feel","intuitive"], "intuitive")
+
+    # مجالات
+    mark_if(["تخفي","stealth","ظل"], "stealth")
+    mark_if(["لغز","الغاز","puzzle","خدعه بصريه","feint"], "puzzles")
+    mark_if(["قتال","مبارزه","combat","مواجهة"], "combat")
+    mark_if(["vr","واقع افتراضي","نظاره","افتراضي"], "vr")
+    mark_if(["تنفس","breath"], "breath")
+    mark_if(["دقه","تصويب","precision","aim","mark"], "precision")
+
+    if "team_pref" in sig and "solo_pref" not in sig:
+        sig.add("team_only")
+    if "adrenaline" in sig and "calm" not in sig:
+        sig.add("high_agg")
+    return sig
+
+_AXES = ("calm_adrenaline","solo_group","tech_intuition")
+
+def _axes_distance(user_axes: Dict[str, float], id_axes: Dict[str, float]) -> float:
+    if not isinstance(id_axes, dict):
+        return 999.0
+    dist = 0.0
+    for k in _AXES:
+        if k in id_axes and isinstance(id_axes[k], (int,float)):
+            u = float(user_axes.get(k, 0.0))
+            dist += abs(u - float(id_axes[k]))
+    return dist
+
+def _score_identity_kb(cand: Dict[str, Any], user_axes: Dict[str, float], sig: set) -> tuple[float, List[str]]:
+    reasons = []
+    dist = _axes_distance(user_axes or {}, cand.get("axes") or {})
+    axis_penalty = dist * 1.5
+    reasons.append(f"axes_penalty={axis_penalty:.2f} (dist={dist:.2f})")
+
+    requires = set(cand.get("requires") or [])
+    if requires and not requires.issubset(sig):
+        missing = list(requires - sig)
+        return (-1e9, [f"missing_requires={missing}"])
+
+    contra = set(cand.get("contra") or [])
+    contra_hit = list(contra & sig)
+    contra_penalty = 8.0 * len(contra_hit)
+    if contra_hit:
+        reasons.append(f"contra_hit={contra_hit}, penalty={contra_penalty:.2f}")
+
+    bonus_tags = set(cand.get("bonus") or [])
+    bonus_gain = 2.5 * len(bonus_tags & sig)
+    if bonus_gain:
+        reasons.append(f"bonus_gain=+{bonus_gain:.2f}")
+
+    mode = (cand.get("mode") or "").lower()
+    mode_penalty = 0.0
+    if "solo_pref" in sig and "solo" not in mode:
+        mode_penalty += 2.0
+    if "team_pref" in sig and "team" not in mode:
+        mode_penalty += 2.0
+    if mode_penalty:
+        reasons.append(f"mode_penalty={mode_penalty:.2f}")
+
+    score = 50.0 - axis_penalty - contra_penalty - mode_penalty + bonus_gain
+    reasons.append(f"score={score:.2f}")
+    return (score, reasons)
+
+def _build_rec_from_kb(cand: Dict[str, Any], lang: str) -> Dict[str, Any]:
+    if lang == "العربية":
+        label = cand.get("label_ar") or cand.get("label_en") or cand.get("label") or ""
+        r = {
+            "sport_label": label,
+            "what_it_looks_like": cand.get("what_ar") or "",
+            "inner_sensation": "",
+            "why_you": cand.get("why_ar") or "",
+            "first_week": cand.get("first_week_ar") or "",
+            "progress_markers": cand.get("progress_ar") or "",
+            "win_condition": cand.get("win_ar") or "",
+            "core_skills": cand.get("core_skills_ar") or [],
+            "mode": cand.get("mode") or "Solo",
+            "variant_vr": cand.get("vr_ar") or "",
+            "variant_no_vr": cand.get("novr_ar") or "",
+            "difficulty": int(cand.get("difficulty", 3)),
+        }
+    else:
+        label = cand.get("label_en") or cand.get("label_ar") or cand.get("label") or ""
+        r = {
+            "sport_label": label,
+            "what_it_looks_like": cand.get("what_en") or "",
+            "inner_sensation": "",
+            "why_you": cand.get("why_en") or "",
+            "first_week": cand.get("first_week_en") or "",
+            "progress_markers": cand.get("progress_en") or "",
+            "win_condition": cand.get("win_en") or "",
+            "core_skills": cand.get("core_skills_en") or [],
+            "mode": cand.get("mode") or "Solo",
+            "variant_vr": cand.get("vr_en") or "",
+            "variant_no_vr": cand.get("novr_en") or "",
+            "difficulty": int(cand.get("difficulty", 3)),
+        }
+    return _sanitize_record(_fill_defaults(r, lang))
+
+def _pick_kb_recommendations(user_axes: Dict[str, float], sig: set, lang: str) -> List[Dict[str, Any]]:
+    scored = []
+    for c in KB_IDENTITIES:
+        sc, reasons = _score_identity_kb(c, user_axes, sig)
+        if sc > -1e8:
+            scored.append((sc, reasons, c))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    out: List[Dict[str, Any]] = []
+    used_labels = set()
+    used_sigs = []
+    for _, _, c in scored:
+        rec = _build_rec_from_kb(c, lang)
+        lab = _canonical_label(rec.get("sport_label",""))
+        sigset = _sig_for_rec(rec)
+        if not lab or lab in used_labels:
+            continue
+        if any(_jaccard(sigset, s) > 0.6 for s in used_sigs):
+            continue
+        out.append(rec)
+        used_labels.add(lab)
+        used_sigs.append(sigset)
+        if len(out) == 3:
+            break
+    return out
+
 # ========= Prompt Builder =========
 def _style_seed(user_id: str, profile: Optional[Dict[str, Any]]) -> int:
     base = user_id or "anon"
@@ -707,9 +957,6 @@ def _style_seed(user_id: str, profile: Optional[Dict[str, Any]]) -> int:
     return int(h[:8], 16)
 
 def _compact_analysis_for_prompt(analysis: Dict[str, Any], profile: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    نُمرّر فقط الأجزاء الأكثر إفادة للبرومبت (لتقليل الحجم).
-    """
     p_axes   = (profile or {}).get("axes", {})
     p_signals= (profile or {}).get("signals", [])
     hints    = (profile or {}).get("hints_for_prompt", "")
@@ -719,7 +966,6 @@ def _compact_analysis_for_prompt(analysis: Dict[str, Any], profile: Optional[Dic
         "z_intent": analysis.get("z_intent", []),
         "encoded_profile": {"axes": p_axes, "signals": p_signals, "hints": _clip(str(hints), 300)},
     }
-    # قصّه النهائي
     blob = json.dumps(out, ensure_ascii=False)
     if len(blob) > MAX_PROMPT_CHARS // 2:
         out["encoded_profile"]["signals"] = out["encoded_profile"]["signals"][:10]
@@ -740,7 +986,6 @@ def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
     profile = analysis.get("encoded_profile") or {}
     compact_analysis = _compact_analysis_for_prompt(analysis, profile)
 
-    # قصّ إضافي لو تخطّى الحد
     comp_blob = json.dumps(compact_analysis, ensure_ascii=False)
     if len(comp_blob) > MAX_PROMPT_CHARS:
         compact_analysis = {"z_axes": compact_analysis.get("z_axes", {}), "z_intent": compact_analysis.get("z_intent", [])}
@@ -805,7 +1050,6 @@ def _parse_json(text: str) -> Optional[List[Dict[str, Any]]]:
     if not text:
         return None
     text = _strip_code_fence(text)
-    # محاولة مباشرة
     try:
         obj = json.loads(text)
         recs = obj.get("recommendations", [])
@@ -813,7 +1057,6 @@ def _parse_json(text: str) -> Optional[List[Dict[str, Any]]]:
             return recs
     except Exception:
         pass
-    # اقتناص أول جسم JSON
     m = re.search(r"\{[\s\S]*\}", text or "")
     if m:
         try:
@@ -924,115 +1167,6 @@ def _sanitize_fill(recs: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]
         temp.append(r)
     return _hard_dedupe_and_fill(temp, lang)
 
-# ====== Blacklist (persistent, JSON) =========================================
-def _load_blacklist() -> dict:
-    bl = _load_json_safe(BL_PATH)
-    if not isinstance(bl.get("labels"), dict):
-        bl["labels"] = {}
-    bl.setdefault("version", "1.0")
-    return bl
-
-KB = _load_json_safe(KB_PATH)
-_ALIAS_MAP = {}
-if isinstance(KB.get("label_aliases"), dict):
-    for canon, alist in KB["label_aliases"].items():
-        for a in alist:
-            _ALIAS_MAP[_normalize_ar(a).lower()] = canon
-AL2 = _load_json_safe(AL_PATH)
-if isinstance(AL2.get("canonical"), dict):
-    for a, canon in AL2["canonical"].items():
-        _ALIAS_MAP[_normalize_ar(a).lower()] = canon
-
-_FORBIDDEN_GENERIC = set(
-    KB.get("guards", {}).get("forbidden_generic_labels", [])
-) | set(AL2.get("forbidden_generic", []) or [])
-
-def _canon_label(label: str) -> str:
-    lab = _normalize_ar(label or "").lower().strip(" -—:،")
-    if not lab:
-        return ""
-    if lab in _ALIAS_MAP:
-        return _ALIAS_MAP[lab]
-    lab = re.sub(r"[^a-z0-9\u0600-\u06FF]+", " ", lab)
-    lab = re.sub(r"\s+", " ", lab).strip()
-    return lab
-
-def _is_forbidden_generic(label: str) -> bool:
-    base = _normalize_ar((label or "")).lower()
-    return any(g in base for g in _FORBIDDEN_GENERIC)
-
-def _bl_has(bl: dict, label: str) -> bool:
-    c = _canon_label(label)
-    return bool(c and c in bl["labels"])
-
-def _bl_add(bl: dict, label: str, alias: str = "") -> None:
-    c = _canon_label(label)
-    if not c:
-        return
-    rec = bl["labels"].get(c, {"aliases": [], "count": 0, "first_seen": None})
-    if alias and alias not in rec["aliases"]:
-        rec["aliases"].append(alias)
-    rec["count"] = int(rec.get("count", 0)) + 1
-    if not rec.get("first_seen"):
-        rec["first_seen"] = datetime.utcnow().isoformat() + "Z"
-    rec["last_used"] = datetime.utcnow().isoformat() + "Z"
-    bl["labels"][c] = rec
-
-_AR_VARIANTS = [
-    "نسخة ظلّية", "نمط مراوغة", "خط تحكّم هادئ", "نسخة تفكيك تكتيكي",
-    "مناورة عكسية", "زاوية صامتة", "طيف التتبع", "تدفق خفي"
-]
-_EN_VARIANTS = [
-    "Shadow Variant", "Evasive Pattern", "Calm-Control Line", "Tactical Deconstruction",
-    "Counter-Maneuver", "Silent Angle", "Tracking Flux", "Stealth Flow"
-]
-
-def _generate_variant_label(base: str, lang: str, salt: int = 0) -> str:
-    base = (base or "").strip(" -—:،")
-    pool = _AR_VARIANTS if lang == "العربية" else _EN_VARIANTS
-    joiner = " — "
-    idx = abs(hash(_normalize_ar(base) + str(salt))) % len(pool)
-    return f"{base}{joiner}{pool[idx]}"
-
-def _perturb_phrasing(rec: Dict[str, Any], lang: str) -> Dict[str, Any]:
-    r = dict(rec)
-    tacky_add_ar = " ركّز على قراءة الزوايا بدل مطاردة الحركة. اجعل القرار يظهر فجأة عندما يهدأ الإيقاع."
-    tacky_add_en = " Emphasize reading angles over chasing motion; let decisions snap when the rhythm calms."
-    if lang == "العربية":
-        r["what_it_looks_like"] = (r.get("what_it_looks_like","") + tacky_add_ar).strip()
-        r["why_you"] = (r.get("why_you","") + " تحب الاختصار الذكي وإخفاء نواياك حتى اللحظة المناسبة.").strip()
-    else:
-        r["what_it_looks_like"] = (r.get("what_it_looks_like","") + tacky_add_en).strip()
-        r["why_you"] = (r.get("why_you","") + " You like smart brevity and hiding intent until the decisive beat.").strip()
-    return r
-
-def _ensure_unique_labels_v_global(recs: List[Dict[str, Any]], lang: str, bl: dict) -> List[Dict[str, Any]]:
-    used_now = set()
-    out = []
-    for r in recs:
-        r = dict(r or {})
-        label = r.get("sport_label") or ""
-        if _is_forbidden_generic(label) or not label.strip():
-            label = "تكتيكي تخفّي" if lang == "العربية" else "Tactical Stealth"
-            r["sport_label"] = label
-
-        salt = 0
-        while _bl_has(bl, label) or _canon_label(label) in used_now:
-            label = _generate_variant_label(label, lang, salt=salt)
-            r = _perturb_phrasing(r, lang)
-            salt += 1
-        used_now.add(_canon_label(label))
-        r["sport_label"] = label
-        out.append(r)
-    return out
-
-def _persist_blacklist(recs: List[Dict[str, Any]], bl: dict) -> None:
-    for r in recs:
-        lab = r.get("sport_label") or ""
-        if lab.strip():
-            _bl_add(bl, lab, alias=lab)
-    _save_json_atomic(BL_PATH, bl)
-
 # ========= OpenAI helper with timeout + retry =========
 def _chat_with_retry(messages: List[Dict[str, str]], max_tokens: int, temperature: float) -> str:
     """
@@ -1046,7 +1180,6 @@ def _chat_with_retry(messages: List[Dict[str, str]], max_tokens: int, temperatur
     model_local = CHAT_MODEL
     max_tokens_local = max_tokens
 
-    # نستخدم مهلة متوازنة لكل محاولة (أقل من الميزانية الكلّية)
     timeout_s = max(4.0, min(REC_BUDGET_S, 26.0))
     client = OpenAI_CLIENT.with_options(timeout=timeout_s)
 
@@ -1065,7 +1198,6 @@ def _chat_with_retry(messages: List[Dict[str, str]], max_tokens: int, temperatur
         except Exception as e:
             last_err = e
             es = (str(e) or "").lower()
-            # backoff بسيط + تقليص التوكنز + تبديل موديل قبل المحاولة الأخيرة
             if any(t in es for t in ["timeout", "rate limit", "overloaded", "503", "504", "gateway", "temporar"]):
                 sleep(min(1.2 * i, 2.5))
                 max_tokens_local = max(256, int(max_tokens_local * 0.75))
@@ -1157,10 +1289,52 @@ def generate_sport_recommendation(answers: Dict[str, Any],
         except Exception:
             pass
 
-    # === الجولة الأولى
+    # ======== KB-first (تحليل واقعي على قاعدة معرفة) ========
+    user_axes = {}
+    prof = analysis.get("encoded_profile") or {}
+    if isinstance(prof, dict) and isinstance(prof.get("axes"), dict):
+        user_axes = dict(prof["axes"])
+    user_signals = _extract_signals(answers, lang)
+    kb_recs = _pick_kb_recommendations(user_axes, user_signals, lang)
+
+    if len(kb_recs) >= 3:
+        bl = _load_blacklist()
+        kb_recs = _ensure_unique_labels_v_global(kb_recs, lang, bl)
+        _persist_blacklist(kb_recs, bl)
+        cards = [_format_card(kb_recs[i], i, lang) for i in range(3)]
+        try:
+            sec = (CFG.get("security") or {})
+            if sec.get("scrub_urls", True):
+                cards = [scrub_unknown_urls(c, CFG) for c in cards]
+        except Exception:
+            pass
+        try:
+            log_user_insight(
+                user_id=user_id,
+                content={
+                    "language": lang,
+                    "answers": {k: v for k, v in (answers or {}).items() if k != "profile"},
+                    "analysis": analysis,
+                    "source": "KB",
+                    "seed": _style_seed(user_id, prof or {}),
+                    "elapsed_s": round(perf_counter() - t0, 3),
+                    "fast_mode": REC_FAST_MODE,
+                    "job_id": job_id
+                },
+                event_type="kb_recommendation"
+            )
+        except Exception:
+            pass
+        try:
+            save_cached_recommendation(user_id, answers, lang, cards)
+        except Exception:
+            pass
+        return cards
+
+    # === LLM Fallback (آخر خيار)
     seed = _style_seed(user_id, profile or {})
     msgs = _json_prompt(analysis, answers, persona, lang, seed)
-    max_toks_1 = 800 if REC_FAST_MODE else 1200  # تخفيض بسيط لتقليل الأخطاء تحت الضغط
+    max_toks_1 = 800 if REC_FAST_MODE else 1200
 
     try:
         _dbg("calling LLM - round #1")
@@ -1182,11 +1356,10 @@ def generate_sport_recommendation(answers: Dict[str, Any],
     parsed = _parse_json(raw1) or []
     cleaned = _sanitize_fill(parsed, lang)
 
-    # إصلاح إن لزم
+    # 🚫 لا إصلاح ناعم افتراضيًا (REC_REPAIR_ENABLED=False)
     elapsed = perf_counter() - t0
     time_left = REC_BUDGET_S - elapsed
     axes = (analysis.get("z_axes") or {}) if isinstance(analysis, dict) else {}
-
     mismatch_axes = any(_mismatch_with_axes(rec, axes, lang) for rec in cleaned)
     need_repair_generic = any(_too_generic(" ".join([c.get("what_it_looks_like",""), c.get("why_you","")]), _MIN_CHARS) for c in cleaned)
     missing_fields = any(((_REQUIRE_WIN and not c.get("win_condition")) or len(c.get("core_skills") or []) < _MIN_CORE_SKILLS) for c in cleaned)
