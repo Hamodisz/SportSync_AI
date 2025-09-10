@@ -1,0 +1,29 @@
+{
+  "sport_label": { "ar": "Range Precision Circuit", "en": "Range Precision Circuit" },
+  "what_it_looks_like": {
+    "ar": "دقة تصويب هادئة: زوايا ثابتة وانتقال منظّم بين أهداف آمنة.",
+    "en": "Quiet precision: stable angles and orderly transitions across safe targets."
+  },
+  "inner_sensation": { "ar": "هدوء متمركز ونبض مستقر.", "en": "Centered calm with steady pulse." },
+  "why_you": {
+    "ar": "- تميل للإتقان الصامت\n- تحب القياس الموضوعي للتقدّم",
+    "en": "- Prefer silent mastery\n- Like objective progress signals"
+  },
+  "first_week": {
+    "ar": "- تثبيت نظرة\n- ضبط نفس\n- تبديل زوايا بسلاسة",
+    "en": "- Gaze anchoring\n- Breath control\n- Smooth angle transitions"
+  },
+  "progress_markers": {
+    "ar": "- ثبات يد\n- قرارات أوضح\n- توتر أقل",
+    "en": "- Steadier hand\n- Clearer decisions\n- Lower tension"
+  },
+  "win_condition": { "ar": "سلسلة دقة متتالية دون أخطاء متتابعة.", "en": "Consistent accuracy across a series with no consecutive errors." },
+  "core_skills": {
+    "ar": ["تثبيت نظرة","ضبط نفس","انتقال زوايا","تحكّم دقيق"],
+    "en": ["gaze hold","breath control","angle transition","fine control"]
+  },
+  "mode": { "ar": "فردي", "en": "Solo" },
+  "variant_vr": { "ar": "تصويب افتراضي تفاعلي.", "en": "Interactive VR marksmanship." },
+  "variant_no_vr": { "ar": "لوحات أهداف إسفنجية آمنة.", "en": "Safe foam target boards." },
+  "difficulty": 2
+}
