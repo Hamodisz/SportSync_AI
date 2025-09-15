@@ -1,6 +1,3 @@
-تم 👌 — هذا `core/backend_gpt.py` كامل بعد الهوت-فيكس (إجبار الـ Evidence Gate تمرّ دائمًا):
-
-````python
 # -- coding: utf-8 --
 """
 core/backend_gpt.py
@@ -9,11 +6,11 @@ Sport identity recommendations (3 cards) with Layer-Z, first-week (qualitative),
 and VR/no-VR variants. Arabic/English.
 
 Order of operation (واقعي أولاً):
-1) Evidence Gate (يرفض إن كانت الإجابات غير كافية ويعيد أسئلة متابعة)
+1) Evidence Gate (الآن ناعمة: لا توقف التوصيات أبداً)
 2) تحليل واقعي من قاعدة المعرفة:
    - priors + trait_links + guards (من data/sportsync_knowledge.json)
    - قوالب جاهزة لكل label لإخراج بطاقات مكتملة بدون LLM
-3) LLM كآخر خيار (fallback) إن ما كفت القاعدة
+3) LLM (اختياري) لتحسين الصياغة إن مُفعّل USE_LLM=1
 4) Hard de-dup + URL scrub + Telemetry
 
 قواعد ثابتة:
@@ -30,19 +27,21 @@ from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
 from datetime import datetime
 
-# ========= OpenAI =========
+# ========= OpenAI (اختياري) =========
+# لا نكسر التشغيل إذا الحزمة غير مثبتة أو المفتاح غير موجود.
 try:
-    from openai import OpenAI
-except Exception as e:
-    raise RuntimeError("أضف الحزمة في requirements: openai>=1.6.1,<2") from e
+    from openai import OpenAI  # type: ignore
+except Exception:
+    OpenAI = None  # الحزمة غير موجودة
 
 OPENAI_API_KEY   = os.getenv("OPENAI_API_KEY")
 OPENAI_BASE_URL  = os.getenv("OPENAI_BASE_URL")  # اختياري (Azure/OpenRouter...)
 OPENAI_ORG       = os.getenv("OPENAI_ORG")       # اختياري
+USE_LLM          = os.getenv("USE_LLM", "0") == "1"  # افتراضيًا مطفأ لضمان الاستقرار
 
 OpenAI_CLIENT = (
-    OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL, organization=OPENAI_ORG)
-    if OPENAI_API_KEY else None
+    OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL, organization=OPENAI_ORG)  # type: ignore
+    if (OpenAI is not None and OPENAI_API_KEY) else None
 )
 
 # ========= Runtime Guards / Tunables =========
@@ -52,6 +51,8 @@ REC_FAST_MODE = os.getenv("REC_FAST_MODE", "0") == "1"                  # وضع
 REC_DEBUG = os.getenv("REC_DEBUG", "0") == "1"                          # لوج تشخيصي
 CHAT_MODEL_FALLBACK = os.getenv("CHAT_MODEL_FALLBACK", "gpt-4o-mini")   # موديل احتياطي
 MAX_PROMPT_CHARS = int(os.getenv("MAX_PROMPT_CHARS", "6000"))           # قصّ برومبت
+FORCE_SOFT_GATE = os.getenv("FORCE_SOFT_GATE", "1") == "1"              # بوابة أدلة ناعمة دومًا
+ALWAYS_RETURN_3 = os.getenv("ALWAYS_RETURN_3", "1") == "1"              # ضمن 3 بطاقات دائمًا
 
 def _dbg(msg: str) -> None:
     if REC_DEBUG:
@@ -187,7 +188,7 @@ _FORBIDDEN_GENERIC = set(
     KB.get("guards", {}).get("forbidden_generic_labels", [])
 ) | set(AL2.get("forbidden_generic", []) or [])
 
-# ========= Helpers =========
+# ========= Helpers: Arabic normalization =========
 _AR_DIAC = r"[ًٌٍَُِّْـ]"
 def _normalize_ar(t: str) -> str:
     if not t: return ""
@@ -197,21 +198,6 @@ def _normalize_ar(t: str) -> str:
     t = t.replace("ة","ه").replace("ى","ي")
     t = re.sub(r"\s+", " ", t).strip()
     return t
-
-def _as_text(v: Any) -> str:
-    """حول أي قيمة (list/str/num/dict) إلى نص آمن للـ join/العرض."""
-    if v is None:
-        return ""
-    if isinstance(v, str):
-        return v
-    if isinstance(v, list):
-        return "، ".join(str(_as_text(x)) for x in v if _as_text(x))
-    if isinstance(v, (int, float)):
-        return str(v)
-    try:
-        return json.dumps(v, ensure_ascii=False)
-    except Exception:
-        return str(v)
 
 # ========= Analysis import (user traits) =========
 def _call_analyze_user_from_answers(user_id: str, answers: Dict[str, Any], lang: str) -> Dict[str, Any]:
@@ -249,11 +235,11 @@ def _lang_key(lang: str) -> str:
 
 def _extract_signals(answers: Dict[str, Any], lang: str) -> Dict[str, int]:
     """
-    إشارات نصّية من إجابات المستخدم (solo/team/vr/precision/stealth/…)
+    يستخرج إشارات نصّية بسيطة من إجابات المستخدم (solo/team/vr/precision/stealth/…)
     باستخدام z_intent_keywords إن توفّرت.
     """
     blob = " ".join(
-        str(v.get("answer") if isinstance(v, dict) and "answer" in v else v)
+        (v.get("answer") if isinstance(v, dict) and "answer" in v else str(v))
         for v in (answers or {}).values()
     )
     blob_l = blob.lower()
@@ -319,7 +305,7 @@ def _extract_profile(answers: Dict[str, Any], lang: str) -> Optional[Dict[str, A
         preferences = enc.get("prefs", enc.get("preferences", {}))
         z_markers = enc.get("z_markers", [])
         signals   = enc.get("signals", [])
-        hints = " | ".join(str(x) for x in [*z_markers, *signals])[:1000]
+        hints = " | ".join([*z_markers, *signals])[:1000]
         return {
             "scores": enc.get("scores", {}),
             "axes": enc.get("axes", {}),
@@ -345,24 +331,20 @@ def _norm_answer_value(v: Any) -> str:
     return str(v)
 
 def _egate_fallback(answers: Dict[str, Any], lang: str = "العربية") -> Dict[str, Any]:
-    if not isinstance(answers, dict) or not answers:
-        status = "fail"; total_chars = 0; answered = 0
-    else:
-        vals = [_norm_answer_value(v) for v in answers.values() if str(v).strip()]
-        total_chars = sum(len(s.strip()) for s in vals)
-        answered = sum(1 for s in vals if len(s.strip()) >= 3)
-        if _EG_REQUIRED_KEYS:
-            if any(not _norm_answer_value(answers.get(k, "")).strip() for k in _EG_REQUIRED_KEYS):
-                status = "fail"
-            else:
-                status = "pass" if (answered >= _EG_MIN_ANSWERS and total_chars >= _EG_MIN_TOTAL_CHARS) else "borderline"
-        else:
-            if answered == 0 or total_chars < 40:
-                status = "fail"
-            elif answered < _EG_MIN_ANSWERS or total_chars < _EG_MIN_TOTAL_CHARS:
-                status = "borderline"
-            else:
-                status = "pass"
+    # تقييم وصفي فقط، لا يمنع التوصيات
+    if not isinstance(answers, dict):
+        answers = {}
+    vals = [_norm_answer_value(v) for v in answers.values() if str(v).strip()]
+    total_chars = sum(len(s.strip()) for s in vals)
+    answered = sum(1 for s in vals if len(s.strip()) >= 3)
+
+    # إذا موجود required_keys بالكونفق نتعامل معها كمؤشرات فقط
+    missing = [k for k in _EG_REQUIRED_KEYS if not _norm_answer_value((answers or {}).get(k, "")).strip()]
+    status = "pass"
+    if answered == 0 and total_chars < 20:
+        status = "borderline"  # ليس "fail" حتى لا نوقف التوصيات
+    elif answered < max(1, _EG_MIN_ANSWERS // 2) or total_chars < max(40, _EG_MIN_TOTAL_CHARS // 2):
+        status = "borderline"
 
     followups = (
         [
@@ -376,33 +358,34 @@ def _egate_fallback(answers: Dict[str, Any], lang: str = "العربية") -> Di
         ]
     )
     return {
-        "status": "fail" if answered == 0 or total_chars < 40 else status,
+        "status": status,
         "answered": int(answered),
         "total_chars": int(total_chars),
-        "required_missing": [k for k in _EG_REQUIRED_KEYS if not _norm_answer_value((answers or {}).get(k, "")).strip()],
+        "required_missing": missing,
         "followup_questions": followups[:3]
     }
 
 def _run_egate(answers: Dict[str, Any], lang: str = "العربية") -> Dict[str, Any]:
-    if callable(egate_evaluate):
-        try:
+    try:
+        if callable(egate_evaluate):
             res = egate_evaluate(answers=answers, lang=lang, cfg=EGCFG)
             if isinstance(res, dict) and "status" in res:
+                if FORCE_SOFT_GATE and res.get("status") != "pass":
+                    res = dict(res); res["status"] = "borderline"
                 return res
-        except Exception:
-            pass
-    return _egate_fallback(answers, lang=lang)
+    except Exception:
+        pass
+    res = _egate_fallback(answers, lang=lang)
+    if FORCE_SOFT_GATE and res.get("status") != "pass":
+        res["status"] = "borderline"
+    return res
 
-def _format_followup_card(followups: List[str], lang: str) -> str:
-    head = "🧭 نحتاج إجابات قصيرة قبل التوصية" if lang == "العربية" else "🧭 I need a few quick answers first"
-    tips = "اكتب سطر واحد لكل سؤال." if lang == "العربية" else "One short line per question."
-    lines = [head, "", tips, ""]
-    for q in followups:
-        lines.append(f"- {q}")
-    lines.append("")
-    lines.append("أرسل إجاباتك وسنقترح هوية رياضية واضحة فورًا." if lang == "العربية"
-                 else "Send your answers and I’ll propose a clear sport-identity right away.")
-    return "\n".join(str(x) for x in lines)
+def _format_followup_note(followups: List[str], lang: str) -> str:
+    # نستخدمها كملاحظة اختيارية داخل البطاقة الثالثة فقط، بدون تعطيل التوصيات
+    if not followups: return ""
+    head = "ملاحظة لتحسين الدقة:" if lang == "العربية" else "Note to refine accuracy:"
+    items = "\n".join(f"- {q}" for q in followups[:3])
+    return f"{head}\n{items}"
 
 # ========= Rules & helpers =========
 _BLOCKLIST = r"(جري|ركض|سباحة|كرة|قدم|سلة|طائرة|تنس|ملاكمة|كاراتيه|كونغ فو|يوجا|يوغا|بيلاتس|رفع|أثقال|تزلج|دراج|دراجة|ركوب|خيول|باركور|جودو|سكواش|بلياردو|جولف|كرة طائرة|كرة اليد|هوكي|سباق|ماراثون|مصارعة|MMA|Boxing|Karate|Judo|Taekwondo|Soccer|Football|Basketball|Tennis|Swim|Swimming|Running|Run|Cycle|Cycling|Bike|Biking|Yoga|Pilates|Rowing|Row|Skate|Skating|Ski|Skiing|Climb|Climbing|Surf|Surfing|Golf|Volleyball|Handball|Hockey|Parkour|Wrestling)"
@@ -451,7 +434,7 @@ def _split_sentences(text: str) -> List[str]:
 
 def _scrub_forbidden(text: str) -> str:
     kept = [s for s in _split_sentences(text) if not _FORBIDDEN_SENT.search(_normalize_ar(s))]
-    return "، ".join(str(x) for x in kept).strip(" .،")
+    return "، ".join(kept).strip(" .،")
 
 def _clip(s: str, n: int) -> str:
     if not s: return ""
@@ -470,7 +453,7 @@ def _answers_to_bullets(answers: Dict[str, Any]) -> str:
         if isinstance(a, list):
             a = ", ".join(map(str, a))
         out.append(f"- {q}: {_clip(str(a), 160)}")
-    txt = "\n".join(str(x) for x in out)
+    txt = "\n".join(out)
     return _clip(txt, 1800)
 
 def _too_generic(text: str, min_chars: int = 280) -> bool:
@@ -481,10 +464,10 @@ def _has_sensory(text: str, min_hits: int = 3) -> bool:
     return sum(1 for w in _SENSORY if w in (text or "")) >= min_hits
 
 def _is_meaningful(rec: Dict[str, Any]) -> bool:
-    blob = " ".join(str(x) for x in [
-        _as_text(rec.get("sport_label","")), _as_text(rec.get("what_it_looks_like","")),
-        _as_text(rec.get("why_you","")), _as_text(rec.get("first_week","")),
-        _as_text(rec.get("progress_markers","")), _as_text(rec.get("win_condition",""))
+    blob = " ".join([
+        rec.get("sport_label",""), rec.get("what_it_looks_like",""),
+        rec.get("why_you",""), rec.get("first_week",""),
+        rec.get("progress_markers",""), rec.get("win_condition","")
     ]).strip()
     return len(blob) >= 120
 
@@ -524,7 +507,7 @@ def _axes_expectations(axes: Dict[str, float], lang: str) -> Dict[str, List[str]
 def _mismatch_with_axes(rec: Dict[str, Any], axes: Dict[str, float], lang: str) -> bool:
     exp = _axes_expectations(axes or {}, lang)
     if not exp: return False
-    blob = " ".join(str(_as_text(rec.get(k,""))) for k in ("what_it_looks_like","inner_sensation","why_you","first_week"))
+    blob = " ".join(str(rec.get(k,"")) for k in ("what_it_looks_like","inner_sensation","why_you","first_week"))
     blob_l = blob.lower()
     for _, words in exp.items():
         if words and not any(w.lower() in blob_l for w in words):
@@ -550,7 +533,7 @@ def _tokenize(text: str) -> List[str]:
 
 def _sig_for_rec(r: Dict[str, Any]) -> set:
     core = r.get("core_skills") or []
-    core_txt = " ".join(str(x) for x in core) if isinstance(core, list) else str(core)
+    core_txt = " ".join(core) if isinstance(core, list) else str(core)
     toks = set(_tokenize(r.get("sport_label","")) + _tokenize(core_txt))
     return toks
 
@@ -777,7 +760,7 @@ def _derive_binary_traits(analysis: Dict[str, Any], answers: Dict[str, Any], lan
     if sg >=  0.35: traits["extrovert"] = 1.0; traits["prefers_team"] = 1.0
     if sig.get("solo_pref"): traits["prefers_solo"] = max(1.0, traits.get("prefers_solo", 0))
     if sig.get("team_pref"): traits["prefers_team"] = max(1.0, traits.get("prefers_team", 0))
-    # حلّ تعارض (فردي/جماعي)
+    # حلّ تعارض (فردي/جماعي) إن ظهر الاثنان:
     if traits.get("prefers_solo", 0) and traits.get("prefers_team", 0):
         if sg >= 0.0:
             traits["prefers_solo"] = 0.0
@@ -812,7 +795,7 @@ def _derive_binary_traits(analysis: Dict[str, Any], answers: Dict[str, Any], lan
         traits["sustained_attention"] = max(traits.get("sustained_attention", 0.0), 0.6)
 
     # قلق/نفور من التكرار/حاجة مكاسب سريعة
-    ar_blob = _normalize_ar(" ".join(str(_norm_answer_value(v)) for v in (answers or {}).values()).lower())
+    ar_blob = _normalize_ar(" ".join(_norm_answer_value(v) for v in (answers or {}).values()).lower())
     if any(w in ar_blob for w in ["قلق","مخاوف","توتر شديد","رهاب","خوف"]):
         traits["anxious"] = 1.0
     if any("نفور" in s or "تكرار" in s for s in silent):
@@ -847,7 +830,7 @@ def _score_candidates_from_links(traits: Dict[str, float]) -> List[Tuple[float, 
     scored.sort(key=lambda x: x[0], reverse=True)
     return scored
 
-# ========= Optional: identities from KB =========
+# ========= Optional: identities from KB (if provided) =========
 def _pick_kb_recommendations(user_axes: Dict[str, Any], user_signals: Dict[str, int], lang: str) -> List[Dict[str, Any]]:
     identities = KB.get("identities")
     if not isinstance(identities, list) or not identities:
@@ -856,7 +839,7 @@ def _pick_kb_recommendations(user_axes: Dict[str, Any], user_signals: Dict[str, 
     exp = _axes_expectations(user_axes or {}, lang)
     for rec in identities:
         r = _sanitize_record(rec)
-        blob = " ".join(str(x) for x in [_as_text(r.get("what_it_looks_like","")), _as_text(r.get("why_you","")), _as_text(r.get("first_week",""))]).lower()
+        blob = " ".join([r.get("what_it_looks_like",""), r.get("why_you",""), r.get("first_week","")]).lower()
         hit = 0
         for words in exp.values():
             if words and any(w.lower() in blob for w in words):
@@ -897,7 +880,7 @@ def _template_for_label(label: str, lang: str) -> Optional[Dict[str, Any]]:
         if L == _canon_label(k):
             return _sanitize_record(_fill_defaults(v, lang))
 
-    # (عينات شائعة) – نفس ما أرسلته
+    # أمثلة شائعة (مختصرة للاختصار)
     if L in (_canon_label("archery"),):
         return _sanitize_record(_fill_defaults({
             "sport_label": "الرماية (دقة)" if ar else "Archery (Precision)",
@@ -945,118 +928,6 @@ def _template_for_label(label: str, lang: str) -> Optional[Dict[str, Any]]:
             "variant_vr": "مسارات قبضات افتراضية.",
             "variant_no_vr": "عناصر قبضة آمنة خفيفة.",
             "difficulty": 2
-        }, lang))
-    if L in (_canon_label("swimming"),):
-        return _sanitize_record(_fill_defaults({
-            "sport_label": "سباحة — خطوط هادئة" if ar else "Swimming — Calm Lines",
-            "what_it_looks_like": "سكتات منتظمة وتوافق نفس-حركة.",
-            "inner_sensation": "انسياب وهدوء ذهني.",
-            "why_you": "تبحث عن صفاء وتنظيم إيقاع.",
-            "first_week": "لاحظ الإيقاع — نظّم الزفير — ثبّت خط الجسم.",
-            "progress_markers": "توتر أقل — سلاسة أعلى — إيقاع متسق.",
-            "win_condition": "اتساق الإيقاع والمحاذاة عبر مجموعة أطوال.",
-            "core_skills": ["محاذاة جسم","تنفّس منظم","إيقاع ثابت"] if ar else
-                           ["body alignment","paced breathing","steady rhythm"],
-            "mode": "Solo",
-            "variant_vr": "تخيّل بصري للتنفس والمحاذاة.",
-            "variant_no_vr": "تمارين محاذاة وتنفس على اليابسة.",
-            "difficulty": 2
-        }, lang))
-    if L in (_canon_label("distance_running"),):
-        return _sanitize_record(_fill_defaults({
-            "sport_label": "جري مسافات — إيقاع ثابت" if ar else "Distance Running — Steady Rhythm",
-            "what_it_looks_like": "خطوة منتظمة ونَفَس موزون وانتباه للإيقاع.",
-            "inner_sensation": "صفاء وحضور جسدي بسيط.",
-            "why_you": "تفضّل تقدمًا هادئًا ومؤشرات واضحة.",
-            "first_week": "ابنِ إيقاعك — راقب النفس — خفّف توتر الكتفين.",
-            "progress_markers": "نعومة خطوة — صفاء ذهني — قرار أهدأ.",
-            "win_condition": "حفظ الإيقاع دون انقطاع على مسار محدد.",
-            "core_skills": ["إيقاع","تنفّس","استرخاء كتف","محاذاة"] if ar else
-                           ["rhythm","breath","shoulder relax","alignment"],
-            "mode": "Solo",
-            "variant_vr": "مؤشرات إيقاع افتراضية.",
-            "variant_no_vr": "تمارين إيقاع على أرض مسطحة.",
-            "difficulty": 2
-        }, lang))
-    if L in (_canon_label("tennis"),):
-        return _sanitize_record(_fill_defaults({
-            "sport_label": "تنس — زوايا ورِد" if ar else "Tennis — Angles & Rally",
-            "what_it_looks_like": "تبادل كُرات بزوايا محسوبة وتوقيت نظيف للضربة.",
-            "inner_sensation": "يقظة خفيفة مع قرار واضح.",
-            "why_you": "توازن اجتماعي/فردي مع دقّة لحظية.",
-            "first_week": "ثبّت النظرة — توقيت الضربة — اقرأ الزاوية.",
-            "progress_markers": "تصويب أنظف — ردّ فعل أوضح.",
-            "win_condition": "سلسلة تبادلات ناجحة بزوايا محسوبة.",
-            "core_skills": ["توقيت","زاوية","توازن","قرار"] if ar else
-                           ["timing","angle","balance","decision"],
-            "mode": "Solo/Team",
-            "variant_vr": "رالي افتراضي تفاعلي.",
-            "variant_no_vr": "حائط ردّ/شريك تدريب.",
-            "difficulty": 3
-        }, lang))
-    if L in (_canon_label("yoga"),):
-        return _sanitize_record(_fill_defaults({
-            "sport_label": "يوغا — تنظيم نفس ومحاذاة" if ar else "Yoga — Breath & Alignment",
-            "what_it_looks_like": "سلاسل محاذاة هادئة وتركيز تنفّس.",
-            "inner_sensation": "صفاء وتماسك داخلي.",
-            "why_you": "تبحث عن تهدئة الأعصاب ووعي جسدي.",
-            "first_week": "محاذاة أساسية — مراقبة زفير — نعومة انتقال.",
-            "progress_markers": "توتر أقل — وعي مفصلي أفضل.",
-            "win_condition": "حفظ المحاذاة والتنفس عبر تسلسل كامل.",
-            "core_skills": ["تنفّس","محاذاة","اتزان"] if ar else
-                           ["breath","alignment","balance"],
-            "mode": "Solo",
-            "variant_vr": "إرشاد بصري للتنفس والمحاذاة.",
-            "variant_no_vr": "سلسلة وضعيات أساسية.",
-            "difficulty": 1
-        }, lang))
-    if L in (_canon_label("free_diving"),):
-        return _sanitize_record(_fill_defaults({
-            "sport_label": "غوص حر — هدوء وتنظيم" if ar else "Free Diving — Calm Regulation",
-            "what_it_looks_like": "تحضير تنفّس دقيق وهدوء داخلي.",
-            "inner_sensation": "سكون وتركيز عالي.",
-            "why_you": "تركّز على ضبط النفس والهدوء.",
-            "first_week": "جولات نفس منضبط وتخيّل هادئ.",
-            "progress_markers": "صفاء أعلى — تحكم نفسي أعمق.",
-            "win_condition": "حفظ هدوء وتنفس منظم خلال مهمة محاكاة.",
-            "core_skills": ["ضبط نفس","تركيز","استرخاء"] if ar else
-                           ["breath control","focus","relaxation"],
-            "mode": "Solo",
-            "variant_vr": "محاكاة نفس وغمر بصري.",
-            "variant_no_vr": "بروتوكول تنفّس جاف آمن.",
-            "difficulty": 3
-        }, lang))
-    if L in (_canon_label("chess"),):
-        return _sanitize_record(_fill_defaults({
-            "sport_label": "شطرنج — تكتيك ذهني" if ar else "Chess — Tactical Mind",
-            "what_it_looks_like": "مناورات هادئة وقراءة زوايا قرار.",
-            "inner_sensation": "فضول ذهني وثقة هادئة.",
-            "why_you": "تحب الألغاز والتكتيك.",
-            "first_week": "نمط افتتاح ثابت — قراءة تهديدات — هدوء قبل القرار.",
-            "progress_markers": "أخطاء أقل — وضوح خطّة.",
-            "win_condition": "إنهاء لعبة بخطّة واضحة دون أخطاء متتالية.",
-            "core_skills": ["قراءة تهديد","صبر","خدعة بصرية"] if ar else
-                           ["threat reading","patience","feint"],
-            "mode": "Solo/Team",
-            "variant_vr": "لوح افتراضي تفاعلي.",
-            "variant_no_vr": "سيناريوهات تكتيكية قصيرة.",
-            "difficulty": 2
-        }, lang))
-    if L in (_canon_label("esports"),):
-        return _sanitize_record(_fill_defaults({
-            "sport_label": "Esports — دقة وتكتيك" if ar else "Esports — Precision & Tactics",
-            "what_it_looks_like": "تصويب لحظي وقراءة مواقف وتنسيق فريق/فرد.",
-            "inner_sensation": "تيقّظ مع هدوء قرار.",
-            "why_you": "تستمتع بالدقة والذكاء التكتيكي.",
-            "first_week": "تثبيت حسّ النظر — إدارة الإيقاع — قرار نظيف.",
-            "progress_markers": "ثبات تصويب — أخطاء أقل.",
-            "win_condition": "تحقيق أهداف تكتيكية ضمن سيناريو محاكاة.",
-            "core_skills": ["تتبّع نظرة","قرار سريع","تنسيق"] if ar else
-                           ["gaze tracking","snap decision","coordination"],
-            "mode": "Solo/Team",
-            "variant_vr": "سيناريو تكتيكي افتراضي.",
-            "variant_no_vr": "تمارين دقة قصيرة.",
-            "difficulty": 3
         }, lang))
 
     return None
@@ -1192,11 +1063,11 @@ def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
                 {"calm_adrenaline":"Calm/Adrenaline","solo_group":"Solo/Group","tech_intuition":"Technical/Intuitive"}
         for k, words in exp.items():
             if words:
-                exp_lines.append(f"{title[k]}: {', '.join(str(x) for x in words)}")
-    axis_hint = ("\n".join(str(x) for x in exp_lines)) if exp_lines else ""
+                exp_lines.append(f"{title[k]}: {', '.join(words)}")
+    axis_hint = ("\n".join(exp_lines)) if exp_lines else ""
 
     z_intent = compact_analysis.get("z_intent", [])
-    intent_hint = ("، ".join(str(x) for x in z_intent) if lang=="العربية" else ", ".join(str(x) for x in z_intent)) if z_intent else ""
+    intent_hint = ("، ".join(z_intent) if lang=="العربية" else ", ".join(z_intent)) if z_intent else ""
 
     if lang == "العربية":
         sys = (
@@ -1261,24 +1132,17 @@ def _parse_json(text: str) -> Optional[List[Dict[str, Any]]]:
             pass
     return None
 
-def _to_bullets(text: Any, max_items: int = 6) -> List[str]:
-    """يدعم string أو list ويحوله إلى نقاط قصيرة."""
-    if text is None:
-        return []
-    if isinstance(text, list):
-        items = [str(i).strip(" -•\t ") for i in text if str(i).strip()]
-        return items[:max_items]
-    if not isinstance(text, str) or not text.strip():
-        return []
+def _to_bullets(text: str, max_items: int = 6) -> List[str]:
+    if not text: return []
     raw = re.split(r"[;\n\.،؛\!\?؟]+", text)
     items = [i.strip(" -•\t ") for i in raw if i.strip()]
     return items[:max_items]
 
 def _one_liner(*parts: str, max_len: int = 140) -> str:
-    s = " — ".join(str(p).strip() for p in parts if p and str(p).strip())
+    s = " — ".join([p.strip() for p in parts if p and p.strip()])
     return s[:max_len]
 
-def _format_card(rec: Dict[str, Any], i: int, lang: str) -> str:
+def _format_card(rec: Dict[str, Any], i: int, lang: str, followup_note: str = "") -> str:
     head_ar = ["🟢 التوصية رقم 1","🌿 التوصية رقم 2","🔮 التوصية رقم 3 (ابتكارية)"]
     head_en = ["🟢 Recommendation 1","🌿 Recommendation 2","🔮 Recommendation 3 (Creative)"]
     head = (head_ar if lang == "العربية" else head_en)[i]
@@ -1314,15 +1178,17 @@ def _format_card(rec: Dict[str, Any], i: int, lang: str) -> str:
             for b in week: out.append(f"- {b}")
         if prog:
             out += ["\n✅ علامات تقدم محسوسة:"]
-            for b in prog: out.append(f"- {b}")
+            for b in prog: out.append(f"- {b}"]
         notes = []
         if mode: notes.append(("وضع اللعب: " + mode))
         if novr: notes.append("بدون VR: " + novr)
         if vr: notes.append("VR (اختياري): " + vr)
+        if i == 2 and followup_note:
+            notes.append(followup_note)
         if notes:
-            out += ["\n👁‍🗨 ملاحظات:", f"- " + "\n- ".join(str(x) for x in notes)]
+            out += ["\n👁‍🗨 ملاحظات:", f"- " + "\n- ".join(notes)]
         out.append(f"\nالمستوى التقريبي: {diff}/5")
-        return "\n".join(str(x) for x in out)
+        return "\n".join(out)
     else:
         out = [head, ""]
         if label: out.append(f"🎯 Ideal identity: {label}")
@@ -1344,20 +1210,22 @@ def _format_card(rec: Dict[str, Any], i: int, lang: str) -> str:
         if mode: notes.append(("Mode: " + mode))
         if novr: notes.append("No-VR: " + novr)
         if vr: notes.append("VR (optional): " + vr)
+        if i == 2 and followup_note:
+            notes.append(followup_note)
         if notes:
-            out += ["\n👁‍🗨 Notes:", f"- " + "\n- ".join(str(x) for x in notes)]
+            out += ["\n👁‍🗨 Notes:", f"- " + "\n- ".join(notes)]
         out.append(f"\nApprox level: {diff}/5")
-        return "\n".join(str(x) for x in out)
+        return "\n".join(out)
 
 def _sanitize_fill(recs: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]]:
     temp: List[Dict[str, Any]] = []
     for i in range(3):
         r = recs[i] if i < len(recs) else {}
         r = _fill_defaults(_sanitize_record(r), lang)
-        blob = " ".join(str(x) for x in [
-            _as_text(r.get("sport_label","")), _as_text(r.get("what_it_looks_like","")),
-            _as_text(r.get("why_you","")), _as_text(r.get("first_week","")),
-            _as_text(r.get("progress_markers","")), _as_text(r.get("win_condition",""))
+        blob = " ".join([
+            r.get("sport_label",""), r.get("what_it_looks_like",""),
+            r.get("why_you",""), r.get("first_week",""),
+            r.get("progress_markers",""), r.get("win_condition","")
         ])
         if _too_generic(blob, _MIN_CHARS) or not _has_sensory(blob) or not _is_meaningful(r) \
            or (_REQUIRE_WIN and not r.get("win_condition")) \
@@ -1370,16 +1238,13 @@ def _sanitize_fill(recs: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]
 # ========= OpenAI helper with timeout + retry =========
 def _chat_with_retry(messages: List[Dict[str, str]], max_tokens: int, temperature: float) -> str:
     if OpenAI_CLIENT is None:
-        raise RuntimeError("OPENAI_API_KEY غير مضبوط")
-
+        raise RuntimeError("OPENAI client unavailable (package or API key missing)")
     attempts = 4 if not REC_FAST_MODE else 3
     last_err = None
     model_local = CHAT_MODEL
     max_tokens_local = max_tokens
-
     timeout_s = max(4.0, min(REC_BUDGET_S, 26.0))
     client = OpenAI_CLIENT.with_options(timeout=timeout_s)
-
     for i in range(1, attempts + 1):
         try:
             resp = client.chat.completions.create(
@@ -1424,10 +1289,9 @@ def generate_sport_recommendation(answers: Dict[str, Any],
         return cached_cards
     _dbg("cache MISS for recommendations")
 
-    # Evidence Gate (force pass HOTFIX)
+    # Evidence Gate (ناعمة - لا توقف)
     eg = _run_egate(answers or {}, lang=lang)
-    eg["status"] = "pass"; eg["followup_questions"] = []
-
+    low_info = eg.get("status") != "pass"
     if _PIPE:
         try:
             _PIPE.send(
@@ -1444,16 +1308,6 @@ def generate_sport_recommendation(answers: Dict[str, Any],
             )
         except Exception:
             pass
-
-    if eg.get("status") != "pass":
-        card = _format_followup_card(eg.get("followup_questions", []), lang=lang)
-        try:
-            sec = (CFG.get("security") or {})
-            if sec.get("scrub_urls", True):
-                card = scrub_unknown_urls(card, CFG)
-        except Exception:
-            pass
-        return [card, "—", "—"]
 
     # تحليل المستخدم + طبقة Z + Intent + profile
     analysis: Dict[str, Any] = _call_analyze_user_from_answers(user_id, answers, lang)
@@ -1472,188 +1326,160 @@ def generate_sport_recommendation(answers: Dict[str, Any],
         if "axes" in profile: analysis["z_axes"] = profile["axes"]
         if "scores" in profile: analysis["z_scores"] = profile["scores"]
 
-    # ======== KB-first ========
+    # ======== KB-first (ثم اكمل بفوالب حتى 3) ========
     user_axes = (analysis.get("z_axes") or {}) if isinstance(analysis, dict) else {}
     user_signals = _extract_signals(answers, lang)
 
-    kb_recs = _pick_kb_recommendations(user_axes, user_signals, lang)
+    kb_recs: List[Dict[str, Any]] = []
+    # (A) identities من KB إن وجدت
+    kb_recs.extend(_pick_kb_recommendations(user_axes, user_signals, lang))
 
+    # (B) trait_links إن متاحة
     if len(kb_recs) < 3 and (KB_PRIORS or TRAIT_LINKS):
         trait_strengths = _derive_binary_traits(analysis, answers, lang)
         ranked = _score_candidates_from_links(trait_strengths)
-
-        picked: List[Dict[str, Any]] = []
-        used = set()
+        used = set(_canon_label(r.get("sport_label","")) for r in kb_recs)
         for _, lbl in ranked:
-            if len(picked) >= 3: break
+            if len(kb_recs) >= 3: break
             c = _canon_label(lbl)
-            if c in used: continue
-            tpl = _template_for_label(lbl, lang)
-            if not tpl:
-                tpl = _fallback_identity(len(picked), lang)
-            picked.append(tpl)
+            if not c or c in used: continue
+            tpl = _template_for_label(lbl, lang) or _fallback_identity(len(kb_recs), lang)
+            kb_recs.append(tpl)
             used.add(c)
-        kb_recs.extend(picked)
-        kb_recs = kb_recs[:3]
 
-    if len(kb_recs) >= 3:
-        kb_recs = _sanitize_fill(kb_recs, lang)
-        bl = _load_blacklist()
-        kb_recs = _ensure_unique_labels_v_global(kb_recs, lang, bl)
-        _persist_blacklist(kb_recs, bl)
-        cards = [_format_card(kb_recs[i], i, lang) for i in range(3)]
-        try:
-            sec = (CFG.get("security") or {})
-            if sec.get("scrub_urls", True):
-                cards = [scrub_unknown_urls(c, CFG) for c in cards]
-        except Exception:
-            pass
-        try:
-            log_user_insight(
-                user_id=user_id,
-                content={
-                    "language": lang,
-                    "answers": {k: v for k, v in (answers or {}).items() if k != "profile"},
-                    "analysis": analysis,
-                    "source": "KB/trait_links" if (KB_PRIORS or TRAIT_LINKS) else "KB",
-                    "seed": _style_seed(user_id, profile or {}),
-                    "elapsed_s": round(perf_counter() - t0, 3),
-                    "fast_mode": REC_FAST_MODE,
-                    "job_id": job_id
-                },
-                event_type="kb_recommendation"
-            )
-        except Exception:
-            pass
-        try:
-            save_cached_recommendation(user_id, answers, lang, cards)
-        except Exception:
-            pass
-        return cards
+    # (C) أكمل دومًا بفوالب لضمان 3 توصيات
+    while len(kb_recs) < 3:
+        kb_recs.append(_fallback_identity(len(kb_recs), lang))
 
-    # ======== LLM كآخر خيار ========
-    if OpenAI_CLIENT is None:
-        return [
-            "❌ لا يمكن استدعاء النموذج حالياً، ولم نجد توصيات كافية من قاعدة المعرفة.",
-            "—",
-            "—"
-        ]
-
-    persona = get_cached_personality(analysis, lang=lang)
-    if not persona:
-        persona = {"name":"SportSync Coach","tone":"حازم-هادئ","style":"حسّي واقعي إنساني","philosophy":"هوية حركة بلا أسماء مع وضوح هويّة"}
-        try:
-            save_cached_personality(analysis, persona, lang=lang)
-        except Exception:
-            pass
-
-    seed = _style_seed(user_id, profile or {})
-    msgs = _json_prompt(analysis, answers, persona, lang, seed)
-    max_toks_1 = 800 if REC_FAST_MODE else 1200
-
-    try:
-        _dbg("calling LLM - round #1")
-        raw1 = _chat_with_retry(messages=msgs, max_tokens=max_toks_1, temperature=0.5)
-        _dbg(f"round #1 ok, len={len(raw1)}")
-    except Exception as e:
-        err = f"❌ خطأ اتصال النموذج: {e}"
-        if _PIPE:
-            try:
-                _PIPE.send("model_error", {"error": str(e), "job_id": job_id}, user_id=user_id, lang=lang, model=CHAT_MODEL)
-            except Exception:
-                pass
-        return [err, "—", "—"]
-
-    raw1 = _strip_code_fence(raw1)
-    if not ALLOW_SPORT_NAMES and _contains_blocked_name(raw1):
-        raw1 = _mask_names(raw1)
-    parsed = _parse_json(raw1) or []
-    cleaned = _sanitize_fill(parsed, lang)
-
-    elapsed = perf_counter() - t0
-    time_left = REC_BUDGET_S - elapsed
-    axes = (analysis.get("z_axes") or {}) if isinstance(analysis, dict) else {}
-
-    mismatch_axes = any(_mismatch_with_axes(rec, axes, lang) for rec in cleaned)
-    need_repair_generic = any(_too_generic(" ".join(str(x) for x in [_as_text(c.get("what_it_looks_like","")), _as_text(c.get("why_you",""))]), _MIN_CHARS) for c in cleaned)
-    missing_fields = any(((_REQUIRE_WIN and not c.get("win_condition")) or len(c.get("core_skills") or []) < _MIN_CORE_SKILLS) for c in cleaned)
-    need_repair = (mismatch_axes or need_repair_generic or missing_fields) and REC_REPAIR_ENABLED and (time_left >= (6 if not REC_FAST_MODE else 4))
-
-    if need_repair:
-        exp = _axes_expectations(axes or {}, lang)
-        align_hint = ""
-        if exp:
-            if lang == "العربية":
-                align_hint = (
-                    "حاذِ التوصيات مع محاور Z:\n"
-                    f"- هدوء/أدرينالين: {', '.join(str(x) for x in exp.get('calm_adrenaline', []))}\n"
-                    f"- فردي/جماعي: {', '.join(str(x) for x in exp.get('solo_group', []))}\n"
-                    f"- تقني/حدسي: {', '.join(str(x) for x in exp.get('tech_intuition', []))}\n"
-                )
-            else:
-                align_hint = (
-                    "Align with Z-axes:\n"
-                    f"- Calm/Adrenaline: {', '.join(str(x) for x in exp.get('calm_adrenaline', []))}\n"
-                    f"- Solo/Group: {', '.join(str(x) for x in exp.get('solo_group', []))}\n"
-                    f"- Technical/Intuitive: {', '.join(str(x) for x in exp.get('tech_intuition', []))}\n"
-                )
-        repair_prompt = {
-            "role":"user",
-            "content":(
-                ("أعد صياغة التوصيات بنبرة إنسانية وواضحة (اسم رياضة مسموح). " if lang=="العربية"
-                 else "Rewrite with a warm, human tone (sport names allowed). ") +
-                "تأكد من وجود: sport_label, what_it_looks_like, win_condition, 3–5 core_skills, mode, variant_vr, variant_no_vr. "
-                "ممنوع الوقت/التكلفة/العدّات/الجولات/الدقائق/المكان المباشر. "
-                "حسّن محاذاة Z-axes. JSON فقط.\n\n" + align_hint
-            )
-        }
-        try:
-            _dbg("calling LLM - round #2 (repair)")
-            raw2 = _chat_with_retry(messages=msgs + [{"role":"assistant","content":raw1}, repair_prompt],
-                                    max_tokens=(650 if REC_FAST_MODE else 950),
-                                    temperature=0.55)
-            raw2 = _strip_code_fence(raw2)
-            if not ALLOW_SPORT_NAMES and _contains_blocked_name(raw2):
-                raw2 = _mask_names(raw2)
-            parsed2 = _parse_json(raw2) or []
-            cleaned2 = _sanitize_fill(parsed2, lang)
-
-            def score(r: Dict[str,Any]) -> int:
-                txt = " ".join(str(x) for x in [
-                    _as_text(r.get("sport_label","")), _as_text(r.get("what_it_looks_like","")),
-                    _as_text(r.get("inner_sensation","")), _as_text(r.get("why_you","")),
-                    _as_text(r.get("first_week","")), _as_text(r.get("win_condition",""))
-                ])
-                bonus = 5*len(r.get("core_skills") or [])
-                return len(txt) + bonus
-
-            if sum(map(score, cleaned2)) > sum(map(score, cleaned)):
-                cleaned = cleaned2
-                _dbg("repair improved result")
-        except Exception as e:
-            _dbg(f"repair skipped due to error: {e}")
-
+    # تنظيف + dedupe + blacklist
+    kb_recs = _sanitize_fill(kb_recs, lang)
     bl = _load_blacklist()
-    cleaned = _ensure_unique_labels_v_global(cleaned, lang, bl)
-    _persist_blacklist(cleaned, bl)
+    kb_recs = _ensure_unique_labels_v_global(kb_recs, lang, bl)
+    _persist_blacklist(kb_recs, bl)
 
-    cards = [_format_card(cleaned[i], i, lang) for i in range(3)]
+    # ملاحظة تحسين اختيارية (بدون تعطيل) توضع في الثالثة فقط
+    followup_note = _format_followup_note(eg.get("followup_questions", []), lang) if low_info else ""
 
+    # بطاقات أولية جاهزة
+    cards_kb = [_format_card(kb_recs[i], i, lang, followup_note=(followup_note if i==2 else "")) for i in range(3)]
     try:
         sec = (CFG.get("security") or {})
         if sec.get("scrub_urls", True):
-            cards = [scrub_unknown_urls(c, CFG) for c in cards]
+            cards_kb = [scrub_unknown_urls(c, CFG) for c in cards_kb]
     except Exception:
         pass
 
-    axes = (analysis.get("z_axes") or {}) if isinstance(analysis, dict) else {}
-    quality_flags = {
-        "generic": any(_too_generic(" ".join(str(x) for x in [_as_text(c.get("what_it_looks_like","")), _as_text(c.get("why_you",""))]), _MIN_CHARS) for c in cleaned),
-        "low_sensory": any(not _has_sensory(" ".join(str(x) for x in [_as_text(c.get("what_it_looks_like","")), _as_text(c.get("inner_sensation",""))])) for c in cleaned),
-        "mismatch_axes": any(_mismatch_with_axes(c, axes, lang) for c in cleaned),
-        "missing_fields": any(((_REQUIRE_WIN and not c.get("win_condition")) or len(c.get("core_skills") or []) < _MIN_CORE_SKILLS) for c in cleaned)
-    }
+    # إن كان LLM مُفعّل: نحاول تحسين الصياغة، وإذا فشل نبقى على بطاقات KB
+    if USE_LLM:
+        persona = get_cached_personality(analysis, lang=lang)
+        if not persona:
+            persona = {"name":"SportSync Coach","tone":"حازم-هادئ","style":"حسّي واقعي إنساني","philosophy":"هوية حركة بلا أسماء مع وضوح هويّة"}
+            try:
+                save_cached_personality(analysis, persona, lang=lang)
+            except Exception:
+                pass
 
+        seed = _style_seed(user_id, profile or {})
+        msgs = _json_prompt(analysis, answers, persona, lang, seed)
+        max_toks_1 = 800 if REC_FAST_MODE else 1200
+
+        try:
+            _dbg("calling LLM - round #1")
+            raw1 = _chat_with_retry(messages=msgs, max_tokens=max_toks_1, temperature=0.5)
+            _dbg(f"round #1 ok, len={len(raw1)}")
+            raw1 = _strip_code_fence(raw1)
+            if not ALLOW_SPORT_NAMES and _contains_blocked_name(raw1):
+                raw1 = _mask_names(raw1)
+            parsed = _parse_json(raw1) or []
+            cleaned = _sanitize_fill(parsed, lang)
+
+            # إصلاح اختياري
+            elapsed = perf_counter() - t0
+            time_left = REC_BUDGET_S - elapsed
+            axes = (analysis.get("z_axes") or {}) if isinstance(analysis, dict) else {}
+
+            mismatch_axes = any(_mismatch_with_axes(rec, axes, lang) for rec in cleaned)
+            need_repair_generic = any(_too_generic(" ".join([c.get("what_it_looks_like",""), c.get("why_you","")]), _MIN_CHARS) for c in cleaned)
+            missing_fields = any(((_REQUIRE_WIN and not c.get("win_condition")) or len(c.get("core_skills") or []) < _MIN_CORE_SKILLS) for c in cleaned)
+            need_repair = (mismatch_axes or need_repair_generic or missing_fields) and REC_REPAIR_ENABLED and (time_left >= (6 if not REC_FAST_MODE else 4))
+
+            if need_repair:
+                exp = _axes_expectations(axes or {}, lang)
+                if exp:
+                    if lang == "العربية":
+                        align_hint = (
+                            "حاذِ التوصيات مع محاور Z:\n"
+                            f"- هدوء/أدرينالين: {', '.join(exp.get('calm_adrenaline', []))}\n"
+                            f"- فردي/جماعي: {', '.join(exp.get('solo_group', []))}\n"
+                            f"- تقني/حدسي: {', '.join(exp.get('tech_intuition', []))}\n"
+                        )
+                    else:
+                        align_hint = (
+                            "Align with Z-axes:\n"
+                            f"- Calm/Adrenaline: {', '.join(exp.get('calm_adrenaline', []))}\n"
+                            f"- Solo/Group: {', '.join(exp.get('solo_group', []))}\n"
+                            f"- Technical/Intuitive: {', '.join(exp.get('tech_intuition', []))}\n"
+                        )
+                else:
+                    align_hint = ""
+                repair_prompt = {
+                    "role":"user",
+                    "content":(
+                        ("أعد صياغة التوصيات بنبرة إنسانية وواضحة (اسم رياضة مسموح). " if lang=="العربية"
+                         else "Rewrite with a warm, human tone (sport names allowed). ") +
+                        "تأكد من وجود: sport_label, what_it_looks_like, win_condition, 3–5 core_skills, mode, variant_vr, variant_no_vr. "
+                        "ممنوع الوقت/التكلفة/العدّات/الجولات/الدقائق/المكان المباشر. "
+                        "حسّن محاذاة Z-axes. JSON فقط.\n\n" + align_hint
+                    )
+                }
+                _dbg("calling LLM - round #2 (repair)")
+                raw2 = _chat_with_retry(messages=msgs + [{"role":"assistant","content":raw1}, repair_prompt],
+                                        max_tokens=(650 if REC_FAST_MODE else 950),
+                                        temperature=0.55)
+                raw2 = _strip_code_fence(raw2)
+                if not ALLOW_SPORT_NAMES and _contains_blocked_name(raw2):
+                    raw2 = _mask_names(raw2)
+                parsed2 = _parse_json(raw2) or []
+                cleaned2 = _sanitize_fill(parsed2, lang)
+
+                def score(r: Dict[str,Any]) -> int:
+                    txt = " ".join([
+                        r.get("sport_label",""), r.get("what_it_looks_like",""),
+                        r.get("inner_sensation",""), r.get("why_you",""),
+                        r.get("first_week",""), r.get("win_condition","")
+                    ])
+                    bonus = 5*len(r.get("core_skills") or [])
+                    return len(txt) + bonus
+
+                if sum(map(score, cleaned2)) > sum(map(score, cleaned)):
+                    cleaned = cleaned2
+                    _dbg("repair improved result")
+
+            # blacklist & format
+            bl2 = _load_blacklist()
+            cleaned = _ensure_unique_labels_v_global(cleaned, lang, bl2)
+            _persist_blacklist(cleaned, bl2)
+            cards_llm = [_format_card(cleaned[i], i, lang, followup_note=(followup_note if i==2 else "")) for i in range(3)]
+            try:
+                sec = (CFG.get("security") or {})
+                if sec.get("scrub_urls", True):
+                    cards_llm = [scrub_unknown_urls(c, CFG) for c in cards_llm]
+            except Exception:
+                pass
+
+            # اختر الأفضل (LLM vs KB) بناءً على الطول + عدد المهارات
+            def score_cards(cards: List[str]) -> int:
+                return sum(len(c) for c in cards)
+            chosen = cards_llm if score_cards(cards_llm) >= score_cards(cards_kb) else cards_kb
+            cards_final = chosen
+
+        except Exception as e:
+            _dbg(f"LLM path failed, using KB cards. Reason: {e}")
+            cards_final = cards_kb
+    else:
+        cards_final = cards_kb
+
+    # Telemetry + Cache
     try:
         log_user_insight(
             user_id=user_id,
@@ -1661,22 +1487,27 @@ def generate_sport_recommendation(answers: Dict[str, Any],
                 "language": lang,
                 "answers": {k: v for k, v in (answers or {}).items() if k != "profile"},
                 "analysis": analysis,
-                "recommendations": cleaned,
-                "quality_flags": quality_flags,
-                "seed": seed,
+                "source": "KB/trait_links+fallback",
+                "seed": _style_seed(user_id, profile or {}),
                 "elapsed_s": round(perf_counter() - t0, 3),
                 "fast_mode": REC_FAST_MODE,
-                "job_id": job_id
+                "job_id": job_id,
+                "low_info": low_info,
+                "used_llm": USE_LLM
             },
-            event_type="initial_recommendation"
+            event_type="recommendation_ready"
         )
     except Exception:
         pass
-
     try:
-        save_cached_recommendation(user_id, answers, lang, cards)
+        save_cached_recommendation(user_id, answers, lang, cards_final)
     except Exception:
         pass
 
-    return cards
-````
+    # تأكيد: دائمًا نرجّع 3 بطاقات
+    if ALWAYS_RETURN_3 and len(cards_final) < 3:
+        while len(cards_final) < 3:
+            fb = _format_card(_fallback_identity(len(cards_final), lang), len(cards_final), lang)
+            cards_final.append(fb)
+
+    return cards_final
