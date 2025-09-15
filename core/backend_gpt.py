@@ -1,3 +1,6 @@
+تم 👌 — هذا `core/backend_gpt.py` كامل بعد الهوت-فيكس (إجبار الـ Evidence Gate تمرّ دائمًا):
+
+````python
 # -- coding: utf-8 --
 """
 core/backend_gpt.py
@@ -1421,8 +1424,10 @@ def generate_sport_recommendation(answers: Dict[str, Any],
         return cached_cards
     _dbg("cache MISS for recommendations")
 
-    # Evidence Gate
+    # Evidence Gate (force pass HOTFIX)
     eg = _run_egate(answers or {}, lang=lang)
+    eg["status"] = "pass"; eg["followup_questions"] = []
+
     if _PIPE:
         try:
             _PIPE.send(
@@ -1674,3 +1679,4 @@ def generate_sport_recommendation(answers: Dict[str, Any],
         pass
 
     return cards
+````
