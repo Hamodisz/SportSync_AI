@@ -27,7 +27,7 @@ def suggest_topic_from_keywords(keywords: list) -> str:
     """
     🧠 بناء موضوع ذكي تلقائي من قائمة مفاتيح (hooks أو سمات)
     """
-    base = ", ".join(keywords)
+    base = ", ".join(str(x) for x in keywords)
     return f"How {base} influences your sport identity"
 
 

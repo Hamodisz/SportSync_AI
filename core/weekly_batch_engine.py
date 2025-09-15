@@ -21,7 +21,7 @@ def read_user_sessions():
         return list(reader)
 
 def analyze_user(user):
-    full_text = ' '.join([user.get(f"q{i+1}", "") for i in range(20)]) + ' ' + user.get("custom_input", "")
+    full_text = ' '.join(str(user.get(f"q{i+1}", "")) for i in range(20)) + ' ' + str(user.get("custom_input", ""))
     analysis = {
         "traits_1_40": apply_layers_1_40(full_text),
         "traits_41_80": apply_layers_41_80(full_text),

@@ -30,10 +30,10 @@ def _split_scenes(script: str) -> List[str]:
     buf = []
     for line in parts:
         if line.lower().startswith(("scene","مشهد","outro","title")) and buf:
-            scenes.append(" ".join(buf)); buf=[line]
+            scenes.append(" ".join(str(x) for x in buf)); buf=[line]
         else:
             buf.append(line)
-    if buf: scenes.append(" ".join(buf))
+    if buf: scenes.append(" ".join(str(x) for x in buf))
     return scenes[:4] if scenes else [script.strip()[:140]]
 
 def _try_openai(prompt: str) -> bytes | None:

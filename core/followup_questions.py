@@ -26,7 +26,7 @@ def start_dynamic_followup_chat(user_message, user_id, previous_recommendation, 
 نبرتك: {personality['tone']}
 أسلوبك: {personality['style']}
 فلسفتك: {personality['philosophy']}
-السمات المستخرجة: {', '.join(all_traits)}
+السمات المستخرجة: {', '.join(str(x) for x in all_traits)}
 
 مهمتك: التفاعل مع المستخدم بذكاء.
 ❌ لا تكرر التوصية السابقة.
@@ -44,7 +44,7 @@ You are {personality['name']}, a smart coach working within the Sport Sync syste
 Tone: {personality['tone']}
 Style: {personality['style']}
 Philosophy: {personality['philosophy']}
-User traits: {', '.join(all_traits)}
+User traits: {', '.join(str(x) for x in all_traits)}
 
 Your task is to respond intelligently to the user.
 ❌ Do not repeat the previous recommendation.

@@ -49,19 +49,19 @@ def _axes_brief(analysis, lang="العربية"):
             except Exception:
                 pass
             items.append(f"{k}:{v}")
-        return ", ".join(items[:8])
+        return ", ".join(str(x) for x in items[:8])
 
     if lang == "العربية":
         return (
             f"محاور Z (مختصر): {fmt_axes(axes)}\n"
-            + (f"مؤشرات: {', '.join(markers[:6])}\n" if markers else "")
-            + (f"أبرز الدرجات: {', '.join([f'{k}:{scores[k]}' for k in list(scores)[:5]])}\n" if scores else "")
+            + (f"مؤشرات: {', '.join(str(x) for x in markers[:6])}\n" if markers else "")
+            + (f"أبرز الدرجات: {', '.join(str(f'{k}:{scores[k]}') for k in list(scores)[:5])}\n" if scores else "")
         ).strip()
     else:
         return (
             f"Z-axes brief: {fmt_axes(axes)}\n"
-            + (f"Markers: {', '.join(markers[:6])}\n" if markers else "")
-            + (f"Top scores: {', '.join([f'{k}:{scores[k]}' for k in list(scores)[:5]])}\n" if scores else "")
+            + (f"Markers: {', '.join(str(x) for x in markers[:6])}\n" if markers else "")
+            + (f"Top scores: {', '.join(str(f'{k}:{scores[k]}') for k in list(scores)[:5])}\n" if scores else "")
         ).strip()
 
 # =========================================================
@@ -115,10 +115,10 @@ def build_dynamic_personality(analysis, lang="العربية"):
 # [1] برومبت المحادثة الديناميكية (بدون أسماء + بدون مكان/زمن/تكلفة/عدّات)
 # =========================================================
 def build_main_prompt(analysis, answers, personality, previous_recommendation, ratings, lang="العربية"):
-    banned_ar = "، ".join(_BANNED_SPORT_TERMS_AR)
-    banned_en = ", ".join(_BANNED_SPORT_TERMS_EN)
-    avoid = "، ".join(_GENERIC_AVOID)
-    sensory = "، ".join(_SENSORY_TOKENS_AR)
+    banned_ar = "، ".join(str(x) for x in _BANNED_SPORT_TERMS_AR)
+    banned_en = ", ".join(str(x) for x in _BANNED_SPORT_TERMS_EN)
+    avoid = "، ".join(str(x) for x in _GENERIC_AVOID)
+    sensory = "، ".join(str(x) for x in _SENSORY_TOKENS_AR)
     axes_context = _axes_brief(analysis, lang)
 
     if lang == "العربية":
@@ -174,7 +174,7 @@ def build_main_prompt(analysis, answers, personality, previous_recommendation, r
 • علامات تقدّم: ...
 """
     else:
-        avoid_en = ", ".join(_GENERIC_AVOID)
+        avoid_en = ", ".join(str(x) for x in _GENERIC_AVOID)
         prompt = f"""👤 User analysis (brief):
 {analysis.get('quick_profile','fallback')}
 
@@ -232,10 +232,10 @@ Philosophy: {personality.get('philosophy')}
 # [2] برومبت 3 توصيات رئيسية للـ backend (بدون أسماء + بدون مكان/زمن/تكلفة/عدّات)
 # =========================================================
 def generate_main_prompt(analysis, answers, personality, lang="العربية"):
-    banned_ar = "، ".join(_BANNED_SPORT_TERMS_AR)
-    banned_en = ", ".join(_BANNED_SPORT_TERMS_EN)
-    avoid = "، ".join(_GENERIC_AVOID)
-    sensory = "، ".join(_SENSORY_TOKENS_AR)
+    banned_ar = "، ".join(str(x) for x in _BANNED_SPORT_TERMS_AR)
+    banned_en = ", ".join(str(x) for x in _BANNED_SPORT_TERMS_EN)
+    avoid = "، ".join(str(x) for x in _GENERIC_AVOID)
+    sensory = "، ".join(str(x) for x in _SENSORY_TOKENS_AR)
     axes_context = _axes_brief(analysis, lang)
 
     if lang == "العربية":
@@ -292,7 +292,7 @@ def generate_main_prompt(analysis, answers, personality, lang="العربية"):
    • مؤشرات التقدم: ...
 """
     else:
-        avoid_en = ", ".join(_GENERIC_AVOID)
+        avoid_en = ", ".join(str(x) for x in _GENERIC_AVOID)
         prompt = f"""🧠 User analysis (brief): {analysis.get('quick_profile','fallback')}
 {('🧭 ' + axes_context) if axes_context else ''}
 

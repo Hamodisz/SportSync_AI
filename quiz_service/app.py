@@ -114,7 +114,7 @@ def typewriter_write(container, text: str, ms_per_char: int = 6):
     buf = []
     for ch in text:
         buf.append(ch)
-        container.markdown("".join(buf))
+        container.markdown("".join(str(x) for x in buf))
         time.sleep(max(ms_per_char, 1) / 1000.0)
 
 def typewriter_chat(role: str, text: str, ms_per_char: int = 6):
@@ -148,12 +148,12 @@ def status_steps(enabled: bool):
             def _init_(self):
                 self.box = st.empty()
                 self.lines = []
-                self.box.write("\n".join(self.lines))
+                self.box.write("\n".join(str(x) for x in self.lines))
             def _enter_(self): return self
             def _exit_(self, *exc): return False
             def write(self, text): 
                 self.lines.append(text)
-                self.box.write("\n".join(self.lines))
+                self.box.write("\n".join(str(x) for x in self.lines))
             def info(self, text): self.write("ℹ " + text)
             def warning(self, text): self.write("⚠ " + text)
             def success(self, text): self.write("✅ " + text)
@@ -277,7 +277,7 @@ if recs:
 
     # تنزيل التوصيات كنص
     if dl and rendered_text:
-        all_text = "\n\n".join(rendered_text)
+        all_text = "\n\n".join(str(x) for x in rendered_text)
         st.download_button(
             label=T("⬇ تنزيل كملف TXT", "⬇ Download as TXT"),
             data=all_text.encode("utf-8"),
@@ -327,8 +327,8 @@ if st.session_state.get("chat_open", False):
                     ):
                         buf.append(chunk)
                         if LIVE_TYPING:
-                            ph.markdown("".join(buf))
-                    reply = "".join(buf).strip()
+                            ph.markdown("".join(str(x) for x in buf))
+                    reply = "".join(str(x) for x in buf).strip()
                 except Exception:
                     reply = T("تم! سنعدّل الخطة بالتدريج حسب ملاحظتك.",
                               "Got it! We’ll adjust the plan gradually based on your feedback.")

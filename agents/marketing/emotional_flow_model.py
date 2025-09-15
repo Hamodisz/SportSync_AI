@@ -20,7 +20,7 @@ def apply_emotional_structure(story_prompt: dict) -> list:
         f"{hook}\n\n{get_transition(0)}\nWe often go through life accepting certain truths without question.\nBut sometimes… all it takes is one new idea to shatter the illusion.",
 
         # 2. Inner Friction
-        f"{get_transition(1)}\nMany of us feel disconnected — not because we're lazy, but because something in our environment misaligned with us.\nDrivers like {', '.join(drivers)} are often misunderstood — or ignored completely.",
+        f"{get_transition(1)}\nMany of us feel disconnected — not because we're lazy, but because something in our environment misaligned with us.\nDrivers like {', '.join(str(x) for x in drivers)} are often misunderstood — or ignored completely.",
 
         # 3. Collapse Moment
         f"{get_transition(2)}\nWhat if the problem wasn’t you?\nWhat if the system — the culture, the expectations — was never built with someone like you in mind?\nThat realization can feel like collapse — but it’s actually clarity.",
