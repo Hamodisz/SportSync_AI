@@ -132,7 +132,7 @@ def _extract_all_text(answers: Dict[str, Any]) -> str:
                 parts.append(str(ans))
         else:
             parts.append(str(v))
-    return "\n".join(parts)
+    return "\n".join(str(x) for x in parts)
 
 def _clamp(v: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, v))

@@ -69,7 +69,7 @@ def _blob_from_answers(answers: Dict[str, Any]) -> str:
             parts.append(", ".join(map(str, v)))
         else:
             parts.append(str(v))
-    return " ".join(parts)
+    return " ".join(str(x) for x in parts)
 
 KW = {
     "ar": {
@@ -204,7 +204,7 @@ def load_identity(label: str, lang: str, identities_dir: Path, kb: dict) -> Dict
     return out
 
 def _one_liner(*parts: str, max_len: int = 140) -> str:
-    s = " — ".join([p.strip() for p in parts if p and str(p).strip()])
+    s = " — ".join(str(p).strip() for p in parts if p and str(p).strip())
     return s[:max_len]
 
 def _bullets(text: str, max_items: int = 6) -> List[str]:
@@ -249,9 +249,9 @@ def render_card(rec: Dict[str,Any], idx: int, lang: str) -> str:
         if mode: notes.append(("وضع اللعب: " + mode))
         if novr: notes.append("بدون VR: " + novr)
         if vr: notes.append("VR (اختياري): " + vr)
-        if notes: out += ["\n👁‍🗨 ملاحظات:", f"- " + "\n- ".join(notes)]
+        if notes: out += ["\n👁‍🗨 ملاحظات:", f"- " + "\n- ".join(str(x) for x in notes)]
         out.append(f"\nالمستوى التقريبي: {diff}/5")
-        return "\n".join(out)
+        return "\n".join(str(x) for x in out)
     else:
         out = [head, ""]
         if label: out.append(f"🎯 Ideal identity: {label}")
@@ -268,9 +268,9 @@ def render_card(rec: Dict[str,Any], idx: int, lang: str) -> str:
         if mode: notes.append(("Mode: " + mode))
         if novr: notes.append("No-VR: " + novr)
         if vr: notes.append("VR (optional): " + vr)
-        if notes: out += ["\n👁‍🗨 Notes:", f"- " + "\n- ".join(notes)]
+        if notes: out += ["\n👁‍🗨 Notes:", f"- " + "\n- ".join(str(x) for x in notes)]
         out.append(f"\nApprox level: {diff}/5")
-        return "\n".join(out)
+        return "\n".join(str(x) for x in out)
 
 # ---------- نقطة الدخول ----------
 def rank_and_render(answers: Dict[str,Any], lang: str,

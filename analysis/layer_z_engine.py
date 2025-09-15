@@ -71,7 +71,7 @@ def _quick_fallback_from_text(answers: Dict[str, Any], lang: str) -> List[str]:
             else: joined.append(str(a))
         else:
             joined.append(str(v))
-    text = "\n".join(joined).lower()
+    text = "\n".join(str(x) for x in joined).lower()
     ar = (lang == "العربية")
 
     out: List[str] = []

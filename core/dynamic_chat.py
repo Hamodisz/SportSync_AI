@@ -192,15 +192,15 @@ def _profile_brief(profile: Dict[str, Any], lang: str) -> str:
     if lang == "العربية":
         return (
             "ملخص بروفايل مرمّز:\n"
-            f"- إشارات: {', '.join(signals) if signals else 'n/a'}\n"
-            f"- أعلى الدرجات: {', '.join(top_scores) if top_scores else 'n/a'}\n"
+            f"- إشارات: {', '.join(str(x) for x in signals) if signals else 'n/a'}\n"
+            f"- أعلى الدرجات: {', '.join(str(x) for x in top_scores) if top_scores else 'n/a'}\n"
             f"- تفضيلات: وقت={prefs.get('time_block','n/a')}, ميزانية={prefs.get('budget_hint','n/a')}, بيئة={prefs.get('environment_pref','n/a')}\n"
         )
     else:
         return (
             "Encoded profile brief:\n"
-            f"- Signals: {', '.join(signals) if signals else 'n/a'}\n"
-            f"- Top scores: {', '.join(top_scores) if top_scores else 'n/a'}\n"
+            f"- Signals: {', '.join(str(x) for x in signals) if signals else 'n/a'}\n"
+            f"- Top scores: {', '.join(str(x) for x in top_scores) if top_scores else 'n/a'}\n"
             f"- Prefs: time={prefs.get('time_block','n/a')}, budget={prefs.get('budget_hint','n/a')}, env={prefs.get('environment_pref','n/a')}\n"
         )
 
@@ -277,9 +277,9 @@ def start_dynamic_chat(
         # 7.1) ملخص طبقة Z + البروفايل المرمّز (system قصير)
         brief_lines = []
         if z:
-            brief_lines.append(("محركات Z: " if lang == "العربية" else "Layer-Z: ") + ", ".join(z))
+            brief_lines.append(("محركات Z: " if lang == "العربية" else "Layer-Z: ") + ", ".join(str(x) for x in z))
         brief_lines.append(_profile_brief(encoded, lang))
-        messages.append({"role": "system", "content": "\n".join(brief_lines)})
+        messages.append({"role": "system", "content": "\n".join(str(x) for x in brief_lines)})
 
         # 7.2) سياق مختصر حول التوصيات والتقييمات + Z-axes/Z-markers
         if previous_recommendation:
@@ -296,7 +296,7 @@ def start_dynamic_chat(
         try:
             brief_context += (
                 f"- Z-axes: {json.dumps(encoded.get('axes', {}), ensure_ascii=False)}\n"
-                f"- Z-markers: {', '.join(encoded.get('z_markers', []))}\n"
+                f"- Z-markers: {', '.join(str(x) for x in encoded.get('z_markers', []))}\n"
             )
         except Exception:
             pass
@@ -441,9 +441,9 @@ def start_dynamic_chat_stream(
     messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
     brief = []
     if z:
-        brief.append(("محركات Z: " if lang=="العربية" else "Layer-Z: ") + ", ".join(z))
+        brief.append(("محركات Z: " if lang=="العربية" else "Layer-Z: ") + ", ".join(str(x) for x in z))
     brief.append(_profile_brief(encoded, lang))
-    messages.append({"role": "system", "content": "\n".join(brief)})
+    messages.append({"role": "system", "content": "\n".join(str(x) for x in brief)})
 
     if previous_recommendation:
         rec_join = "\n- " + "\n- ".join(map(str, previous_recommendation[:3]))
@@ -459,7 +459,7 @@ def start_dynamic_chat_stream(
     try:
         brief_context += (
             f"- Z-axes: {json.dumps(encoded.get('axes', {}), ensure_ascii=False)}\n"
-            f"- Z-markers: {', '.join(encoded.get('z_markers', []))}\n"
+            f"- Z-markers: {', '.join(str(x) for x in encoded.get('z_markers', []))}\n"
         )
     except Exception:
         pass
@@ -502,7 +502,7 @@ def start_dynamic_chat_stream(
                 yield part
     finally:
         # تسجيل التفاعل بعد اكتمال البث
-        reply_full = "".join(final_buf).strip()
+        reply_full = "".join(str(x) for x in final_buf).strip()
         payload_log = {
             "language": lang,
             "answers": answers,

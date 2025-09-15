@@ -202,7 +202,7 @@ def _as_text(v: Any) -> str:
     if isinstance(v, str):
         return v
     if isinstance(v, list):
-        return "، ".join(_as_text(x) for x in v if _as_text(x))
+        return "، ".join(str(_as_text(x)) for x in v if _as_text(x))
     if isinstance(v, (int, float)):
         return str(v)
     try:
@@ -250,7 +250,7 @@ def _extract_signals(answers: Dict[str, Any], lang: str) -> Dict[str, int]:
     باستخدام z_intent_keywords إن توفّرت.
     """
     blob = " ".join(
-        (v.get("answer") if isinstance(v, dict) and "answer" in v else str(v))
+        str(v.get("answer") if isinstance(v, dict) and "answer" in v else v)
         for v in (answers or {}).values()
     )
     blob_l = blob.lower()
@@ -316,7 +316,7 @@ def _extract_profile(answers: Dict[str, Any], lang: str) -> Optional[Dict[str, A
         preferences = enc.get("prefs", enc.get("preferences", {}))
         z_markers = enc.get("z_markers", [])
         signals   = enc.get("signals", [])
-        hints = " | ".join([*z_markers, *signals])[:1000]
+        hints = " | ".join(str(x) for x in [*z_markers, *signals])[:1000]
         return {
             "scores": enc.get("scores", {}),
             "axes": enc.get("axes", {}),
@@ -399,7 +399,7 @@ def _format_followup_card(followups: List[str], lang: str) -> str:
     lines.append("")
     lines.append("أرسل إجاباتك وسنقترح هوية رياضية واضحة فورًا." if lang == "العربية"
                  else "Send your answers and I’ll propose a clear sport-identity right away.")
-    return "\n".join(lines)
+    return "\n".join(str(x) for x in lines)
 
 # ========= Rules & helpers =========
 _BLOCKLIST = r"(جري|ركض|سباحة|كرة|قدم|سلة|طائرة|تنس|ملاكمة|كاراتيه|كونغ فو|يوجا|يوغا|بيلاتس|رفع|أثقال|تزلج|دراج|دراجة|ركوب|خيول|باركور|جودو|سكواش|بلياردو|جولف|كرة طائرة|كرة اليد|هوكي|سباق|ماراثون|مصارعة|MMA|Boxing|Karate|Judo|Taekwondo|Soccer|Football|Basketball|Tennis|Swim|Swimming|Running|Run|Cycle|Cycling|Bike|Biking|Yoga|Pilates|Rowing|Row|Skate|Skating|Ski|Skiing|Climb|Climbing|Surf|Surfing|Golf|Volleyball|Handball|Hockey|Parkour|Wrestling)"
@@ -448,7 +448,7 @@ def _split_sentences(text: str) -> List[str]:
 
 def _scrub_forbidden(text: str) -> str:
     kept = [s for s in _split_sentences(text) if not _FORBIDDEN_SENT.search(_normalize_ar(s))]
-    return "، ".join(kept).strip(" .،")
+    return "، ".join(str(x) for x in kept).strip(" .،")
 
 def _clip(s: str, n: int) -> str:
     if not s: return ""
@@ -467,7 +467,7 @@ def _answers_to_bullets(answers: Dict[str, Any]) -> str:
         if isinstance(a, list):
             a = ", ".join(map(str, a))
         out.append(f"- {q}: {_clip(str(a), 160)}")
-    txt = "\n".join(out)
+    txt = "\n".join(str(x) for x in out)
     return _clip(txt, 1800)
 
 def _too_generic(text: str, min_chars: int = 280) -> bool:
@@ -478,7 +478,7 @@ def _has_sensory(text: str, min_hits: int = 3) -> bool:
     return sum(1 for w in _SENSORY if w in (text or "")) >= min_hits
 
 def _is_meaningful(rec: Dict[str, Any]) -> bool:
-    blob = " ".join([
+    blob = " ".join(str(x) for x in [
         _as_text(rec.get("sport_label","")), _as_text(rec.get("what_it_looks_like","")),
         _as_text(rec.get("why_you","")), _as_text(rec.get("first_week","")),
         _as_text(rec.get("progress_markers","")), _as_text(rec.get("win_condition",""))
@@ -521,7 +521,7 @@ def _axes_expectations(axes: Dict[str, float], lang: str) -> Dict[str, List[str]
 def _mismatch_with_axes(rec: Dict[str, Any], axes: Dict[str, float], lang: str) -> bool:
     exp = _axes_expectations(axes or {}, lang)
     if not exp: return False
-    blob = " ".join(_as_text(rec.get(k,"")) for k in ("what_it_looks_like","inner_sensation","why_you","first_week"))
+    blob = " ".join(str(_as_text(rec.get(k,""))) for k in ("what_it_looks_like","inner_sensation","why_you","first_week"))
     blob_l = blob.lower()
     for _, words in exp.items():
         if words and not any(w.lower() in blob_l for w in words):
@@ -547,7 +547,7 @@ def _tokenize(text: str) -> List[str]:
 
 def _sig_for_rec(r: Dict[str, Any]) -> set:
     core = r.get("core_skills") or []
-    core_txt = " ".join(core) if isinstance(core, list) else str(core)
+    core_txt = " ".join(str(x) for x in core) if isinstance(core, list) else str(core)
     toks = set(_tokenize(r.get("sport_label","")) + _tokenize(core_txt))
     return toks
 
@@ -809,7 +809,7 @@ def _derive_binary_traits(analysis: Dict[str, Any], answers: Dict[str, Any], lan
         traits["sustained_attention"] = max(traits.get("sustained_attention", 0.0), 0.6)
 
     # قلق/نفور من التكرار/حاجة مكاسب سريعة
-    ar_blob = _normalize_ar(" ".join(_norm_answer_value(v) for v in (answers or {}).values()).lower())
+    ar_blob = _normalize_ar(" ".join(str(_norm_answer_value(v)) for v in (answers or {}).values()).lower())
     if any(w in ar_blob for w in ["قلق","مخاوف","توتر شديد","رهاب","خوف"]):
         traits["anxious"] = 1.0
     if any("نفور" in s or "تكرار" in s for s in silent):
@@ -853,7 +853,7 @@ def _pick_kb_recommendations(user_axes: Dict[str, Any], user_signals: Dict[str, 
     exp = _axes_expectations(user_axes or {}, lang)
     for rec in identities:
         r = _sanitize_record(rec)
-        blob = " ".join([_as_text(r.get("what_it_looks_like","")), _as_text(r.get("why_you","")), _as_text(r.get("first_week",""))]).lower()
+        blob = " ".join(str(x) for x in [_as_text(r.get("what_it_looks_like","")), _as_text(r.get("why_you","")), _as_text(r.get("first_week",""))]).lower()
         hit = 0
         for words in exp.values():
             if words and any(w.lower() in blob for w in words):
@@ -1189,11 +1189,11 @@ def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
                 {"calm_adrenaline":"Calm/Adrenaline","solo_group":"Solo/Group","tech_intuition":"Technical/Intuitive"}
         for k, words in exp.items():
             if words:
-                exp_lines.append(f"{title[k]}: {', '.join(words)}")
-    axis_hint = ("\n".join(exp_lines)) if exp_lines else ""
+                exp_lines.append(f"{title[k]}: {', '.join(str(x) for x in words)}")
+    axis_hint = ("\n".join(str(x) for x in exp_lines)) if exp_lines else ""
 
     z_intent = compact_analysis.get("z_intent", [])
-    intent_hint = ("، ".join(z_intent) if lang=="العربية" else ", ".join(z_intent)) if z_intent else ""
+    intent_hint = ("، ".join(str(x) for x in z_intent) if lang=="العربية" else ", ".join(str(x) for x in z_intent)) if z_intent else ""
 
     if lang == "العربية":
         sys = (
@@ -1272,7 +1272,7 @@ def _to_bullets(text: Any, max_items: int = 6) -> List[str]:
     return items[:max_items]
 
 def _one_liner(*parts: str, max_len: int = 140) -> str:
-    s = " — ".join([p.strip() for p in parts if p and p.strip()])
+    s = " — ".join(str(p).strip() for p in parts if p and str(p).strip())
     return s[:max_len]
 
 def _format_card(rec: Dict[str, Any], i: int, lang: str) -> str:
@@ -1317,9 +1317,9 @@ def _format_card(rec: Dict[str, Any], i: int, lang: str) -> str:
         if novr: notes.append("بدون VR: " + novr)
         if vr: notes.append("VR (اختياري): " + vr)
         if notes:
-            out += ["\n👁‍🗨 ملاحظات:", f"- " + "\n- ".join(notes)]
+            out += ["\n👁‍🗨 ملاحظات:", f"- " + "\n- ".join(str(x) for x in notes)]
         out.append(f"\nالمستوى التقريبي: {diff}/5")
-        return "\n".join(out)
+        return "\n".join(str(x) for x in out)
     else:
         out = [head, ""]
         if label: out.append(f"🎯 Ideal identity: {label}")
@@ -1342,16 +1342,16 @@ def _format_card(rec: Dict[str, Any], i: int, lang: str) -> str:
         if novr: notes.append("No-VR: " + novr)
         if vr: notes.append("VR (optional): " + vr)
         if notes:
-            out += ["\n👁‍🗨 Notes:", f"- " + "\n- ".join(notes)]
+            out += ["\n👁‍🗨 Notes:", f"- " + "\n- ".join(str(x) for x in notes)]
         out.append(f"\nApprox level: {diff}/5")
-        return "\n".join(out)
+        return "\n".join(str(x) for x in out)
 
 def _sanitize_fill(recs: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]]:
     temp: List[Dict[str, Any]] = []
     for i in range(3):
         r = recs[i] if i < len(recs) else {}
         r = _fill_defaults(_sanitize_record(r), lang)
-        blob = " ".join([
+        blob = " ".join(str(x) for x in [
             _as_text(r.get("sport_label","")), _as_text(r.get("what_it_looks_like","")),
             _as_text(r.get("why_you","")), _as_text(r.get("first_week","")),
             _as_text(r.get("progress_markers","")), _as_text(r.get("win_condition",""))
@@ -1570,7 +1570,7 @@ def generate_sport_recommendation(answers: Dict[str, Any],
     axes = (analysis.get("z_axes") or {}) if isinstance(analysis, dict) else {}
 
     mismatch_axes = any(_mismatch_with_axes(rec, axes, lang) for rec in cleaned)
-    need_repair_generic = any(_too_generic(" ".join([_as_text(c.get("what_it_looks_like","")), _as_text(c.get("why_you",""))]), _MIN_CHARS) for c in cleaned)
+    need_repair_generic = any(_too_generic(" ".join(str(x) for x in [_as_text(c.get("what_it_looks_like","")), _as_text(c.get("why_you",""))]), _MIN_CHARS) for c in cleaned)
     missing_fields = any(((_REQUIRE_WIN and not c.get("win_condition")) or len(c.get("core_skills") or []) < _MIN_CORE_SKILLS) for c in cleaned)
     need_repair = (mismatch_axes or need_repair_generic or missing_fields) and REC_REPAIR_ENABLED and (time_left >= (6 if not REC_FAST_MODE else 4))
 
@@ -1581,16 +1581,16 @@ def generate_sport_recommendation(answers: Dict[str, Any],
             if lang == "العربية":
                 align_hint = (
                     "حاذِ التوصيات مع محاور Z:\n"
-                    f"- هدوء/أدرينالين: {', '.join(exp.get('calm_adrenaline', []))}\n"
-                    f"- فردي/جماعي: {', '.join(exp.get('solo_group', []))}\n"
-                    f"- تقني/حدسي: {', '.join(exp.get('tech_intuition', []))}\n"
+                    f"- هدوء/أدرينالين: {', '.join(str(x) for x in exp.get('calm_adrenaline', []))}\n"
+                    f"- فردي/جماعي: {', '.join(str(x) for x in exp.get('solo_group', []))}\n"
+                    f"- تقني/حدسي: {', '.join(str(x) for x in exp.get('tech_intuition', []))}\n"
                 )
             else:
                 align_hint = (
                     "Align with Z-axes:\n"
-                    f"- Calm/Adrenaline: {', '.join(exp.get('calm_adrenaline', []))}\n"
-                    f"- Solo/Group: {', '.join(exp.get('solo_group', []))}\n"
-                    f"- Technical/Intuitive: {', '.join(exp.get('tech_intuition', []))}\n"
+                    f"- Calm/Adrenaline: {', '.join(str(x) for x in exp.get('calm_adrenaline', []))}\n"
+                    f"- Solo/Group: {', '.join(str(x) for x in exp.get('solo_group', []))}\n"
+                    f"- Technical/Intuitive: {', '.join(str(x) for x in exp.get('tech_intuition', []))}\n"
                 )
         repair_prompt = {
             "role":"user",
@@ -1614,7 +1614,7 @@ def generate_sport_recommendation(answers: Dict[str, Any],
             cleaned2 = _sanitize_fill(parsed2, lang)
 
             def score(r: Dict[str,Any]) -> int:
-                txt = " ".join([
+                txt = " ".join(str(x) for x in [
                     _as_text(r.get("sport_label","")), _as_text(r.get("what_it_looks_like","")),
                     _as_text(r.get("inner_sensation","")), _as_text(r.get("why_you","")),
                     _as_text(r.get("first_week","")), _as_text(r.get("win_condition",""))
@@ -1643,8 +1643,8 @@ def generate_sport_recommendation(answers: Dict[str, Any],
 
     axes = (analysis.get("z_axes") or {}) if isinstance(analysis, dict) else {}
     quality_flags = {
-        "generic": any(_too_generic(" ".join([_as_text(c.get("what_it_looks_like","")), _as_text(c.get("why_you",""))]), _MIN_CHARS) for c in cleaned),
-        "low_sensory": any(not _has_sensory(" ".join([_as_text(c.get("what_it_looks_like","")), _as_text(c.get("inner_sensation",""))])) for c in cleaned),
+        "generic": any(_too_generic(" ".join(str(x) for x in [_as_text(c.get("what_it_looks_like","")), _as_text(c.get("why_you",""))]), _MIN_CHARS) for c in cleaned),
+        "low_sensory": any(not _has_sensory(" ".join(str(x) for x in [_as_text(c.get("what_it_looks_like","")), _as_text(c.get("inner_sensation",""))])) for c in cleaned),
         "mismatch_axes": any(_mismatch_with_axes(c, axes, lang) for c in cleaned),
         "missing_fields": any(((_REQUIRE_WIN and not c.get("win_condition")) or len(c.get("core_skills") or []) < _MIN_CORE_SKILLS) for c in cleaned)
     }

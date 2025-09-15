@@ -99,7 +99,7 @@ def export_video_package(script_text, index=1):
     (folder / "long_script.txt").write_text(script_text, encoding="utf-8")
     (folder / "title.txt").write_text(title, encoding="utf-8")
     (folder / "description.txt").write_text(desc, encoding="utf-8")
-    (folder / "tags.txt").write_text(", ".join(tags), encoding="utf-8")
+    (folder / "tags.txt").write_text(", ".join(str(x) for x in tags), encoding="utf-8")
     (folder / "thumbnail_text.txt").write_text(thumbnail_text, encoding="utf-8")
 
     # Shorts

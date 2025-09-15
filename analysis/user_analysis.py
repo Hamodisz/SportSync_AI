@@ -32,7 +32,7 @@ def _answers_to_text(answers: Dict[str, Any]) -> str:
                 parts.append(str(a))
         else:
             parts.append(str(v))
-    return " ".join(parts)
+    return " ".join(str(x) for x in parts)
 
 def _try_encode_profile(answers: Dict[str, Any], lang: str) -> Dict[str, Any]:
     # 1) لو فيه بروفايل مرسَّل جاهز
@@ -84,7 +84,7 @@ def apply_all_analysis_layers(text_or_answers: Union[str, Dict[str, Any]], lang:
         z_drivers = [f"Layer-Z error: {e}"]
 
     # ملخّص سريع قابل للعرض
-    quick_profile = " | ".join([t for t in traits if isinstance(t, str)])[:240]
+    quick_profile = " | ".join(str(t) for t in traits if isinstance(t, str))[:240]
 
     # بروفايل مُشفَّر (إن توفر)
     encoded = _try_encode_profile(answers, lang) if answers else {}
