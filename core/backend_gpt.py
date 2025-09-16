@@ -1361,7 +1361,7 @@ def _format_card(rec: Dict[str, Any], i: int, lang: str) -> str:
     head_en = ["🟢 Recommendation 1","🌿 Recommendation 2","🔮 Recommendation 3 (Creative)"]
     head = (head_ar if lang == "العربية" else head_en)[i]
 
-    label = (rec.get("sport_label") or "").strip()
+    label = _norm_text(rec.get("sport_label") or "")
     scene = _norm_text(rec.get("what_it_looks_like") or rec.get("scene") or "")
     inner = _norm_text(rec.get("inner_sensation") or "")
     why   = _norm_text(rec.get("why_you") or "")
@@ -1385,7 +1385,7 @@ def _format_card(rec: Dict[str, Any], i: int, lang: str) -> str:
             for b in _to_bullets(why, 4) or [why]: out.append(f"- {b}")
         if skills:
             out += ["\n🧩 مهارات أساسية:"]
-            for s in skills[:5]: out.append(f"- {s}")
+            for s in [ _norm_text(x) for x in skills[:5] ]: out.append(f"- {s}")
         if win: out += ["\n🏁 كيف تفوز؟", f"- {win}"]
         if week:
             out += ["\n🚀 أول أسبوع (نوعي):"]
@@ -1400,6 +1400,32 @@ def _format_card(rec: Dict[str, Any], i: int, lang: str) -> str:
         if notes:
             out += ["\n👁‍🗨 ملاحظات:", f"- " + "\n- ".join(notes)]
         out.append(f"\nالمستوى التقريبي: {diff}/5")
+        return "\n".join(out)
+
+    else:
+        out = [head, ""]
+        if label: out.append(f"🎯 Ideal identity: {label}")
+        if intro: out += ["\n💡 What is it?", f"- {intro}"]
+        if why:
+            out += ["\n🎮 Why you"]
+            for b in _to_bullets(why, 4) or [why]: out.append(f"- {b}")
+        if skills:
+            out += ["\n🧩 Core skills:"]
+            for s in [ _norm_text(x) for x in skills[:5] ]: out.append(f"- {s}")
+        if win: out += ["\n🏁 Win condition", f"- {win}"]
+        if week:
+            out += ["\n🚀 First week (qualitative)"]
+            for b in week: out.append(f"- {b}")
+        if prog:
+            out += ["\n✅ Progress cues"]
+            for b in prog: out.append(f"- {b}")
+        notes = []
+        if mode: notes.append(("Mode: " + mode))
+        if novr: notes.append("No-VR: " + novr)
+        if vr: notes.append("VR (optional): " + vr)
+        if notes:
+            out += ["\n👁‍🗨 Notes:", f"- " + "\n- ".join(notes)]
+        out.append(f"\nApprox level: {diff}/5")
         return "\n".join(out)
     else:
         out = [head, ""]
