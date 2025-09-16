@@ -1788,7 +1788,7 @@ def generate_sport_recommendation(answers: Dict[str, Any],
     cleaned = _ensure_unique_labels_v_global(cleaned, lang, bl)
     _persist_blacklist(cleaned, bl)
 
-    # تحويلها لبطاقات نصية
+       # تحويلها لبطاقات نصية
     cards = [_format_card(cleaned[i], i, lang) for i in range(3)]
 
     # تنظيف أي روابط غير معروفة (حسب الإعدادات)
@@ -1799,7 +1799,22 @@ def generate_sport_recommendation(answers: Dict[str, Any],
     except Exception:
         pass
 
-    # لوج جودة داخلي
+    # ✅ حارس أخير: تأكد أن كل بطاقة عبارة عن نص (وليس list أو dict)
+    try:
+        cards = [_norm_text(c) for c in cards]
+    except Exception:
+        safe_cards: List[str] = []
+        for c in cards:
+            try:
+                safe_cards.append(_norm_text(c))
+            except Exception:
+                safe_cards.append(str(c))
+        cards = safe_cards
+
+    # (اختياري) لوج تشخيصي لو فعّلت REC_DEBUG=1
+    _dbg(f"[CARDS TYPES] { [type(c).__name__ for c in cards] }")
+
+    # لوج جودة داخلي (يعتمد على cleaned، مو على cards)
     axes = (analysis.get("z_axes") or {}) if isinstance(analysis, dict) else {}
     quality_flags = {
         "generic": any(_too_generic(
