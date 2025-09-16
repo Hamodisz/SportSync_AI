@@ -33,26 +33,43 @@ try:
 except Exception as e:
     raise RuntimeError("أضف الحزمة في requirements: openai>=1.6.1,<2") from e
 
-OPENAI_API_KEY   = os.getenv("OPENAI_API_KEY")
-OPENAI_BASE_URL  = os.getenv("OPENAI_BASE_URL")  # اختياري (Azure/OpenRouter...)
-OPENAI_ORG       = os.getenv("OPENAI_ORG")       # اختياري
-
-OpenAI_CLIENT = (
-    OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL, organization=OPENAI_ORG)
-    if OPENAI_API_KEY else None
+# نقرأ المفتاح من أكثر من احتمال (OpenAI / OpenRouter / Azure)
+OPENAI_API_KEY  = (
+    os.getenv("OPENAI_API_KEY")
+    or os.getenv("OPENROUTER_API_KEY")
+    or os.getenv("AZURE_OPENAI_API_KEY")
 )
+# نقرأ عنوان الـBase URL إذا كنت تستخدم OpenRouter/Azure (اختياري)
+OPENAI_BASE_URL = (
+    os.getenv("OPENAI_BASE_URL")
+    or os.getenv("OPENROUTER_BASE_URL")
+    or os.getenv("AZURE_OPENAI_ENDPOINT")
+)
+OPENAI_ORG      = os.getenv("OPENAI_ORG")  # غالباً فاضي مع OpenRouter
 
-# ========= Runtime Guards / Tunables =========
-REC_BUDGET_S = float(os.getenv("REC_BUDGET_S", "22"))                   # ميزانية زمنية
-REC_REPAIR_ENABLED = os.getenv("REC_REPAIR_ENABLED", "1") == "1"        # تفعيل جولة إصلاح LLM
-REC_FAST_MODE = os.getenv("REC_FAST_MODE", "0") == "1"                  # وضع سريع
-REC_DEBUG = os.getenv("REC_DEBUG", "0") == "1"                          # لوج تشخيصي
-CHAT_MODEL_FALLBACK = os.getenv("CHAT_MODEL_FALLBACK", "gpt-4o-mini")   # موديل احتياطي
-MAX_PROMPT_CHARS = int(os.getenv("MAX_PROMPT_CHARS", "6000"))           # قصّ برومبت
+OpenAI_CLIENT = None
+if OPENAI_API_KEY:
+    try:
+        # نبني الوسيطات بشكل مرن
+        client_kwargs = {"api_key": OPENAI_API_KEY}
+        if OPENAI_BASE_URL:  # خله None إذا تستخدم OpenAI العادي
+            client_kwargs["base_url"] = OPENAI_BASE_URL
+        if OPENAI_ORG:
+            client_kwargs["organization"] = OPENAI_ORG
 
+        OpenAI_CLIENT = OpenAI(**client_kwargs)
+    except Exception as e:
+        print(f"[ENV] ⚠️ فشل إنشاء عميل OpenAI: {e}")
+        OpenAI_CLIENT = None
+else:
+    print("[ENV] ⚠️ لم أجد أي مفتاح API (OPENAI_API_KEY / OPENROUTER_API_KEY / AZURE_OPENAI_API_KEY).")
+
+# (اختياري) اطبع حالة الـ LLM لو فعّلت REC_DEBUG=1
 def _dbg(msg: str) -> None:
-    if REC_DEBUG:
+    if os.getenv("REC_DEBUG", "0") == "1":
         print(f"[RECDBG] {msg}")
+
+_dbg(f"LLM READY? {'YES' if OpenAI_CLIENT else 'NO'} | base={OPENAI_BASE_URL or 'default'}")
 
 # ========= App Config =========
 try:
