@@ -576,7 +576,7 @@ def _sanitize_record(r: Dict[str, Any]) -> Dict[str, Any]:
         if k in r:
             r[k] = _scrub_forbidden(_mask_names(_norm_text(r.get(k))))
 
-    # core_skills
+    # core_skills → قائمة نصوص نظيفة (بحد أقصى 6)
     cs = r.get("core_skills")
     if isinstance(cs, str):
         parts = [p.strip(" -•\t") for p in re.split(r"[,\n،]+", cs) if p.strip()]
@@ -587,15 +587,18 @@ def _sanitize_record(r: Dict[str, Any]) -> Dict[str, Any]:
     else:
         r["core_skills"] = []
 
+    # difficulty
     try:
         d = int(r.get("difficulty", 3))
         r["difficulty"] = max(1, min(5, d))
     except Exception:
         r["difficulty"] = 3
 
+    # mode
     if r.get("mode") not in ("Solo","Team","Solo/Team","فردي","جماعي","فردي/جماعي"):
         r["mode"] = r.get("mode","Solo")
     return r
+
 
 def _fallback_identity(i: int, lang: str) -> Dict[str, Any]:
     if lang == "العربية":
@@ -717,6 +720,7 @@ def _fallback_identity(i: int, lang: str) -> Dict[str, Any]:
             }
         ]
     return presets[i % len(presets)]
+
 
 def _fill_defaults(r: Dict[str, Any], lang: str) -> Dict[str, Any]:
     r = dict(r or {})
