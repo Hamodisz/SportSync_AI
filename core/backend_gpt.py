@@ -1428,20 +1428,26 @@ def _format_card(rec: Dict[str, Any], i: int, lang: str) -> str:
         return "\n".join(out)
 
 def _sanitize_fill(recs: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]]:
+    """
+    تنظّف وتكمّل التوصيات القادمة من الـKB أو الـLLM وتمنع الأخطاء الناتجة من
+    وجود قوائم/ديكشنري داخل الحقول النصية.
+    """
     temp: List[Dict[str, Any]] = []
     for i in range(3):
         r = recs[i] if i < len(recs) else {}
         r = _fill_defaults(_sanitize_record(r), lang)
 
-        # نكوّن نص موحّد للتحقق من المعنى والحسية وعدم العمومية
+        # تأكد أن كل القيم نصوص قبل الـ join
         vals = [
-            _norm_text(r.get("sport_label","")), _norm_text(r.get("what_it_looks_like","")),
-            _norm_text(r.get("why_you","")), _norm_text(r.get("first_week","")),
-            _norm_text(r.get("progress_markers","")), _norm_text(r.get("win_condition","")),
+            _norm_text(r.get("sport_label","")),
+            _norm_text(r.get("what_it_looks_like","")),
+            _norm_text(r.get("why_you","")),
+            _norm_text(r.get("first_week","")),
+            _norm_text(r.get("progress_markers","")),
+            _norm_text(r.get("win_condition","")),
         ]
         blob = " ".join(vals)
 
-        # شروط القبول الدنيا
         if _too_generic(blob, _MIN_CHARS) or not _has_sensory(blob) or not _is_meaningful(r) \
            or (_REQUIRE_WIN and not r.get("win_condition")) \
            or len(r.get("core_skills") or []) < _MIN_CORE_SKILLS \
@@ -1450,9 +1456,7 @@ def _sanitize_fill(recs: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]
 
         temp.append(r)
 
-    # إزالة التكرار + تعبئة بدائل فريدة لو تكرر شيء
     return _hard_dedupe_and_fill(temp, lang)
-)
 
 # ========= OpenAI helper with timeout + retry =========
 def _chat_with_retry(messages: List[Dict[str, str]], max_tokens: int, temperature: float) -> str:
