@@ -102,7 +102,18 @@ try:
 except Exception:
     egate_evaluate = None  # سنستخدم fallback أدناه
 
-# Soft persona cache
+# ========= Helpers: Arabic normalization =========
+_AR_DIAC = r"[ًٌٍَُِّْـ]"
+def _normalize_ar(t: str) -> str:
+    if not t: return ""
+    t = re.sub(_AR_DIAC, "", t)
+    t = t.replace("أ","ا").replace("إ","ا").replace("آ","ا")
+    t = t.replace("ؤ","و").replace("ئ","ي")
+    t = t.replace("ة","ه").replace("ى","ي")
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+# ========= Soft persona cache =========
 try:
     from core.memory_cache import get_cached_personality, save_cached_personality
 except Exception:
@@ -166,12 +177,12 @@ _ALIAS_MAP: Dict[str, str] = {}
 if isinstance(KB.get("label_aliases"), dict):
     for canon, alist in KB["label_aliases"].items():
         for a in alist:
-            _ALIAS_MAP[a.strip().lower()] = canon
+            _ALIAS_MAP[_normalize_ar(a).lower()] = canon  # <-- تطبيع عربي قبل الحفظ
 
 AL2 = _load_json_safe(AL_PATH)
 if isinstance(AL2.get("canonical"), dict):
     for a, canon in AL2["canonical"].items():
-        _ALIAS_MAP[a.strip().lower()] = canon
+        _ALIAS_MAP[_normalize_ar(a).lower()] = canon  # <-- تطبيع عربي قبل الحفظ
 
 # New KB knobs (priors & links & guards & z-intent keywords)
 KB_PRIORS: Dict[str, float] = dict(KB.get("priors") or {})
@@ -183,17 +194,6 @@ KB_ZI: Dict[str, Dict[str, List[str]]] = dict(KB.get("z_intent_keywords") or {})
 _FORBIDDEN_GENERIC = set(
     KB.get("guards", {}).get("forbidden_generic_labels", [])
 ) | set(AL2.get("forbidden_generic", []) or [])
-
-# ========= Helpers: Arabic normalization =========
-_AR_DIAC = r"[ًٌٍَُِّْـ]"
-def _normalize_ar(t: str) -> str:
-    if not t: return ""
-    t = re.sub(_AR_DIAC, "", t)
-    t = t.replace("أ","ا").replace("إ","ا").replace("آ","ا")
-    t = t.replace("ؤ","و").replace("ئ","ي")
-    t = t.replace("ة","ه").replace("ى","ي")
-    t = re.sub(r"\s+", " ", t).strip()
-    return t
 
 # ========= Analysis import (user traits) =========
 def _call_analyze_user_from_answers(user_id: str, answers: Dict[str, Any], lang: str) -> Dict[str, Any]:
@@ -1035,7 +1035,7 @@ def _template_for_label(label: str, lang: str) -> Optional[Dict[str, Any]]:
                            ["gaze tracking","snap decision","coordination"],
             "mode": "Solo/Team",
             "variant_vr": "سيناريو تكتيكي افتراضي.",
-            "variant_no_vر": "تمارين دقة قصيرة.",
+            "variant_no_vr": "تمارين دقة قصيرة.",  # <-- FIXED: كان فيها راء عربية
             "difficulty": 3
         }, lang))
     if L in (_canon_label("football"),):
