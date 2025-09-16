@@ -1621,23 +1621,31 @@ def generate_sport_recommendation(answers: Dict[str, Any],
             pass
         return cards
 
-    # ======== LLM كآخر خيار ========
+       # ======== LLM كآخر خيار ========
+    # لو ما فيه عميل LLM، رجّع رسالة تشخيص واضحة
     if OpenAI_CLIENT is None:
-        # إن لم تتوفر مفاتيح، أعد fallback واضح
+        _dbg("[LLM] client=None -> fallback card")
         return [
-            "❌ لا يمكن استدعاء النموذج حالياً، ولم نجد توصيات كافية من قاعدة المعرفة.",
+            "❌ لا يمكن استدعاء النموذج الآن. ثبّت OPENAI_API_KEY (أو OPENROUTER_API_KEY/AZURE_OPENAI_API_KEY) على الخادم وأعد التشغيل.",
             "—",
             "—"
         ]
 
+    # شخصية المدرب (كاش)
     persona = get_cached_personality(analysis, lang=lang)
     if not persona:
-        persona = {"name":"SportSync Coach","tone":"حازم-هادئ","style":"حسّي واقعي إنساني","philosophy":"هوية حركة بلا أسماء مع وضوح هويّة"}
+        persona = {
+            "name":"SportSync Coach",
+            "tone":"حازم-هادئ",
+            "style":"حسّي واقعي إنساني",
+            "philosophy":"هوية حركة بلا أسماء مع وضوح هويّة"
+        }
         try:
             save_cached_personality(analysis, persona, lang=lang)
         except Exception:
             pass
 
+    # بناء البرومبت واستدعاء النموذج
     seed = _style_seed(user_id, profile or {})
     msgs = _json_prompt(analysis, answers, persona, lang, seed)
     max_toks_1 = 800 if REC_FAST_MODE else 1200
@@ -1647,28 +1655,44 @@ def generate_sport_recommendation(answers: Dict[str, Any],
         raw1 = _chat_with_retry(messages=msgs, max_tokens=max_toks_1, temperature=0.5)
         _dbg(f"round #1 ok, len={len(raw1)}")
     except Exception as e:
+        # رسالة تشخيصية واضحة في الكرت الأول
         err = f"❌ خطأ اتصال النموذج: {e}"
+        _dbg(f"[LLM] error round #1 -> {e}")
         if _PIPE:
             try:
-                _PIPE.send("model_error", {"error": str(e), "job_id": job_id}, user_id=user_id, lang=lang, model=CHAT_MODEL)
+                _PIPE.send("model_error", {"error": str(e), "job_id": job_id},
+                           user_id=user_id, lang=lang, model=CHAT_MODEL)
             except Exception:
                 pass
         return [err, "—", "—"]
 
+    # تنظيف المخرجات ثم محاولة القراءة كـ JSON
     raw1 = _strip_code_fence(raw1)
     if not ALLOW_SPORT_NAMES and _contains_blocked_name(raw1):
         raw1 = _mask_names(raw1)
     parsed = _parse_json(raw1) or []
     cleaned = _sanitize_fill(parsed, lang)
 
+    # نقرر هل نحتاج جولة إصلاح
     elapsed = perf_counter() - t0
     time_left = REC_BUDGET_S - elapsed
     axes = (analysis.get("z_axes") or {}) if isinstance(analysis, dict) else {}
 
     mismatch_axes = any(_mismatch_with_axes(rec, axes, lang) for rec in cleaned)
-    need_repair_generic = any(_too_generic(" ".join([_norm_text(c.get("what_it_looks_like","")), _norm_text(c.get("why_you",""))]), _MIN_CHARS) for c in cleaned)
-    missing_fields = any(((_REQUIRE_WIN and not c.get("win_condition")) or len(c.get("core_skills") or []) < _MIN_CORE_SKILLS) for c in cleaned)
-    need_repair = (mismatch_axes or need_repair_generic or missing_fields) and REC_REPAIR_ENABLED and (time_left >= (6 if not REC_FAST_MODE else 4))
+    need_repair_generic = any(
+        _too_generic(
+            " ".join([_norm_text(c.get("what_it_looks_like","")),
+                      _norm_text(c.get("why_you",""))]),
+            _MIN_CHARS
+        ) for c in cleaned
+    )
+    missing_fields = any(
+        ((_REQUIRE_WIN and not c.get("win_condition"))
+         or len(c.get("core_skills") or []) < _MIN_CORE_SKILLS)
+        for c in cleaned
+    )
+    need_repair = (mismatch_axes or need_repair_generic or missing_fields) \
+                  and REC_REPAIR_ENABLED and (time_left >= (6 if not REC_FAST_MODE else 4))
 
     if need_repair:
         exp = _axes_expectations(axes or {}, lang)
@@ -1692,17 +1716,19 @@ def generate_sport_recommendation(answers: Dict[str, Any],
             "role":"user",
             "content":(
                 ("أعد صياغة التوصيات بنبرة إنسانية وواضحة (اسم رياضة مسموح). " if lang=="العربية"
-                 else "Rewrite with a warm, human tone (sport names allowed). ") +
-                "تأكد من وجود: sport_label, what_it_looks_like, win_condition, 3–5 core_skills, mode, variant_vr, variant_no_vr. "
-                "ممنوع الوقت/التكلفة/العدّات/الجولات/الدقائق/المكان المباشر. "
-                "حسّن محاذاة Z-axes. JSON فقط.\n\n" + align_hint
+                 else "Rewrite with a warm, human tone (sport names allowed). ")
+                + "تأكد من وجود: sport_label, what_it_looks_like, win_condition, 3–5 core_skills, mode, variant_vr, variant_no_vr. "
+                + "ممنوع الوقت/التكلفة/العدّات/الجولات/الدقائق/المكان المباشر. "
+                + "حسّن محاذاة Z-axes. JSON فقط.\n\n" + align_hint
             )
         }
         try:
             _dbg("calling LLM - round #2 (repair)")
-            raw2 = _chat_with_retry(messages=msgs + [{"role":"assistant","content":raw1}, repair_prompt],
-                                    max_tokens=(650 if REC_FAST_MODE else 950),
-                                    temperature=0.55)
+            raw2 = _chat_with_retry(
+                messages=msgs + [{"role":"assistant","content":raw1}, repair_prompt],
+                max_tokens=(650 if REC_FAST_MODE else 950),
+                temperature=0.55
+            )
             raw2 = _strip_code_fence(raw2)
             if not ALLOW_SPORT_NAMES and _contains_blocked_name(raw2):
                 raw2 = _mask_names(raw2)
@@ -1711,11 +1737,14 @@ def generate_sport_recommendation(answers: Dict[str, Any],
 
             def score(r: Dict[str,Any]) -> int:
                 txt = " ".join([
-                    _norm_text(r.get("sport_label","")), _norm_text(r.get("what_it_looks_like","")),
-                    _norm_text(r.get("inner_sensation","")), _norm_text(r.get("why_you","")),
-                    _norm_text(r.get("first_week","")), _norm_text(r.get("win_condition",""))
+                    _norm_text(r.get("sport_label","")),
+                    _norm_text(r.get("what_it_looks_like","")),
+                    _norm_text(r.get("inner_sensation","")),
+                    _norm_text(r.get("why_you","")),
+                    _norm_text(r.get("first_week","")),
+                    _norm_text(r.get("win_condition",""))
                 ])
-                bonus = 5*len(r.get("core_skills") or [])
+                bonus = 5 * len(r.get("core_skills") or [])
                 return len(txt) + bonus
 
             if sum(map(score, cleaned2)) > sum(map(score, cleaned)):
@@ -1724,12 +1753,15 @@ def generate_sport_recommendation(answers: Dict[str, Any],
         except Exception as e:
             _dbg(f"repair skipped due to error: {e}")
 
+    # فلترة العناوين عالميًا + حفظ في البلاك لِست
     bl = _load_blacklist()
     cleaned = _ensure_unique_labels_v_global(cleaned, lang, bl)
     _persist_blacklist(cleaned, bl)
 
+    # تحويلها لبطاقات نصية
     cards = [_format_card(cleaned[i], i, lang) for i in range(3)]
 
+    # تنظيف أي روابط غير معروفة (حسب الإعدادات)
     try:
         sec = (CFG.get("security") or {})
         if sec.get("scrub_urls", True):
@@ -1737,12 +1769,19 @@ def generate_sport_recommendation(answers: Dict[str, Any],
     except Exception:
         pass
 
+    # لوج جودة داخلي
     axes = (analysis.get("z_axes") or {}) if isinstance(analysis, dict) else {}
     quality_flags = {
-        "generic": any(_too_generic(" ".join([_norm_text(c.get("what_it_looks_like","")), _norm_text(c.get("why_you",""))]), _MIN_CHARS) for c in cleaned),
-        "low_sensory": any(not _has_sensory(" ".join([_norm_text(c.get("what_it_looks_like","")), _norm_text(c.get("inner_sensation",""))])) for c in cleaned),
+        "generic": any(_too_generic(
+            " ".join([_norm_text(c.get("what_it_looks_like","")),
+                      _norm_text(c.get("why_you",""))]),
+            _MIN_CHARS) for c in cleaned),
+        "low_sensory": any(not _has_sensory(
+            " ".join([_norm_text(c.get("what_it_looks_like","")),
+                      _norm_text(c.get("inner_sensation",""))])) for c in cleaned),
         "mismatch_axes": any(_mismatch_with_axes(c, axes, lang) for c in cleaned),
-        "missing_fields": any(((_REQUIRE_WIN and not c.get("win_condition")) or len(c.get("core_skills") or []) < _MIN_CORE_SKILLS) for c in cleaned)
+        "missing_fields": any(((_REQUIRE_WIN and not c.get("win_condition"))
+                               or len(c.get("core_skills") or []) < _MIN_CORE_SKILLS) for c in cleaned)
     }
 
     try:
