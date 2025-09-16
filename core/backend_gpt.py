@@ -900,9 +900,22 @@ def _is_forbidden_generic(label: str) -> bool:
     base = _normalize_ar((label or "")).lower()
     return any(g in base for g in _FORBIDDEN_GENERIC)
 
-def _template_for_label(label: str, lang: str) -> Optional[Dict[str, Any]]:
-    L = _canon_label(label)
-    ar = (lang == "العربية")
+if L in (_canon_label("esports"),):
+    return _sanitize_record(_fill_defaults({
+        "sport_label": "Esports — دقة وتكتيك" if ar else "Esports — Precision & Tactics",
+        "what_it_looks_like": "تصويب لحظي وقراءة مواقف وتنسيق فريق/فرد.",
+        "inner_sensation": "تيقّظ مع هدوء قرار.",
+        "why_you": "تستمتع بالدقة والذكاء التكتيكي.",
+        "first_week": "تثبيت حسّ النظر — إدارة الإيقاع — قرار نظيف.",
+        "progress_markers": "ثبات تصويب — أخطاء أقل.",
+        "win_condition": "تحقيق أهداف تكتيكية ضمن سيناريو محاكاة.",
+        "core_skills": ["تتبّع نظرة","قرار سريع","تنسيق"] if ar else
+                       ["gaze tracking","snap decision","coordination"],
+        "mode": "Solo/Team",
+        "variant_vr": "سيناريو تكتيكي افتراضي.",
+        "variant_no_vr": "تمارين دقة قصيرة.",  # ← هذا هو التصحيح
+        "difficulty": 3
+    }, lang))
 
     # خرائط جاهزة للخمسة "الهويات" الداخلية
     KB_PRESETS = {
@@ -1403,19 +1416,27 @@ def _sanitize_fill(recs: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]
     for i in range(3):
         r = recs[i] if i < len(recs) else {}
         r = _fill_defaults(_sanitize_record(r), lang)
+
+        # نكوّن نص موحّد للتحقق من المعنى والحسية وعدم العمومية
         vals = [
             _norm_text(r.get("sport_label","")), _norm_text(r.get("what_it_looks_like","")),
             _norm_text(r.get("why_you","")), _norm_text(r.get("first_week","")),
             _norm_text(r.get("progress_markers","")), _norm_text(r.get("win_condition","")),
         ]
         blob = " ".join(vals)
+
+        # شروط القبول الدنيا
         if _too_generic(blob, _MIN_CHARS) or not _has_sensory(blob) or not _is_meaningful(r) \
            or (_REQUIRE_WIN and not r.get("win_condition")) \
            or len(r.get("core_skills") or []) < _MIN_CORE_SKILLS \
            or _label_is_generic(r.get("sport_label","")):
             r = _fallback_identity(i, lang)
+
         temp.append(r)
+
+    # إزالة التكرار + تعبئة بدائل فريدة لو تكرر شيء
     return _hard_dedupe_and_fill(temp, lang)
+)
 
 # ========= OpenAI helper with timeout + retry =========
 def _chat_with_retry(messages: List[Dict[str, str]], max_tokens: int, temperature: float) -> str:
