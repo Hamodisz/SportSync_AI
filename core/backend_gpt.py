@@ -740,7 +740,6 @@ def _fill_defaults(r: Dict[str, Any], lang: str) -> Dict[str, Any]:
                               else "Light obstacle arena with shadow lanes.")
     return r
 
-
 # ======== HARD DEDUPE (no repeats, no near-duplicates) ========
 def _hard_dedupe_and_fill(recs: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
