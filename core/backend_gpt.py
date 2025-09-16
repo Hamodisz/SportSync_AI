@@ -115,6 +115,7 @@ def _normalize_ar(t: str) -> str:
 
 # ========= Text normalizer (robust for list/dict inputs) =========
 def _norm_text(val: Any) -> str:
+    """حوّل أي نوع (list/dict/None/tuple/number) إلى نص نظيف."""
     if val is None:
         return ""
     if isinstance(val, str):
@@ -128,6 +129,7 @@ def _norm_text(val: Any) -> str:
                 flat.append(str(x))
         return "، ".join([s.strip() for s in flat if s and str(s).strip()])
     if isinstance(val, dict):
+        # جرّب مفاتيح شائعة
         for k in ("text", "desc", "value", "answer"):
             if k in val and isinstance(val[k], str):
                 return val[k]
