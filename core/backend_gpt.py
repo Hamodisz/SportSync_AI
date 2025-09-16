@@ -587,7 +587,7 @@ def _sanitize_record(r: Dict[str, Any]) -> Dict[str, Any]:
     else:
         r["core_skills"] = []
 
-    # difficulty
+    # difficulty → 1..5
     try:
         d = int(r.get("difficulty", 3))
         r["difficulty"] = max(1, min(5, d))
@@ -739,6 +739,7 @@ def _fill_defaults(r: Dict[str, Any], lang: str) -> Dict[str, Any]:
         r["variant_no_vr"] = ("عقبات خفيفة مع ممرات ظل." if lang=="العربية"
                               else "Light obstacle arena with shadow lanes.")
     return r
+
 
 # ======== HARD DEDUPE (no repeats, no near-duplicates) ========
 def _hard_dedupe_and_fill(recs: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]]:
