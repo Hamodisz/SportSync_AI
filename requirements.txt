@@ -9,4 +9,4 @@ gTTS==2.5.1
 python-dotenv>=1.0.0
 arabic-reshaper>=3.0.0
 python-bidi>=0.4.2
-openai>=1.41.0,<2
+openai>=1.6.1,<2
