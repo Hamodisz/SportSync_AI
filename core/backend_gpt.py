@@ -113,6 +113,27 @@ def _normalize_ar(t: str) -> str:
     t = re.sub(r"\s+", " ", t).strip()
     return t
 
+# ========= Text normalizer (robust for list/dict inputs) =========
+def _norm_text(val: Any) -> str:
+    if val is None:
+        return ""
+    if isinstance(val, str):
+        return val
+    if isinstance(val, (list, tuple)):
+        flat: List[str] = []
+        for x in val:
+            if isinstance(x, (list, tuple)):
+                flat.extend(map(str, x))
+            else:
+                flat.append(str(x))
+        return "، ".join([s.strip() for s in flat if s and str(s).strip()])
+    if isinstance(val, dict):
+        for k in ("text", "desc", "value", "answer"):
+            if k in val and isinstance(val[k], str):
+                return val[k]
+        return json.dumps(val, ensure_ascii=False)
+    return str(val)
+
 # ========= Soft persona cache =========
 try:
     from core.memory_cache import get_cached_personality, save_cached_personality
@@ -177,12 +198,12 @@ _ALIAS_MAP: Dict[str, str] = {}
 if isinstance(KB.get("label_aliases"), dict):
     for canon, alist in KB["label_aliases"].items():
         for a in alist:
-            _ALIAS_MAP[_normalize_ar(a).lower()] = canon  # <-- تطبيع عربي قبل الحفظ
+            _ALIAS_MAP[_normalize_ar(a).lower()] = canon  # تطبيع عربي قبل الحفظ
 
 AL2 = _load_json_safe(AL_PATH)
 if isinstance(AL2.get("canonical"), dict):
     for a, canon in AL2["canonical"].items():
-        _ALIAS_MAP[_normalize_ar(a).lower()] = canon  # <-- تطبيع عربي قبل الحفظ
+        _ALIAS_MAP[_normalize_ar(a).lower()] = canon  # تطبيع عربي قبل الحفظ
 
 # New KB knobs (priors & links & guards & z-intent keywords)
 KB_PRIORS: Dict[str, float] = dict(KB.get("priors") or {})
@@ -464,9 +485,9 @@ def _has_sensory(text: str, min_hits: int = 3) -> bool:
 
 def _is_meaningful(rec: Dict[str, Any]) -> bool:
     blob = " ".join([
-        rec.get("sport_label",""), rec.get("what_it_looks_like",""),
-        rec.get("why_you",""), rec.get("first_week",""),
-        rec.get("progress_markers",""), rec.get("win_condition","")
+        _norm_text(rec.get("sport_label","")), _norm_text(rec.get("what_it_looks_like","")),
+        _norm_text(rec.get("why_you","")), _norm_text(rec.get("first_week","")),
+        _norm_text(rec.get("progress_markers","")), _norm_text(rec.get("win_condition",""))
     ]).strip()
     return len(blob) >= 120
 
@@ -506,7 +527,7 @@ def _axes_expectations(axes: Dict[str, float], lang: str) -> Dict[str, List[str]
 def _mismatch_with_axes(rec: Dict[str, Any], axes: Dict[str, float], lang: str) -> bool:
     exp = _axes_expectations(axes or {}, lang)
     if not exp: return False
-    blob = " ".join(str(rec.get(k,"")) for k in ("what_it_looks_like","inner_sensation","why_you","first_week"))
+    blob = " ".join(_norm_text(rec.get(k,"")) for k in ("what_it_looks_like","inner_sensation","why_you","first_week"))
     blob_l = blob.lower()
     for _, words in exp.items():
         if words and not any(w.lower() in blob_l for w in words):
@@ -546,20 +567,30 @@ def _jaccard(a: set, b: set) -> float:
 def _sanitize_record(r: Dict[str, Any]) -> Dict[str, Any]:
     r = dict(r or {})
     r.pop("practical_fit", None)
+
+    # طبّع جميع الحقول النصية المحتملة (حتى لو كانت list/dict)
     for k in ("sport_label","scene","what_it_looks_like","inner_sensation","why_you",
-              "first_week","progress_markers","win_condition","core_skills","variant_vr","variant_no_vr","vr_idea","mode"):
-        if isinstance(r.get(k), str):
-            r[k] = _scrub_forbidden(_mask_names(r[k].strip()))
-    if isinstance(r.get("core_skills"), str):
-        parts = [p.strip(" -•\t") for p in re.split(r"[,\n،]+", r["core_skills"]) if p.strip()]
+              "first_week","progress_markers","win_condition","variant_vr","variant_no_vr","vr_idea","mode"):
+        if k in r:
+            r[k] = _scrub_forbidden(_mask_names(_norm_text(r.get(k))))
+
+    # core_skills
+    cs = r.get("core_skills")
+    if isinstance(cs, str):
+        parts = [p.strip(" -•\t") for p in re.split(r"[,\n،]+", cs) if p.strip()]
         r["core_skills"] = parts[:6]
-    if not isinstance(r.get("core_skills"), list):
+    elif isinstance(cs, (list, tuple)):
+        skills = [_norm_text(x).strip() for x in cs if _norm_text(x).strip()]
+        r["core_skills"] = skills[:6]
+    else:
         r["core_skills"] = []
+
     try:
         d = int(r.get("difficulty", 3))
         r["difficulty"] = max(1, min(5, d))
     except Exception:
         r["difficulty"] = 3
+
     if r.get("mode") not in ("Solo","Team","Solo/Team","فردي","جماعي","فردي/جماعي"):
         r["mode"] = r.get("mode","Solo")
     return r
@@ -834,7 +865,9 @@ def _pick_kb_recommendations(user_axes: Dict[str, Any], user_signals: Dict[str, 
     exp = _axes_expectations(user_axes or {}, lang)
     for rec in identities:
         r = _sanitize_record(rec)
-        blob = " ".join([r.get("what_it_looks_like",""), r.get("why_you",""), r.get("first_week","")]).lower()
+        blob = " ".join([_norm_text(r.get("what_it_looks_like","")),
+                         _norm_text(r.get("why_you","")),
+                         _norm_text(r.get("first_week",""))]).lower()
         hit = 0
         for words in exp.values():
             if words and any(w.lower() in blob for w in words):
@@ -1035,7 +1068,7 @@ def _template_for_label(label: str, lang: str) -> Optional[Dict[str, Any]]:
                            ["gaze tracking","snap decision","coordination"],
             "mode": "Solo/Team",
             "variant_vr": "سيناريو تكتيكي افتراضي.",
-            "variant_no_vr": "تمارين دقة قصيرة.",  # <-- FIXED: كان فيها راء عربية
+            "variant_no_vr": "تمارين دقة قصيرة.",  # FIXED
             "difficulty": 3
         }, lang))
     if L in (_canon_label("football"),):
@@ -1068,22 +1101,6 @@ def _template_for_label(label: str, lang: str) -> Optional[Dict[str, Any]]:
             "mode": "Team",
             "variant_vr": "مخططات لعب افتراضية.",
             "variant_no_vr": "تمارين زوايا بدون أدوات.",
-            "difficulty": 3
-        }, lang))
-    if L in (_canon_label("parkour"),):
-        return _sanitize_record(_fill_defaults({
-            "sport_label": "باركور — مسارات مرنة" if ar else "Parkour — Fluid Routes",
-            "what_it_looks_like": "تحويل مسار وخدعة بصرية وحركة مضادّة.",
-            "inner_sensation": "أدرينالين محسوب وتحكّم.",
-            "why_you": "تحب التحدّي الإبداعي في الحركة.",
-            "first_week": "قراءة عائق — تحويل إيقاع — هبوط ناعم.",
-            "progress_markers": "نعومة أعلى — قرارات أحسن.",
-            "win_condition": "إتمام مسار دون أخطاء متتالية.",
-            "core_skills": ["قراءة عائق","توازن","هبوط","تحويل مسار"] if ar else
-                           ["obstacle reading","balance","landing","route switch"],
-            "mode": "Solo",
-            "variant_vr": "مسارات ظلّ افتراضية.",
-            "variant_no_vr": "مسارات خفيفة آمنة.",
             "difficulty": 3
         }, lang))
 
@@ -1289,8 +1306,13 @@ def _parse_json(text: str) -> Optional[List[Dict[str, Any]]]:
             pass
     return None
 
-def _to_bullets(text: str, max_items: int = 6) -> List[str]:
-    if not text: return []
+def _to_bullets(text_or_list: Any, max_items: int = 6) -> List[str]:
+    if text_or_list is None:
+        return []
+    if isinstance(text_or_list, (list, tuple)):
+        items = [str(i).strip(" -•\t ") for i in text_or_list if str(i).strip()]
+        return items[:max_items]
+    text = str(text_or_list)
     raw = re.split(r"[;\n\.،]+", text)
     items = [i.strip(" -•\t ") for i in raw if i.strip()]
     return items[:max_items]
@@ -1305,17 +1327,17 @@ def _format_card(rec: Dict[str, Any], i: int, lang: str) -> str:
     head = (head_ar if lang == "العربية" else head_en)[i]
 
     label = (rec.get("sport_label") or "").strip()
-    scene = (rec.get("what_it_looks_like") or rec.get("scene") or "").strip()
-    inner = (rec.get("inner_sensation") or "").strip()
-    why   = (rec.get("why_you") or "").strip()
+    scene = _norm_text(rec.get("what_it_looks_like") or rec.get("scene") or "")
+    inner = _norm_text(rec.get("inner_sensation") or "")
+    why   = _norm_text(rec.get("why_you") or "")
     week  = _to_bullets(rec.get("first_week") or "")
     prog  = _to_bullets(rec.get("progress_markers") or "", max_items=4)
-    win   = (rec.get("win_condition") or "").strip()
+    win   = _norm_text(rec.get("win_condition") or "")
     skills= rec.get("core_skills") or []
     diff  = rec.get("difficulty", 3)
-    mode  = (rec.get("mode") or "Solo").strip()
-    vr    = (rec.get("variant_vr") or rec.get("vr_idea") or "").strip()
-    novr  = (rec.get("variant_no_vr") or "").strip()
+    mode  = _norm_text(rec.get("mode") or "Solo")
+    vr    = _norm_text(rec.get("variant_vr") or rec.get("vr_idea") or "")
+    novr  = _norm_text(rec.get("variant_no_vr") or "")
 
     intro = _one_liner(scene, inner)
 
@@ -1375,11 +1397,12 @@ def _sanitize_fill(recs: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]
     for i in range(3):
         r = recs[i] if i < len(recs) else {}
         r = _fill_defaults(_sanitize_record(r), lang)
-        blob = " ".join([
-            r.get("sport_label",""), r.get("what_it_looks_like",""),
-            r.get("why_you",""), r.get("first_week",""),
-            r.get("progress_markers",""), r.get("win_condition","")
-        ])
+        vals = [
+            _norm_text(r.get("sport_label","")), _norm_text(r.get("what_it_looks_like","")),
+            _norm_text(r.get("why_you","")), _norm_text(r.get("first_week","")),
+            _norm_text(r.get("progress_markers","")), _norm_text(r.get("win_condition","")),
+        ]
+        blob = " ".join(vals)
         if _too_generic(blob, _MIN_CHARS) or not _has_sensory(blob) or not _is_meaningful(r) \
            or (_REQUIRE_WIN and not r.get("win_condition")) \
            or len(r.get("core_skills") or []) < _MIN_CORE_SKILLS \
@@ -1600,7 +1623,7 @@ def generate_sport_recommendation(answers: Dict[str, Any],
     axes = (analysis.get("z_axes") or {}) if isinstance(analysis, dict) else {}
 
     mismatch_axes = any(_mismatch_with_axes(rec, axes, lang) for rec in cleaned)
-    need_repair_generic = any(_too_generic(" ".join([c.get("what_it_looks_like",""), c.get("why_you","")]), _MIN_CHARS) for c in cleaned)
+    need_repair_generic = any(_too_generic(" ".join([_norm_text(c.get("what_it_looks_like","")), _norm_text(c.get("why_you",""))]), _MIN_CHARS) for c in cleaned)
     missing_fields = any(((_REQUIRE_WIN and not c.get("win_condition")) or len(c.get("core_skills") or []) < _MIN_CORE_SKILLS) for c in cleaned)
     need_repair = (mismatch_axes or need_repair_generic or missing_fields) and REC_REPAIR_ENABLED and (time_left >= (6 if not REC_FAST_MODE else 4))
 
@@ -1645,9 +1668,9 @@ def generate_sport_recommendation(answers: Dict[str, Any],
 
             def score(r: Dict[str,Any]) -> int:
                 txt = " ".join([
-                    r.get("sport_label",""), r.get("what_it_looks_like",""),
-                    r.get("inner_sensation",""), r.get("why_you",""),
-                    r.get("first_week",""), r.get("win_condition","")
+                    _norm_text(r.get("sport_label","")), _norm_text(r.get("what_it_looks_like","")),
+                    _norm_text(r.get("inner_sensation","")), _norm_text(r.get("why_you","")),
+                    _norm_text(r.get("first_week","")), _norm_text(r.get("win_condition",""))
                 ])
                 bonus = 5*len(r.get("core_skills") or [])
                 return len(txt) + bonus
@@ -1673,8 +1696,8 @@ def generate_sport_recommendation(answers: Dict[str, Any],
 
     axes = (analysis.get("z_axes") or {}) if isinstance(analysis, dict) else {}
     quality_flags = {
-        "generic": any(_too_generic(" ".join([c.get("what_it_looks_like",""), c.get("why_you","")]), _MIN_CHARS) for c in cleaned),
-        "low_sensory": any(not _has_sensory(" ".join([c.get("what_it_looks_like",""), c.get("inner_sensation","")])) for c in cleaned),
+        "generic": any(_too_generic(" ".join([_norm_text(c.get("what_it_looks_like","")), _norm_text(c.get("why_you",""))]), _MIN_CHARS) for c in cleaned),
+        "low_sensory": any(not _has_sensory(" ".join([_norm_text(c.get("what_it_looks_like","")), _norm_text(c.get("inner_sensation",""))])) for c in cleaned),
         "mismatch_axes": any(_mismatch_with_axes(c, axes, lang) for c in cleaned),
         "missing_fields": any(((_REQUIRE_WIN and not c.get("win_condition")) or len(c.get("core_skills") or []) < _MIN_CORE_SKILLS) for c in cleaned)
     }
