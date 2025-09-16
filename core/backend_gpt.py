@@ -27,50 +27,49 @@ from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
 from datetime import datetime
 
-# ========= OpenAI =========
+## ========= OpenAI =========
 try:
     from openai import OpenAI
 except Exception as e:
     raise RuntimeError("أضف الحزمة في requirements: openai>=1.6.1,<2") from e
 
 # نقرأ المفتاح من أكثر من احتمال (OpenAI / OpenRouter / Azure)
-OPENAI_API_KEY  = (
+OPENAI_API_KEY = (
     os.getenv("OPENAI_API_KEY")
     or os.getenv("OPENROUTER_API_KEY")
     or os.getenv("AZURE_OPENAI_API_KEY")
 )
-# نقرأ عنوان الـBase URL إذا كنت تستخدم OpenRouter/Azure (اختياري)
+
+# عنوان الـ Base URL (اختياري مع OpenRouter/Azure)
 OPENAI_BASE_URL = (
     os.getenv("OPENAI_BASE_URL")
     or os.getenv("OPENROUTER_BASE_URL")
     or os.getenv("AZURE_OPENAI_ENDPOINT")
 )
-OPENAI_ORG      = os.getenv("OPENAI_ORG")  # غالباً فاضي مع OpenRouter
+
+OPENAI_ORG = os.getenv("OPENAI_ORG")  # غالباً فاضي
 
 OpenAI_CLIENT = None
 if OPENAI_API_KEY:
     try:
-        # نبني الوسيطات بشكل مرن
-        client_kwargs = {"api_key": OPENAI_API_KEY}
-        if OPENAI_BASE_URL:  # خله None إذا تستخدم OpenAI العادي
-            client_kwargs["base_url"] = OPENAI_BASE_URL
+        kwargs = {"api_key": OPENAI_API_KEY}
+        if OPENAI_BASE_URL:
+            kwargs["base_url"] = OPENAI_BASE_URL
         if OPENAI_ORG:
-            client_kwargs["organization"] = OPENAI_ORG
-
-        OpenAI_CLIENT = OpenAI(**client_kwargs)
+            kwargs["organization"] = OPENAI_ORG
+        OpenAI_CLIENT = OpenAI(**kwargs)
     except Exception as e:
         print(f"[ENV] ⚠️ فشل إنشاء عميل OpenAI: {e}")
         OpenAI_CLIENT = None
 else:
-    print("[ENV] ⚠️ لم أجد أي مفتاح API (OPENAI_API_KEY / OPENROUTER_API_KEY / AZURE_OPENAI_API_KEY).")
+    print("[ENV] ⚠️ لا يوجد API key في المتغيرات البيئية.")
 
-# (اختياري) اطبع حالة الـ LLM لو فعّلت REC_DEBUG=1
-def _dbg(msg: str) -> None:
-    if os.getenv("REC_DEBUG", "0") == "1":
-        print(f"[RECDBG] {msg}")
-
-_dbg(f"LLM READY? {'YES' if OpenAI_CLIENT else 'NO'} | base={OPENAI_BASE_URL or 'default'}")
-
+# طباعة حالة الإقلاع للتشخيص
+print(
+    f"[BOOT] LLM READY? {'YES' if OpenAI_CLIENT else 'NO'} | "
+    f"base={OPENAI_BASE_URL or 'default'} | "
+    f"model={os.getenv('CHAT_MODEL','gpt-4o-mini')}"
+)
 # ========= App Config =========
 try:
     from core.app_config import get_config
