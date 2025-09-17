@@ -479,35 +479,45 @@ def _clip(s: str, n: int) -> str:
     s = s.strip()
     return s if len(s) <= n else (s[: max(0, n - 1)] + "…")
 
-def _answers_to_bullets(answers: Dict[str, Any]) -> str:
-    out = []
-    for k, v in (answers or {}).items():
-        if k == "profile":
-            continue
-        if isinstance(v, dict):
-            q, a = v.get("question", k), v.get("answer", "")
-        else:
-            q, a = str(k), v
-        if isinstance(a, list):
-            a = ", ".join(map(str, a))
-        out.append(f"- {q}: {_clip(str(a), 160)}")
-    txt = "\n".join(out)
-    return _clip(txt, 1800)
+def _to_bullets(text_or_list: Any, max_items: int = 6) -> List[str]:
+    """
+    يرجّع دائمًا List[str] مهما كان الإدخال (string/list/tuple/dict/nested).
+    """
+    out: List[str] = []
 
-def _too_generic(text: str, min_chars: int = 280) -> bool:
-    t = (text or "").strip()
-    return len(t) < min_chars or any(p in t for p in _AVOID_GENERIC)
+    def _flat_add(x: Any) -> None:
+        if x is None:
+            return
+        # حوّل القوائم/التعشيش إلى نصوص
+        if isinstance(x, (list, tuple, set)):
+            for y in x:
+                _flat_add(y)
+            return
+        if isinstance(x, dict):
+            # خذ أشهر الحقول أولاً، ولو ما لقيتها حوّل الدكت لنص
+            for k in ("text", "desc", "value", "answer", "label", "title"):
+                if k in x and isinstance(x[k], str) and x[k].strip():
+                    out.append(x[k].strip())
+                    return
+            out.append(json.dumps(x, ensure_ascii=False))
+            return
+        # أي شيء آخر حوّله لنص ونظّفه
+        s = _norm_text(x).strip()
+        if s:
+            out.append(s)
 
-def _has_sensory(text: str, min_hits: int = 3) -> bool:
-    return sum(1 for w in _SENSORY if w in (text or "")) >= min_hits
+    _flat_add(text_or_list)
 
-def _is_meaningful(rec: Dict[str, Any]) -> bool:
-    blob = " ".join([
-        _norm_text(rec.get("sport_label","")), _norm_text(rec.get("what_it_looks_like","")),
-        _norm_text(rec.get("why_you","")), _norm_text(rec.get("first_week","")),
-        _norm_text(rec.get("progress_markers","")), _norm_text(rec.get("win_condition",""))
-    ]).strip()
-    return len(blob) >= 120
+    # لو كان أصلاً string وفيه فواصل/سطور، جزّئه لبنود
+    if len(out) == 1 and isinstance(text_or_list, str):
+        raw = re.split(r"[;\n\.،]+", out[0])
+        out = [i.strip(" -•\t ") for i in raw if i.strip()]
+
+    # قصّ على الحد
+    out = out[:max_items]
+    # تأكد كلها نصوص 100%
+    out = [str(i) for i in out if str(i).strip()]
+    return out
 
 # ========= Alignment with Z-axes =========
 _AR_TOK = {
