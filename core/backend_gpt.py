@@ -1649,40 +1649,44 @@ def generate_sport_recommendation(answers: Dict[str, Any],
         kb_recs.extend(picked)
         kb_recs = kb_recs[:3]
 
-    if len(kb_recs) >= 3:
-        kb_recs = _sanitize_fill(kb_recs, lang)
-        bl = _load_blacklist()
-        kb_recs = _ensure_unique_labels_v_global(kb_recs, lang, bl)
-        _persist_blacklist(kb_recs, bl)
-        cards = [_format_card(kb_recs[i], i, lang) for i in range(3)]
-        try:
-            sec = (CFG.get("security") or {})
-            if sec.get("scrub_urls", True):
-                cards = [scrub_unknown_urls(c, CFG) for c in cards]
-        except Exception:
-            pass
-        try:
-            log_user_insight(
-                user_id=user_id,
-                content={
-                    "language": lang,
-                    "answers": {k: v for k, v in (answers or {}).items() if k != "profile"},
-                    "analysis": analysis,
-                    "source": "KB/trait_links" if (KB_PRIORS or TRAIT_LINKS) else "KB",
-                    "seed": _style_seed(user_id, profile or {}),
-                    "elapsed_s": round(perf_counter() - t0, 3),
-                    "fast_mode": REC_FAST_MODE,
-                    "job_id": job_id
-                },
-                event_type="kb_recommendation"
-            )
-        except Exception:
-            pass
-        try:
-            save_cached_recommendation(user_id, answers, lang, cards)
-        except Exception:
-            pass
-        return cards
+   if len(kb_recs) >= 3:
+    kb_recs = _sanitize_fill(kb_recs, lang)
+    bl = _load_blacklist()
+    kb_recs = _ensure_unique_labels_v_global(kb_recs, lang, bl)
+    _persist_blacklist(kb_recs, bl)
+
+    # تحويلها لبطاقات نصية (مسار KB)
+    cards = [_format_card(kb_recs[i], i, lang) for i in range(3)]
+
+    # ✅ حارس أخير: تأكد أن كل بطاقة نص (وليس list/dict)
+    try:
+        cards = [_norm_text(c) for c in cards]
+    except Exception:
+        safe_cards: List[str] = []
+        for c in cards:
+            try:
+                safe_cards.append(_norm_text(c))
+            except Exception:
+                safe_cards.append(str(c))
+        cards = safe_cards
+
+    # (اختياري) لوج تشخيصي
+    _dbg(f"[CARDS TYPES KB] { [type(c).__name__ for c in cards] }")
+
+    # تنظيف أي روابط غير معروفة (حسب الإعدادات)
+    try:
+        sec = (CFG.get("security") or {})
+        if sec.get("scrub_urls", True):
+            cards = [scrub_unknown_urls(c, CFG) for c in cards]
+    except Exception:
+        pass
+
+    try:
+        save_cached_recommendation(user_id, answers, lang, cards)
+    except Exception:
+        pass
+
+    return cards
 
        # ======== LLM كآخر خيار ========
     # لو ما فيه عميل LLM، رجّع رسالة تشخيص واضحة
