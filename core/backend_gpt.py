@@ -1371,46 +1371,68 @@ def _format_card(rec: Dict[str, Any], i: int, lang: str) -> str:
     head_en = ["🟢 Recommendation 1","🌿 Recommendation 2","🔮 Recommendation 3 (Creative)"]
     head = (head_ar if lang == "العربية" else head_en)[i]
 
-    label = _norm_text(rec.get("sport_label") or "")
-    scene = _norm_text(rec.get("what_it_looks_like") or rec.get("scene") or "")
-    inner = _norm_text(rec.get("inner_sensation") or "")
-    why   = _norm_text(rec.get("why_you") or "")
-    week  = _to_bullets(rec.get("first_week") or "")
+    # دايمًا حول المدخلات لنصوص
+    _s = _norm_text
+
+    label = _s(rec.get("sport_label") or "").strip()
+    scene = _s(rec.get("what_it_looks_like") or rec.get("scene") or "")
+    inner = _s(rec.get("inner_sensation") or "")
+    why   = _s(rec.get("why_you") or "")
+    week  = _to_bullets(rec.get("first_week") or "", max_items=5)
     prog  = _to_bullets(rec.get("progress_markers") or "", max_items=4)
-    win   = _norm_text(rec.get("win_condition") or "")
-    skills= rec.get("core_skills") or []
-    diff  = rec.get("difficulty", 3)
-    mode  = _norm_text(rec.get("mode") or "Solo")
-    vr    = _norm_text(rec.get("variant_vr") or rec.get("vr_idea") or "")
-    novr  = _norm_text(rec.get("variant_no_vr") or "")
+    win   = _s(rec.get("win_condition") or "")
+    skills_raw = rec.get("core_skills") or []
+    skills = _to_bullets(skills_raw, max_items=5)
+    try:
+        diff  = int(rec.get("difficulty", 3))
+    except Exception:
+        diff = 3
+    mode  = _s(rec.get("mode") or "Solo")
+    vr    = _s(rec.get("variant_vr") or rec.get("vr_idea") or "")
+    novr  = _s(rec.get("variant_no_vr") or "")
 
-    intro = _one_liner(scene, inner)
+    intro = " — ".join([p for p in [scene.strip(), inner.strip()] if p])
 
-    if lang == "العربية":
-        out = [head, ""]
-        if label: out.append(f"🎯 الهوية المثالية لك: {label}")
-        if intro: out += ["\n💡 ما هي؟", f"- {intro}"]
-        if why:
-            out += ["\n🎮 ليه تناسبك؟"]
-            for b in _to_bullets(why, 4) or [why]: out.append(f"- {b}")
-        if skills:
-            out += ["\n🧩 مهارات أساسية:"]
-            for s in [ _norm_text(x) for x in skills[:5] ]: out.append(f"- {s}")
-        if win: out += ["\n🏁 كيف تفوز؟", f"- {win}"]
-        if week:
-            out += ["\n🚀 أول أسبوع (نوعي):"]
-            for b in week: out.append(f"- {b}")
-        if prog:
-            out += ["\n✅ علامات تقدم محسوسة:"]
-            for b in prog: out.append(f"- {b}")
-        notes = []
-        if mode: notes.append(("وضع اللعب: " + mode))
-        if novr: notes.append("بدون VR: " + novr)
-        if vr: notes.append("VR (اختياري): " + vr)
-        if notes:
-            out += ["\n👁‍🗨 ملاحظات:", f"- " + "\n- ".join(notes)]
-        out.append(f"\nالمستوى التقريبي: {diff}/5")
-        return "\n".join(out)
+    out: List[str] = [head, ""]
+    if label: out.append(("🎯 الهوية المثالية لك: " if lang=="العربية" else "🎯 Ideal identity: ") + label)
+    if intro:
+        out += ["\n💡 ما هي؟" if lang=="العربية" else "\n💡 What is it?", "- " + intro]
+
+    if why:
+        out.append("\n🎮 ليه تناسبك؟" if lang=="العربية" else "\n🎮 Why you")
+        for b in (_to_bullets(why, 4) or [why]):
+            out.append("- " + _s(b))
+
+    if skills:
+        out.append("\n🧩 مهارات أساسية:" if lang=="العربية" else "\n🧩 Core skills:")
+        for s in skills:
+            out.append("- " + _s(s))
+
+    if win:
+        out += ["\n🏁 كيف تفوز؟" if lang=="العربية" else "\n🏁 Win condition", "- " + win]
+
+    if week:
+        out.append("\n🚀 أول أسبوع (نوعي):" if lang=="العربية" else "\n🚀 First week (qualitative)")
+        for b in week:
+            out.append("- " + _s(b))
+
+    if prog:
+        out.append("\n✅ علامات تقدم محسوسة:" if lang=="العربية" else "\n✅ Progress cues")
+        for b in prog:
+            out.append("- " + _s(b))
+
+    notes: List[str] = []
+    if mode: notes.append(("وضع اللعب: " if lang=="العربية" else "Mode: ") + mode)
+    if novr: notes.append(("بدون VR: " if lang=="العربية" else "No-VR: ") + novr)
+    if vr:   notes.append(("VR (اختياري): " if lang=="العربية" else "VR (optional): ") + vr)
+    if notes:
+        out.append("\n👁‍🗨 ملاحظات:" if lang=="العربية" else "\n👁‍🗨 Notes:")
+        out.append("- " + "\n- ".join([_s(n) for n in notes]))
+
+    out.append(("\nالمستوى التقريبي: " if lang=="العربية" else "\nApprox level: ") + f"{max(1,min(5,diff))}/5")
+
+    # ⚠️ أهم سطر: رجّع نص 100%
+    return "\n".join([_s(x) for x in out])
 
     else:
         out = [head, ""]
