@@ -1595,16 +1595,17 @@ def generate_sport_recommendation(answers: Dict[str, Any],
         except Exception:
             pass
 
-    if eg.get("status") != "pass":
-        card = _format_followup_card(eg.get("followup_questions", []), lang=lang)
-        try:
-            sec = (CFG.get("security") or {})
-            if sec.get("scrub_urls", True):
-                card = scrub_unknown_urls(card, CFG)
-        except Exception:
-            pass
-        return [card, "—", "—"]
-
+   if eg.get("status") != "pass":
+    card = _format_followup_card(eg.get("followup_questions", []), lang=lang)
+    try:
+        sec = (CFG.get("security") or {})
+        if sec.get("scrub_urls", True):
+            card = scrub_unknown_urls(card, CFG)
+    except Exception:
+        pass
+    # رجّع نصوص مؤكدة
+    return [_norm_text(card), "—", "—"]
+      
     # تحليل المستخدم + طبقة Z + Intent + profile
     analysis: Dict[str, Any] = _call_analyze_user_from_answers(user_id, answers, lang)
     try:
