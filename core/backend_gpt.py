@@ -27,6 +27,33 @@ from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
 from datetime import datetime
 
+# ========= Job Manager (اختياري) =========
+# يوفّر: create_job, read_job, update (job_update), run_in_thread — مع بدائل آمنة إذا غير متوفر
+try:
+    from core.job_manager import create_job, read_job, update as job_update, run_in_thread
+except Exception:
+    def create_job(meta: Optional[dict] = None): return {"id": "nojob", "status": "error"}
+    def read_job(job_id: str): return None
+    def job_update(job_id: str, **kw): pass
+    def run_in_thread(job_id: str, target, *args, **kwargs): return None
+
+def _job_note(job_id: str,
+              progress: Optional[int] = None,
+              note: Optional[str] = None,
+              status: Optional[str] = None) -> None:
+    """تحديث حالة المهمة بشكل بسيط وآمن."""
+    if not job_id:
+        return
+    try:
+        payload: Dict[str, Any] = {}
+        if progress is not None: payload["progress"] = int(progress)
+        if note: payload["note"] = note
+        if status: payload["status"] = status
+        if payload:
+            job_update(job_id, **payload)
+    except Exception:
+        pass
+
 # ========= OpenAI =========
 try:
     from openai import OpenAI
@@ -476,7 +503,7 @@ def _mask_names(t: str) -> str:
 
 def _split_sentences(text: str) -> List[str]:
     if not text: return []
-    return [s.strip() for s in re.split(r"(?<=[\.\!\?؟])\s+|[\n،]+", text) if s.strip()]
+    return [s.strip() for s in re.split(r"(?<=[\.\!\?؟])\s+|[\ن،]+", text) if s.strip()]
 
 def _scrub_forbidden(text: str) -> str:
     kept = [s for s in _split_sentences(text) if not _FORBIDDEN_SENT.search(_normalize_ar(s))]
@@ -821,7 +848,7 @@ def _derive_binary_traits(analysis: Dict[str, Any], answers: Dict[str, Any], lan
     if ca >= 0.35 or sig.get("high_agg"):
         traits["sensation_seeking"] = max(traits.get("sensation_seeking", 0.0), 0.8)
 
-    ti = float(axes.get("tech_intuition", 0.0)) if isinstance(axes, dict) else 0.0
+    ti = float(axes.get("tech_intuition", 0.0)) if isinstance(ti, (int, float)) else 0.0
     if ti <= -0.35 or sig.get("precision"):
         traits["precision"] = max(traits.get("precision", 0.0), 0.8)
 
@@ -1513,8 +1540,10 @@ def generate_sport_recommendation(answers: Dict[str, Any],
             cached_cards = None
     if cached_cards:
         _dbg("cache HIT for recommendations")
+        _job_note(job_id, 100, "جاهزة ✅ (من الكاش)", "done")
         return cached_cards
     _dbg("cache MISS for recommendations")
+    _job_note(job_id, 10, "جمع الإشارات الأولية…", "running")
 
     # Evidence Gate
     eg = _run_egate(answers or {}, lang=lang)
@@ -1543,7 +1572,10 @@ def generate_sport_recommendation(answers: Dict[str, Any],
                 card = scrub_unknown_urls(card, CFG)
         except Exception:
             pass
+        _job_note(job_id, 100, "نحتاج إجابات إضافية", "done")
         return [_norm_text(card), "—", "—"]
+
+    _job_note(job_id, 20, "تحليل الإجابات وبناء المحاور…")
 
     # تحليل المستخدم + طبقة Z + Intent + profile
     analysis: Dict[str, Any] = _call_analyze_user_from_answers(user_id, answers, lang)
@@ -1569,7 +1601,7 @@ def generate_sport_recommendation(answers: Dict[str, Any],
     # (A) identities من KB إن وجدت
     kb_recs = _pick_kb_recommendations(user_axes, user_signals, lang)
 
-    # (B) إن لم تكفِ، استخدم trait_links
+    # (ب) إن لم تكفِ، استخدم trait_links
     if len(kb_recs) < 3 and (KB_PRIORS or TRAIT_LINKS):
         trait_strengths = _derive_binary_traits(analysis, answers, lang)
         ranked = _score_candidates_from_links(trait_strengths)
@@ -1624,11 +1656,13 @@ def generate_sport_recommendation(answers: Dict[str, Any],
         except Exception:
             pass
 
+        _job_note(job_id, 100, "جاهزة ✅", "done")
         return cards
 
     # ======== LLM كآخر خيار ========
     if OpenAI_CLIENT is None:
         _dbg("[LLM] client=None -> fallback card")
+        _job_note(job_id, 100, "تعذّر استدعاء النموذج", "error")
         return [
             "❌ لا يمكن استدعاء النموذج الآن. ثبّت OPENAI_API_KEY (أو OPENROUTER_API_KEY/AZURE_OPENAI_API_KEY) على الخادم وأعد التشغيل.",
             "—",
@@ -1652,6 +1686,7 @@ def generate_sport_recommendation(answers: Dict[str, Any],
     msgs = _json_prompt(analysis, answers, persona, lang, seed)
     max_toks_1 = 800 if REC_FAST_MODE else 1200
 
+    _job_note(job_id, 40, "جولة النموذج الأولى…")
     try:
         _dbg("calling LLM - round #1")
         raw1 = _chat_with_retry(messages=msgs, max_tokens=max_toks_1, temperature=0.5)
@@ -1659,6 +1694,7 @@ def generate_sport_recommendation(answers: Dict[str, Any],
     except Exception as e:
         err = f"❌ خطأ اتصال النموذج: {e}"
         _dbg(f"[LLM] error round #1 -> {e}")
+        _job_note(job_id, 100, "خطأ في الاتصال بالنموذج", "error")
         if _PIPE:
             try:
                 _PIPE.send("model_error", {"error": str(e), "job_id": job_id},
@@ -1721,6 +1757,7 @@ def generate_sport_recommendation(answers: Dict[str, Any],
                 + "حسّن محاذاة Z-axes. JSON فقط.\n\n" + align_hint
             )
         }
+        _job_note(job_id, 70, "تحسين وضبط الهوية…")
         try:
             _dbg("calling LLM - round #2 (repair)")
             raw2 = _chat_with_retry(
@@ -1821,4 +1858,22 @@ def generate_sport_recommendation(answers: Dict[str, Any],
     except Exception:
         pass
 
+    _job_note(job_id, 100, "جاهزة ✅", "done")
     return cards
+
+
+# ========= واجهة بناء مهمّة + رابط متابعة =========
+def start_recommendation_job(answers: Dict[str, Any],
+                             lang: str = "العربية",
+                             user_id: str = "N/A") -> Dict[str, str]:
+    """
+    ينشئ Job ويشغل generate_sport_recommendation في خيط منفصل.
+    يعيد: {"job_id": "...", "status_url": "..."}
+    """
+    job = create_job({"user_id": user_id, "lang": lang})
+    jid = job.get("id", "")
+    # شغّل المهمة بالخلفية
+    run_in_thread(jid, generate_sport_recommendation, answers, lang, user_id, job_id=jid)
+    # ابني رابط المتابعة
+    base = (os.getenv("RENDER_EXTERNAL_URL") or "").rstrip("/") or "https://sportsync-ai-quiz.onrender.com"
+    return {"job_id": jid, "status_url": f"{base}?job={jid}"}
