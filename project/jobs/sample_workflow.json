@@ -3,8 +3,18 @@
   "prompt": {
     "3": {
       "class_type": "KSampler",
-      "inputs": { "seed": 123456, "steps": 25, "cfg": 5, "sampler_name": "euler", "scheduler": "normal",
-        "denoise": 1, "model": ["4", 0], "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["5", 0] }
+      "inputs": {
+        "seed": 123456,
+        "steps": 25,
+        "cfg": 5,
+        "sampler_name": "euler",
+        "scheduler": "normal",
+        "denoise": 1,
+        "model": ["4", 0],
+        "positive": ["6", 0],
+        "negative": ["7", 0],
+        "latent_image": ["5", 0]
+      }
     },
     "4": { "class_type": "CheckpointLoaderSimple", "inputs": { "ckpt_name": "SDXL.safetensors" } },
     "5": { "class_type": "EmptyLatentImage", "inputs": { "width": 1024, "height": 1024, "batch_size": 4 } },
