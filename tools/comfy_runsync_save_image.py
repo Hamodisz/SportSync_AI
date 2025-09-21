@@ -1,84 +1,37 @@
-import os, json, base64, requests
-from pathlib import Path
+import os, json, base64, argparse, requests, sys
 
-# ==========[ عدّل هذي الثلاثة ]==========
-ENDPOINT_ID = "ضع-هنا-Endpoint-ID"     # مثال: v2swa6f8zzcjk... (انسخه من صفحة السيرفرلس)
-PROMPT = "a cinematic corgi portrait, soft light, high detail"
-OUT_PATH = Path("content_studio/ai_images/outputs/scene_01.png")
-# =======================================
+parser = argparse.ArgumentParser()
+parser.add_argument("--workflow", required=True)
+parser.add_argument("--prompt", required=True)
+parser.add_argument("--out", required=True)
+args = parser.parse_args()
 
-API_KEY = os.getenv("RUNPOD_API_KEY")  # حط المفتاح كمتغير بيئة (تحت بيّن لك كيف)
-URL = f"https://api.runpod.ai/v2/{ENDPOINT_ID}/runsync"
-HEADERS = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
+api_key = os.environ.get("RUNPOD_API_KEY")
+endpoint_id = os.environ.get("RUNPOD_ENDPOINT_ID")
+if not api_key or not endpoint_id:
+    print("Missing RUNPOD_API_KEY or RUNPOD_ENDPOINT_ID"); sys.exit(1)
 
-payload = {
-    "input": {
-        "workflow": {
-            "30": {
-                "class_type": "CheckpointLoaderSimple",
-                "inputs": {"ckpt_name": "flux1-dev-fp8.safetensors"}
-            },
-            "27": {
-                "class_type": "EmptySD3LatentImage",
-                "inputs": {"width": 512, "height": 512, "batch_size": 1}
-            },
-            "6": {
-                "class_type": "CLIPTextEncode",
-                "inputs": {"text": PROMPT, "clip": ["30", 1]}
-            },
-            "35": {
-                "class_type": "FluxGuidance",
-                "inputs": {"guidance": 3.5, "conditioning": ["6", 0]}
-            },
-            "33": {
-                "class_type": "CLIPTextEncode",
-                "inputs": {"text": "", "clip": ["30", 1]}
-            },
-            "31": {
-                "class_type": "KSampler",
-                "inputs": {
-                    "seed": 123456789,
-                    "steps": 10,
-                    "cfg": 1,
-                    "sampler_name": "euler",
-                    "scheduler": "simple",
-                    "denoise": 1,
-                    "model": ["30", 0],
-                    "positive": ["35", 0],
-                    "negative": ["33", 0],
-                    "latent_image": ["27", 0]
-                }
-            },
-            "8": {
-                "class_type": "VAEDecode",
-                "inputs": {"samples": ["31", 0], "vae": ["30", 2]}
-            },
-            "40": {
-                "class_type": "SaveImage",
-                "inputs": {"filename_prefix": "comfyui", "images": ["8", 0]}
-            }
-        }
-    }
-}
+with open(args.workflow, "r", encoding="utf-8") as f:
+    wf = json.load(f)
 
-def main():
-    if not API_KEY:
-        raise SystemExit("RUNPOD_API_KEY is not set. Please set your API key in env vars.")
+# حاول نحدّث نص البرومبت في عقدة CLIPTextEncode رقم "6"
+try:
+    wf["input"]["workflow"]["6"]["inputs"]["text"] = args.prompt
+except Exception:
+    pass
 
-    r = requests.post(URL, headers=HEADERS, data=json.dumps(payload), timeout=600)
-    r.raise_for_status()
-    data = r.json()
+url = f"https://api.runpod.ai/v2/{endpoint_id}/runsync"
+headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+resp = requests.post(url, headers=headers, json=wf, timeout=600)
+resp.raise_for_status()
+data = resp.json()
 
-    if "output" not in data or "images" not in data["output"]:
-        print(json.dumps(data, indent=2))
-        raise SystemExit("No images in response.")
+imgs = data.get("output", {}).get("images", [])
+if not imgs:
+    print("No images in response:", data); sys.exit(2)
 
-    img_b64 = data["output"]["images"][0]["data"]
-    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(OUT_PATH, "wb") as f:
-        f.write(base64.b64decode(img_b64))
-
-    print(f"Saved: {OUT_PATH.resolve()}")
-
-if __name__ == "__main__":
-    main()
+img_bytes = base64.b64decode(imgs[0]["data"])
+os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
+with open(args.out, "wb") as f:
+    f.write(img_bytes)
+print("Saved:", args.out)
