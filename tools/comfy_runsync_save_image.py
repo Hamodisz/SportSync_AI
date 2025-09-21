@@ -1,37 +1,79 @@
-import os, json, base64, argparse, requests, sys
+#!/usr/bin/env python3
+import os, sys, json, base64, argparse, requests, pathlib
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--workflow", required=True)
-parser.add_argument("--prompt", required=True)
-parser.add_argument("--out", required=True)
-args = parser.parse_args()
+ENDPOINT_ID = os.getenv("RUNPOD_ENDPOINT_ID")
+API_KEY     = os.getenv("RUNPOD_API_KEY")
 
-api_key = os.environ.get("RUNPOD_API_KEY")
-endpoint_id = os.environ.get("RUNPOD_ENDPOINT_ID")
-if not api_key or not endpoint_id:
-    print("Missing RUNPOD_API_KEY or RUNPOD_ENDPOINT_ID"); sys.exit(1)
+def load_workflow(path):
+    with open(path, "r", encoding="utf-8") as f:
+        wf = json.load(f)
+    # تقبل الشكلين: {input:{workflow:{...}}} أو {workflow:{...}}
+    if "input" in wf and "workflow" in wf["input"]:
+        root = wf["input"]["workflow"]
+        wrapper = wf  # كما هو
+    elif "workflow" in wf:
+        root = wf["workflow"]
+        wrapper = {"input": {"workflow": root}}
+    else:
+        raise KeyError("workflow")
+    return wrapper, root
 
-with open(args.workflow, "r", encoding="utf-8") as f:
-    wf = json.load(f)
+def set_prompt(root, prompt_text):
+    """
+    يحاول إيجاد عقدة CLIPTextEncode ووضع النص.
+    أولًا يبحث عن PLACEHOLDER، وإذا ما وجدها يكتب أول CLIPTextEncode.
+    """
+    target_key = None
+    for k, node in root.items():
+        if node.get("class_type") == "CLIPTextEncode":
+            txt = node.get("inputs", {}).get("text", "")
+            if isinstance(txt, str) and ("PLACEHOLDER" in txt or txt == "" or txt == "prompt"):
+                target_key = k
+                break
+            if target_key is None:
+                target_key = k  # أول واحدة احتياط
+    if not target_key:
+        raise KeyError("no CLIPTextEncode node found")
+    root[target_key]["inputs"]["text"] = prompt_text
 
-# حاول نحدّث نص البرومبت في عقدة CLIPTextEncode رقم "6"
-try:
-    wf["input"]["workflow"]["6"]["inputs"]["text"] = args.prompt
-except Exception:
-    pass
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--workflow", required=True, help="path to ComfyUI JSON")
+    ap.add_argument("--prompt", required=True)
+    ap.add_argument("--out", required=True)
+    args = ap.parse_args()
 
-url = f"https://api.runpod.ai/v2/{endpoint_id}/runsync"
-headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-resp = requests.post(url, headers=headers, json=wf, timeout=600)
-resp.raise_for_status()
-data = resp.json()
+    if not ENDPOINT_ID or not API_KEY:
+        print("ERROR: set RUNPOD_ENDPOINT_ID and RUNPOD_API_KEY", file=sys.stderr)
+        sys.exit(1)
 
-imgs = data.get("output", {}).get("images", [])
-if not imgs:
-    print("No images in response:", data); sys.exit(2)
+    try:
+        wrapper, root = load_workflow(args.workflow)
+        set_prompt(root, args.prompt)
+    except Exception as e:
+        print(f"ERROR: could not prepare workflow JSON: {e}", file=sys.stderr)
+        sys.exit(1)
 
-img_bytes = base64.b64decode(imgs[0]["data"])
-os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
-with open(args.out, "wb") as f:
-    f.write(img_bytes)
-print("Saved:", args.out)
+    url = f"https://api.runpod.ai/v2/{ENDPOINT_ID}/runsync"
+    headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
+    payload = {"input": {"workflow": wrapper["input"]["workflow"]}}
+
+    r = requests.post(url, headers=headers, json=payload, timeout=900)
+    if r.status_code != 200:
+        print(f"HTTP {r.status_code}\n{r.text}", file=sys.stderr)
+        sys.exit(1)
+
+    data = r.json()
+    try:
+        img_b64 = data["output"]["images"][0]["data"]
+    except Exception:
+        print(f"Bad response:\n{json.dumps(data, ensure_ascii=False, indent=2)}", file=sys.stderr)
+        sys.exit(1)
+
+    pathlib.Path(os.path.dirname(args.out) or ".").mkdir(parents=True, exist_ok=True)
+    with open(args.out, "wb") as f:
+        f.write(base64.b64decode(img_b64))
+    print(f"saved -> {args.out}")
+
+if __name__ == "__main__":
+    main()
