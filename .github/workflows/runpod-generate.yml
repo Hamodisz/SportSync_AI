@@ -1,0 +1,96 @@
+name: RunPod Generate Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: "Image prompt"
+        required: true
+        default: "ultra-detailed cinematic sports identity scene, teal-orange, soft rim light, high detail, moody background, minimal text, crisp composition"
+  schedule:
+    - cron: "0 8 * * *" # تشغيل يومي 08:00 UTC (يمكن تعديلها أو حذف الجدولة)
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Build payload
+        env:
+          PROMPT: ${{ github.event.inputs.prompt }}
+        run: |
+          : "${PROMPT:=ultra-detailed cinematic sports identity scene, teal-orange, soft rim light, high detail, moody background, minimal text, crisp composition}"
+          cat > payload.json <<'JSON'
+          {
+            "input": {
+              "workflow": {
+                "30": { "class_type": "CheckpointLoaderSimple", "inputs": { "ckpt_name": "flux1-dev-fp8.safetensors" } },
+                "27": { "class_type": "EmptySD3LatentImage", "inputs": { "width": 1024, "height": 1024, "batch_size": 1 } },
+                "6":  { "class_type": "CLIPTextEncode", "inputs": { "text": "__PROMPT__", "clip": ["30", 1] } },
+                "35": { "class_type": "FluxGuidance", "inputs": { "guidance": 3.5, "conditioning": ["6", 0] } },
+                "33": { "class_type": "CLIPTextEncode", "inputs": { "text": "", "clip": ["30", 1] } },
+                "31": { "class_type": "KSampler",
+                  "inputs": {
+                    "seed": 123456789,
+                    "steps": 10,
+                    "cfg": 1,
+                    "sampler_name": "euler",
+                    "scheduler": "simple",
+                    "denoise": 1,
+                    "model": ["30", 0],
+                    "positive": ["35", 0],
+                    "negative": ["33", 0],
+                    "latent_image": ["27", 0]
+                  }
+                },
+                "8":  { "class_type": "VAEDecode", "inputs": { "samples": ["31", 0], "vae": ["30", 2] } },
+                "40": { "class_type": "SaveImage", "inputs": { "filename_prefix": "comfyui", "images": ["8", 0] } }
+              },
+              "return_b64": true
+            }
+          }
+          JSON
+          SAFE_PROMPT=$(printf '%s' "$PROMPT" | sed 's/"/\\"/g')
+          sed -i "s/__PROMPT__/$SAFE_PROMPT/g" payload.json
+          echo "Payload ready."
+
+      - name: Call RunPod runsync
+        env:
+          ENDPOINT: ${{ secrets.RUNPOD_ENDPOINT_ID }}
+          API: ${{ secrets.RUNPOD_API_KEY }}
+        run: |
+          set -e
+          curl -sS -X POST "https://api.runpod.ai/v2/${ENDPOINT}/runsync" \
+            -H "Authorization: Bearer ${API}" \
+            -H "Content-Type: application/json" \
+            --data-binary @payload.json -o response.json
+
+          echo "Saved response.json"
+          # حاول استخراج الـ base64 من مسارات شائعة
+          B64=$(jq -r '
+            .output.image_b64 // .output.image // (.output[0].image // empty) //
+            (.output.files[0].b64 // empty) // .data // empty
+          ' response.json)
+
+          if [ -z "$B64" ] || [ "$B64" = "null" ]; then
+            echo "ERROR: No base64 image found in response. Dumping response.json:"
+            cat response.json
+            exit 1
+          fi
+
+          # إزالة بادئة data: إن وجدت ثم حفظ الصورة
+          echo "$B64" | sed 's/^data:image\/[a-zA-Z0-9+.-]*;base64,//' | base64 -d > image.png
+          ls -lh image.png
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-image
+          path: image.png
