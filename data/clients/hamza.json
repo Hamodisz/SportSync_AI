@@ -1,0 +1,15 @@
+{
+  "client_name": "Hamza",
+  "tone": "raw_rebellion",
+  "tone_template_file": "agents/marketing/tone_templates/raw_rebellion.json",
+  "hard_rules": [
+    "No explicit time/cost/place/gear/sets/reps",
+    "Sensory + tactical wording over generic hype"
+  ],
+  "pillars": [
+    "Layer-Z motives",
+    "Stealth-flow identities",
+    "Precision & breath",
+    "Angles and decision timing"
+  ]
+}
