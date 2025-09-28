@@ -1,0 +1,110 @@
+name: Generate Shorts (RunPod + FFmpeg)
+
+on:
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: موضوع/فكرة الفيديو (يُستخدم لصياغة لقطات)
+        required: true
+        default: "Stealth-flow identity for anxious beginners"
+      shots:
+        description: عدد اللقطات (صور)
+        required: true
+        default: "6"
+      seconds_per_shot:
+        description: مدة كل لقطة بالثواني
+        required: true
+        default: "1.2"
+      fps:
+        description: Frames per second
+        required: true
+        default: "30"
+      audio_url:
+        description: رابط ملف صوت (اختياري) mp3/wav لدمجه
+        required: false
+        default: ""
+
+jobs:
+  make_video:
+    runs-on: ubuntu-latest
+    env:
+      RUNPOD_ENDPOINT_ID: ${{ secrets.RUNPOD_ENDPOINT_ID }}
+      RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Prepare folders
+        run: |
+          mkdir -p outputs/gha_short_work tmp
+          rm -f tmp/files.txt
+
+      - name: Build scene prompts
+        id: scenes
+        shell: bash
+        env:
+          INPUT_TOPIC: ${{ github.event.inputs.topic }}
+        run: |
+          cat > tmp/scenes.txt <<'TXT'
+          ${INPUT_TOPIC} — tunnel, moody teal light, lone athlete silhouette, cinematic, clean composition
+          ${INPUT_TOPIC} — close-up shoes hitting wet ground, motion blur, neon reflections
+          ${INPUT_TOPIC} — side profile sprint start, tense muscles, dramatic rim light
+          ${INPUT_TOPIC} — wide angle alley with fog, cyan/purple accents, dynamic composition
+          ${INPUT_TOPIC} — finish line vibe, particles, high contrast, energetic lighting
+          ${INPUT_TOPIC} — hero pose, brand glow, volumetric light, editorial look
+          TXT
+          head -n "${{ github.event.inputs.shots }}" tmp/scenes.txt > tmp/scenes.use
+
+      - name: Generate images on RunPod (ComfyUI)
+        run: |
+          i=0
+          while IFS= read -r prompt; do
+            i=$((i+1))
+            printf -v num "%02d" "$i"
+            python tools/comfy_runsync_save_image.py \
+              --workflow tools/workflows/flux1_text2img.json \
+              --prompt "$prompt" \
+              --out "outputs/gha_short_work/scene_${num}.png"
+          done < tmp/scenes.use
+
+      - name: Build concat file
+        run: |
+          secs="${{ github.event.inputs.seconds_per_shot }}"
+          for img in outputs/gha_short_work/scene_*.png; do
+            echo "file '$img'" >> tmp/files.txt
+            echo "duration $secs" >> tmp/files.txt
+          done
+          last=$(ls outputs/gha_short_work/scene_*.png | tail -n1)
+          echo "file '$last'" >> tmp/files.txt
+
+      - name: Render vertical video 1080x1920
+        run: |
+          ffmpeg -y -f concat -safe 0 -i tmp/files.txt \
+            -vf "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=${{ github.event.inputs.fps }}" \
+            -c:v libx264 -pix_fmt yuv420p -movflags +faststart \
+            outputs/gha_short_work/short_no_audio.mp4
+
+      - name: (Optional) Add audio if URL provided
+        if: ${{ github.event.inputs.audio_url != '' }}
+        run: |
+          curl -L "${{ github.event.inputs.audio_url }}" -o tmp/audio_in
+          ffmpeg -y -i outputs/gha_short_work/short_no_audio.mp4 -i tmp/audio_in \
+            -c:v copy -c:a aac -shortest outputs/gha_short_work/short.mp4
+
+      - name: Rename video (when no audio)
+        if: ${{ github.event.inputs.audio_url == '' }}
+        run: mv outputs/gha_short_work/short_no_audio.mp4 outputs/gha_short_work/short.mp4
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: short_video
+          path: |
+            outputs/gha_short_work/short.mp4
+            outputs/gha_short_work/scene_*.png
