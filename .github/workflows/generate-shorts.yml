@@ -73,38 +73,35 @@ jobs:
               --out "outputs/gha_short_work/scene_${num}.png"
           done < tmp/scenes.use
 
-      - name: ✅ Validate generated images
-        run: |
-          echo "Checking if images were generated..."
-          ls outputs/gha_short_work/scene_*.png || (echo "❌ No images generated!" && exit 1)
-
-      - name: 🧱 Build concat file
+      - name: ✅ Build concat file (final fix)
         run: |
           secs="${{ github.event.inputs.seconds_per_shot }}"
           mkdir -p tmp
           rm -f tmp/files.txt
 
-          for img in $(ls outputs/gha_short_work/scene_*.png); do
-            abs_path="$(realpath "$img")"
-            echo "file '$abs_path'" >> tmp/files.txt
+          for img in $(find outputs/gha_short_work/ -name "scene_*.png" | sort); do
+            full_path=$(readlink -f "$img")
+            if [ ! -f "$full_path" ]; then
+              echo "❌ File not found: $full_path"
+              exit 1
+            fi
+            echo "file '$full_path'" >> tmp/files.txt
             echo "duration $secs" >> tmp/files.txt
           done
 
-          last=$(ls outputs/gha_short_work/scene_*.png | tail -n1)
-          echo "file '$(realpath "$last")'" >> tmp/files.txt
+          last=$(find outputs/gha_short_work/ -name "scene_*.png" | sort | tail -n1)
+          echo "file '$(readlink -f "$last")'" >> tmp/files.txt
 
-      - name: 🔍 Debug concat input
+      - name: 🧪 Debug check before render
         run: |
-          echo "📄 tmp/files.txt:"
+          echo "📁 tmp/files.txt content:"
           cat tmp/files.txt
-          echo "📁 Images folder:"
+          echo "📂 output images:"
           ls -lh outputs/gha_short_work/
 
       - name: 🎥 Render vertical video 1080x1920
         run: |
-          echo "Starting FFmpeg render..."
-          ffmpeg -y -f concat -safe 0 -protocol_whitelist "file,pipe" \
-            -i tmp/files.txt \
+          ffmpeg -y -f concat -safe 0 -i tmp/files.txt \
             -vf "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=${{ github.event.inputs.fps }}" \
             -c:v libx264 -pix_fmt yuv420p -movflags +faststart \
             outputs/gha_short_work/short_no_audio.mp4
