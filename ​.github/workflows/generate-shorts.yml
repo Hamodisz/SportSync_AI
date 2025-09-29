@@ -83,6 +83,17 @@ jobs:
           last=$(ls outputs/gha_short_work/scene_*.png | tail -n1)
           echo "file '$last'" >> tmp/files.txt
 
+      - name: 🔍 Debug tmp directory + contents
+        run: |
+          echo "🔍 Listing tmp/ directory:"
+          ls -la tmp/
+          
+          echo "📄 Content of tmp/files.txt:"
+          cat tmp/files.txt || echo "⚠️ files.txt not found!"
+
+          echo "🖼️ Listing generated images:"
+          ls -la outputs/gha_short_work/
+
       - name: Render vertical video 1080x1920
         run: |
           ffmpeg -y -f concat -safe 0 -i tmp/files.txt \
