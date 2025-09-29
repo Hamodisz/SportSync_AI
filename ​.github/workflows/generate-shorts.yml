@@ -76,12 +76,12 @@ jobs:
       - name: Build concat file
         run: |
           secs="${{ github.event.inputs.seconds_per_shot }}"
-          for img in outputs/gha_short_work/scene_*.png; do
-            echo "file '$img'" >> tmp/files.txt
+          for img in $(ls outputs/gha_short_work/scene_*.png); do
+            echo "file '$PWD/$img'" >> tmp/files.txt
             echo "duration $secs" >> tmp/files.txt
           done
           last=$(ls outputs/gha_short_work/scene_*.png | tail -n1)
-          echo "file '$last'" >> tmp/files.txt
+          echo "file '$PWD/$last'" >> tmp/files.txt
 
       - name: 🔍 Debug tmp directory + contents
         run: |
