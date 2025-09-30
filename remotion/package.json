@@ -3,13 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "remotion build src/VideoRoot.jsx out/video_from_remotion.mp4 --props $(cat ../tmp/metadata.json)",
+    "build": "remotion render src/VideoRoot.jsx out/video_from_remotion.mp4 --props $(cat ../tmp/metadata.json)",
     "start": "remotion preview"
   },
   "dependencies": {
-    "react": "^18.0.0",
-    "react-dom": "^18.0.0",
-    "remotion": "^3.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "remotion": "^3.7.8",
     "lottie-react": "^2.3.0"
   }
 }
