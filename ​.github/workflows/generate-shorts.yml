@@ -1,4 +1,4 @@
-name: Generate Shorts (RunPod + FFmpeg)
+name: Generate Shorts (RunPod + FFmpeg -> Python pipeline)
 
 on:
   workflow_dispatch:
@@ -36,7 +36,7 @@ jobs:
       - name: Install tools
         run: |
           python -m pip install --upgrade pip
-          pip install requests
+          pip install requests moviepy imageio-ffmpeg
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
@@ -73,44 +73,60 @@ jobs:
               --out "outputs/gha_short_work/scene_${num}.png"
           done < tmp/scenes.use
 
-      - name: Build concat file
+      - name: ✅ Validate generated images
         run: |
-          secs="${{ github.event.inputs.seconds_per_shot }}"
-          for img in $(ls outputs/gha_short_work/scene_*.png); do
-            echo "file '$PWD/$img'" >> tmp/files.txt
-            echo "duration $secs" >> tmp/files.txt
-          done
-          last=$(ls outputs/gha_short_work/scene_*.png | tail -n1)
-          echo "file '$PWD/$last'" >> tmp/files.txt
+          echo "Checking output images..."
+          ls -la outputs/gha_short_work/ || (echo "❌ outputs/gha_short_work not found" && exit 1)
+          count=$(ls outputs/gha_short_work/scene_*.png 2>/dev/null | wc -l || true)
+          if [ -z "$count" ] || [ "$count" -eq 0 ]; then
+            echo "❌ No scene_*.png images found in outputs/gha_short_work"
+            exit 1
+          fi
+          echo "✅ Found $count image(s)."
+
+      - name: (Optional) Download audio URL if provided
+        if: ${{ github.event.inputs.audio_url != '' }}
+        run: |
+          echo "Downloading audio from: ${{ github.event.inputs.audio_url }}"
+          mkdir -p tmp
+          curl -L "${{ github.event.inputs.audio_url }}" -o tmp/audio_in || (echo "❌ Failed to download audio" && exit 1)
+          file tmp/audio_in || true
+          echo "✅ audio saved to tmp/audio_in"
 
       - name: 🔍 Debug tmp directory + contents
         run: |
           echo "🔍 Listing tmp/ directory:"
-          ls -la tmp/
+          ls -la tmp/ || true
           
-          echo "📄 Content of tmp/files.txt:"
-          cat tmp/files.txt || echo "⚠️ files.txt not found!"
+          echo "📁 Listing output images:"
+          ls -la outputs/gha_short_work/ | head -n 50 || true
 
-          echo "🖼️ Listing generated images:"
-          ls -la outputs/gha_short_work/
-
-      - name: Render vertical video 1080x1920
+      - name: 🎥 Render vertical video (via Python pipeline) - safe mode
         run: |
-          ffmpeg -y -f concat -safe 0 -protocol_whitelist "file,pipe" -i tmp/files.txt \
-            -vf "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=${{ github.event.inputs.fps }}" \
-            -c:v libx264 -pix_fmt yuv420p -movflags +faststart \
-            outputs/gha_short_work/short_no_audio.mp4
+          # build base command
+          CMD="python3 logic/video_pipeline.py \
+            --images outputs/gha_short_work \
+            --out outputs/gha_short_work/short.mp4 \
+            --seconds \"${{ github.event.inputs.seconds_per_shot }}\" \
+            --fps ${{ github.event.inputs.fps }}"
 
-      - name: (Optional) Add audio if URL provided
-        if: ${{ github.event.inputs.audio_url != '' }}
+          # attach audio if exists
+          if [ -f tmp/audio_in ]; then
+            echo "🔊 Found audio: tmp/audio_in — attaching to command"
+            CMD="$CMD --audio tmp/audio_in"
+          else
+            echo "🔈 No audio file found, rendering without audio"
+          fi
+
+          echo "Running: $CMD"
+          eval $CMD
+
+      - name: 🧪 Post-render check
         run: |
-          curl -L "${{ github.event.inputs.audio_url }}" -o tmp/audio_in
-          ffmpeg -y -i outputs/gha_short_work/short_no_audio.mp4 -i tmp/audio_in \
-            -c:v copy -c:a aac -shortest outputs/gha_short_work/short.mp4
-
-      - name: Rename video (when no audio)
-        if: ${{ github.event.inputs.audio_url == '' }}
-        run: mv outputs/gha_short_work/short_no_audio.mp4 outputs/gha_short_work/short.mp4
+          echo "Checking output video:"
+          ls -la outputs/gha_short_work/short.mp4 || (echo "❌ short.mp4 not found" && exit 1)
+          echo "Output video info:"
+          ffprobe -v error -show_format -show_streams outputs/gha_short_work/short.mp4 || true
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
