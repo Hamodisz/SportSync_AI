@@ -1,0 +1,11 @@
+{
+  "title": "Sport Sync — Stealth-flow",
+  "subtitle": "Discover your sport identity",
+  "seconds": 1.2,
+  "fps": 30,
+  "images": [
+    "../outputs/gha_short_work/scene_01.png",
+    "../outputs/gha_short_work/scene_02.png",
+    "../outputs/gha_short_work/scene_03.png"
+  ]
+}
