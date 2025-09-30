@@ -9,7 +9,7 @@ export const RemotionRoot = () => {
       <Composition
         id="SportSyncVideo"
         component={VideoRoot}
-        durationInFrames={900} /* سيتم قص المخرَج لاحقًا؛ نأخذ قيمة كبيرة كآمن */
+        durationInFrames={900} /* آمن */ 
         fps={30}
         width={1080}
         height={1920}
