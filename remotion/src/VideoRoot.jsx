@@ -1,24 +1,13 @@
 // remotion/src/VideoRoot.jsx
 import React from 'react';
-import {AbsoluteFill, Img, Sequence, spring, useVideoConfig, interpolate} from 'remotion';
+import {AbsoluteFill, Img, Sequence, useVideoConfig} from 'remotion';
 import Lottie from 'lottie-react';
 
-const FadeIn = ({children, fromFrame=0, durationFrames=30}) => {
-  const {fps} = useVideoConfig();
-  return (
-    <Sequence from={fromFrame}>
-      <AbsoluteFill style={{opacity: 1}}>
-        {children}
-      </AbsoluteFill>
-    </Sequence>
-  );
-};
-
 export default function VideoRoot(props) {
-  // props expected: { title, subtitle, images: [ ... ], seconds, fps, preset }
-  const { title = '', subtitle = '', images = [], seconds = 1.2, fps = 30 } = props;
-  const framesPerImage = Math.round(seconds * fps);
-  const totalFrames = framesPerImage * images.length || framesPerImage;
+  // props expected: { title, subtitle, images: [ ... ], seconds, fps, lottie (optional path) }
+  const { title = '', subtitle = '', images = [], seconds = 1.2, fps = 30, lottie = null } = props;
+  const framesPerImage = Math.max(1, Math.round(seconds * fps));
+  const totalFrames = framesPerImage * Math.max(1, images.length);
 
   return (
     <AbsoluteFill style={{backgroundColor: 'black'}}>
@@ -40,17 +29,17 @@ export default function VideoRoot(props) {
             <h1 style={{fontSize: 64, color: 'white', margin: 0, textShadow: '0 6px 24px rgba(0,0,0,0.7)'}}>{title}</h1>
           </div>
           <div style={{position: 'absolute', bottom: 120, width: '100%', textAlign: 'center'}}>
-            <h3 style={{fontSize: 28, color: 'white', margin: 0, opacity: 0.9}}>{subtitle}</h3>
+            <h3 style={{fontSize: 28, color: 'white', margin: 0, opacity: 0.95}}>{subtitle}</h3>
           </div>
         </AbsoluteFill>
       </Sequence>
 
-      {/* optional: add Lottie (if you pass lottie JSON path in props.lottie) */}
-      {props.lottie && (
+      {/* optional Lottie (pass parsed JSON as props.lottie if you want it) */}
+      {lottie && (
         <Sequence from={0} durationInFrames={Math.min(4 * fps, totalFrames)}>
-          <AbsoluteFill style={{pointerEvents: 'none', justifyContent:'flex-start', alignItems:'flex-start'}}>
+          <AbsoluteFill style={{pointerEvents: 'none'}}>
             <div style={{position: 'absolute', left: 40, top: 40, width: 160}}>
-              <Lottie animationData={props.lottie} loop={true} />
+              <Lottie animationData={lottie} loop={true} />
             </div>
           </AbsoluteFill>
         </Sequence>
