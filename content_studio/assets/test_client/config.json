@@ -1,0 +1,22 @@
+{
+  "client_name": "test_client",
+  "scenes": [
+    {
+      "image": "scene_1.png",
+      "text": "Sport Sync — البداية المليئة بالحماس",
+      "duration": 6
+    },
+    {
+      "image": "scene_2.png",
+      "text": "كل مشهد يحكي قصتك الرياضية",
+      "duration": 8
+    },
+    {
+      "image": "scene_3.png",
+      "text": "هويتك الرياضية تتضح مع كل لحظة",
+      "duration": 7
+    }
+  ],
+  "voiceover": true,
+  "music": "default"
+}
