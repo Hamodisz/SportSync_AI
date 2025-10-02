@@ -1,39 +1,35 @@
-# --- Pillow compatibility shim (pre-import) ---
-from PIL import Image as _PILImage
-if not hasattr(_PILImage, "ANTIALIAS"):
-    try:
-        _PILImage.ANTIALIAS = _PILImage.Resampling.LANCZOS
-    except Exception:
-        pass
-# ----------------------------------------------
-
+from __future__ import annotations
 import json
-import argparse
 from pathlib import Path
 
-# استيراد MoviePy
-from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip, CompositeVideoClip, TextClip, vfx
-from moviepy.audio.AudioClip import concatenate_audioclips
-
-# --- Pillow compatibility shim (post-import: patch module used داخل resize) ---
+# ---- Pillow compatibility shim (pre-import) ----
 try:
-    import moviepy.video.fx.resize as _mp_resize
-    # _mp_resize.Image هو نفس كائن PIL.Image داخل الموديول
-    if hasattr(_PILImage, "Resampling") and not hasattr(_mp_resize.Image, "ANTIALIAS"):
-        _mp_resize.Image.ANTIALIAS = _PILImage.Resampling.LANCZOS
+    from PIL import Image as _PILImage
+    if not hasattr(_PILImage, "ANTIALIAS"):
+        try:
+            _PILImage.ANTIALIAS = _PILImage.Resampling.LANCZOS
+        except Exception:
+            pass
 except Exception:
     pass
-# ------------------------------------------------------------------------------
 
-def normalize_path(p: str, repo_root: Path) -> Path:
-    pp = Path(p)
-    if pp.is_absolute():
-        return pp
-    if str(pp).startswith("../"):
-        return (repo_root / str(pp)[3:]).resolve()
-    return (repo_root / pp).resolve()
+import argparse
+from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip, CompositeVideoClip, TextClip, vfx
+import moviepy.video.fx.resize as mp_resize
 
-def main():
+# ---- Pillow compatibility shim (moviepy resize) ----
+try:
+    if getattr(mp_resize, "Image", None) and not hasattr(mp_resize.Image, "ANTIALIAS"):
+        from PIL import Image as _PILImage2
+        mp_resize.Image.ANTIALIAS = _PILImage2.Resampling.LANCZOS  # type: ignore
+except Exception:
+    pass
+
+def normalize_path(p: str | Path, repo_root: Path) -> Path:
+    p = Path(p)
+    return p if p.is_absolute() else (repo_root / p).resolve()
+
+def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--meta", required=True, help="Path to metadata.json")
     ap.add_argument("--out", required=True, help="Output mp4 path")
@@ -44,73 +40,71 @@ def main():
     repo_root = Path(__file__).resolve().parents[2]
 
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    seconds = float(meta.get("seconds", 1.2))
-    fps = int(meta.get("fps", 30))
     images = meta.get("images", [])
-    title = meta.get("title", "")
-    subtitle = meta.get("subtitle", "")
-    anim = meta.get("animation", {}) or {}
-    crossfade = float(anim.get("crossfade", 0.25))
-    colorx = float(anim.get("colorx", 1.0))
-
     if not images:
-        raise SystemExit("No images listed in metadata.json")
+        raise ValueError("metadata.json must include a non-empty 'images' array")
+    images = [str(normalize_path(p, repo_root)) for p in images]
+
+    secs = meta.get("seconds", 1.2)
+    if isinstance(secs, (int, float)):
+        durations = [float(secs)] * len(images)
+    elif isinstance(secs, list):
+        if len(secs) != len(images):
+            raise ValueError("'seconds' list must match images length")
+        durations = [float(s) for s in secs]
+    else:
+        raise ValueError("'seconds' must be a number or list")
+
+    fps = int(meta.get("fps", 30))
+    texts = meta.get("texts", [])
+    if not isinstance(texts, list):
+        texts = []
+    if len(texts) < len(images):
+        texts += [""] * (len(images) - len(texts))
 
     clips = []
-    for p in images:
-        full = normalize_path(p, repo_root)
-        if not full.exists():
-            raise SystemExit(f"Image not found: {full}")
-        c = ImageClip(str(full)).set_duration(seconds).resize(height=1920)
-        if c.w < 1080:
-            c = c.resize(width=1080)
-        if colorx != 1.0:
-            c = c.fx(vfx.colorx, colorx)
-        clips.append(c)
+    W, H = 1080, 1920
+    for img, dur, txt in zip(images, durations, texts):
+        base = (ImageClip(img)
+                .resize(height=H)
+                .fx(vfx.crop, width=W, height=H)
+                .set_duration(dur))
+        overlays = [base]
+        if txt:
+            try:
+                cap = (TextClip(txt, fontsize=52, color="white", method="caption", size=(W-80, None))
+                       .set_position(("center", H-280)).set_duration(dur))
+                shadow = (TextClip(txt, fontsize=52, color="black", method="caption", size=(W-80, None))
+                          .set_position(("center", H-276)).set_duration(dur))
+                overlays = [base, shadow, cap]
+            except Exception:
+                overlays = [base]
+        clips.append(CompositeVideoClip(overlays).set_duration(dur))
 
-    # crossfade assemble
-    xclips = []
-    for i, c in enumerate(clips):
-        if i == 0:
-            xclips.append(c)
-        else:
-            xclips.append(c.crossfadein(crossfade))
-            xclips[i-1] = xclips[i-1].crossfadeout(crossfade)
+    final = concatenate_videoclips(clips, method="compose")
 
-    video = concatenate_videoclips(xclips, method="compose")
-
-    # simple title/subtitle overlay (اختياري)
-    try:
-        overlays = [video]
-        if title:
-            t = TextClip(title, fontsize=64, color='white').set_duration(min(4, seconds*2)).set_position(("center", 200)).fadein(0.4).fadeout(0.4)
-            overlays.append(t)
-        if subtitle:
-            s = TextClip(subtitle, fontsize=30, color='white').set_duration(min(4, seconds*2)).set_position(("center", 1720)).fadein(0.4).fadeout(0.4)
-            overlays.append(s)
-        video = CompositeVideoClip(overlays, size=(1080,1920)).set_duration(video.duration)
-    except Exception:
-        pass
-
-    # optional audio
-    audio = meta.get("audio")
-    if audio:
-        audio_path = normalize_path(audio, repo_root)
-        if audio_path.exists():
-            a = AudioFileClip(str(audio_path))
-            if a.duration < video.duration:
-                loops, dur = [], 0.0
-                while dur < video.duration:
-                    seg = a.subclip(0, min(a.duration, video.duration - dur))
-                    loops.append(seg)
-                    dur += seg.duration
-                a = concatenate_audioclips(loops).set_duration(video.duration)
-            else:
-                a = a.subclip(0, video.duration)
-            video = video.set_audio(a)
+    audio_path = meta.get("audio")
+    if audio_path:
+        try:
+            apath = str(normalize_path(audio_path, repo_root))
+            audio = AudioFileClip(apath)
+            if audio.duration > final.duration:
+                audio = audio.subclip(0, final.duration)
+            final = final.set_audio(audio)
+        except Exception:
+            pass
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    video.write_videofile(str(out_path), fps=fps, codec="libx264", audio_codec="aac", preset="medium", threads=4)
+    final.write_videofile(
+        str(out_path),
+        fps=fps,
+        codec="libx264",
+        audio_codec="aac",
+        threads=4,
+        preset="medium",
+        temp_audiofile=str(out_path.parent / "temp-audio.m4a"),
+        remove_temp=True,
+    )
 
 if __name__ == "__main__":
     main()
