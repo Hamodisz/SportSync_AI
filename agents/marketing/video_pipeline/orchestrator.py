@@ -22,7 +22,16 @@ import shlex
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 # Paths in your repo (use exactly the structure you provided)
-ROOT = Path(__file__).resolve().parents[4]  # go from agents/... up to repo root
+# start from file location and walk up until we find repo root ('.git' or 'data' dir)
+_here = Path(__file__).resolve()
+ROOT = None
+for pr in _here.parents:
+    if (pr / ".git").exists() or (pr / "data").exists():
+        ROOT = pr
+        break
+if ROOT is None:
+    ROOT = _here.parents[3]
+
 INSIGHTS_PATH = ROOT / "data" / "insights_log.json"
 IMAGES_DIR = ROOT / "content_studio" / "ai_images" / "outputs"
 VOICE_SCRIPT = ROOT / "content_studio" / "ai_voice" / "voice_generator.py"

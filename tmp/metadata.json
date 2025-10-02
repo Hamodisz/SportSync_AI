@@ -1,11 +1,14 @@
 {
-  "title": "Sport Sync — Stealth-flow",
-  "subtitle": "Discover your sport identity",
+  "title": "Pilates ",
+  "subtitle": "تابعنا لمزيد من التوصيات.",
   "seconds": 1.2,
   "fps": 30,
   "images": [
-    "../outputs/gha_short_work/scene_01.png",
-    "../outputs/gha_short_work/scene_02.png",
-    "../outputs/gha_short_work/scene_03.png"
-  ]
+    "../content_studio/ai_images/outputs/scene_1.png",
+    "../content_studio/ai_images/outputs/scene_2.png",
+    "../content_studio/ai_images/outputs/scene_3.png",
+    "../content_studio/ai_images/outputs/scene_4.png"
+  ],
+  "animation": {},
+  "narration_text": "User prefers low-intensity guided movement; anxious when crowded. — توصية: Pilates / Yoga flow (low-impact)"
 }

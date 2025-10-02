@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "id": "video_0001",
+    "topic": "Stealth-flow identity for anxious beginners",
+    "scores": { "energy": 0.35, "focus": 0.78, "social": 0.22, "risk": 0.18 },
+    "layer_z": "seeks_control_under_stress",
+    "keywords": ["slow-flow", "breath", "rhythm"],
+    "recommendation": "Pilates / Yoga flow (low-impact)",
+    "notes": "User prefers low-intensity guided movement; anxious when crowded.",
+    "seconds_per_image": 1.2
+  }
+]
