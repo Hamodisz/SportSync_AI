@@ -1,0 +1,215 @@
+name: Generate Client Video (RunPod optional)
+
+on:
+  workflow_dispatch:
+    inputs:
+      client:
+        description: "اسم مجلد العميل تحت content_studio/assets (مثال: test_client)"
+        required: true
+        default: "test_client"
+      fps:
+        description: "Frames per second"
+        required: true
+        default: "30"
+      seconds:
+        description: "مدة كل صورة (عدد أو قائمة JSON) مثل 1.2 أو [6,8,7]"
+        required: true
+        default: "1.2"
+      audio_url:
+        description: "رابط ملف صوت (اختياري) mp3/wav"
+        required: false
+        default: ""
+      use_runpod:
+        description: "ولّد الصور عبر RunPod/ComfyUI لو مافي صور"
+        required: false
+        default: "false"
+
+jobs:
+  build_video:
+    runs-on: ubuntu-latest
+    env:
+      CLIENT: ${{ github.event.inputs.client }}
+      FPS: ${{ github.event.inputs.fps }}
+      SECONDS_IN: ${{ github.event.inputs.seconds }}
+      AUDIO_URL: ${{ github.event.inputs.audio_url }}
+      USE_RUNPOD: ${{ github.event.inputs.use_runpod }}
+      RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+      RUNPOD_ENDPOINT_ID: ${{ secrets.RUNPOD_ENDPOINT_ID }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system deps (ffmpeg)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install moviepy pillow imageio-ffmpeg requests
+
+      - name: Show client assets
+        run: |
+          echo "📁 content_studio/assets/$CLIENT"
+          ls -la "content_studio/assets/$CLIENT" || true
+          ls -la "content_studio/assets/$CLIENT/images" || true
+
+      - name: Optional: Generate images via RunPod if needed
+        if: ${{ env.USE_RUNPOD == 'true' }}
+        run: |
+          if [ -z "${RUNPOD_API_KEY}" ] || [ -z "${RUNPOD_ENDPOINT_ID}" ]; then
+            echo "⚠️ RUNPOD secrets missing. Skipping RunPod image gen."
+            exit 0
+          fi
+          python - <<'PY'
+import os, json, subprocess
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+client = os.environ["CLIENT"]
+assets = ROOT / "content_studio" / "assets" / client
+imgs_dir = assets / "images"
+imgs_dir.mkdir(parents=True, exist_ok=True)
+
+cfg = assets / "config.json"
+scenes = []
+if cfg.exists():
+    try:
+        scenes = json.loads(cfg.read_text(encoding="utf-8")).get("scenes", [])
+    except Exception:
+        scenes = []
+
+prompts = []
+if scenes:
+    for s in scenes:
+        p = s.get("text") or "Sport Sync cinematic teal tunnel athlete"
+        prompts.append(p)
+else:
+    prompts = [
+        "Sport Sync — moody teal tunnel, athlete silhouette, cinematic",
+        "close-up shoes, wet ground, motion blur, neon reflections",
+        "hero pose, volumetric light, editorial look"
+    ]
+
+wf = ROOT / "tools" / "workflows" / "flux1_text2img.json"
+tool = ROOT / "tools" / "comfy_runsync_save_image.py"
+if not wf.exists() or not tool.exists():
+    print("⚠️ Comfy tools/workflow not found. Skipping cloud gen.")
+    raise SystemExit(0)
+
+for i, prompt in enumerate(prompts, start=1):
+    out = imgs_dir / f"scene_{i}.png"
+    if out.exists():
+        continue
+    cmd = [
+        "python", str(tool),
+        "--workflow", str(wf),
+        "--prompt", prompt,
+        "--out", str(out)
+    ]
+    print(">>", " ".join(cmd))
+    subprocess.run(cmd, check=True)
+print("✅ RunPod (if available) step done.")
+PY
+
+      - name: Build metadata from client config
+        run: |
+          mkdir -p tmp
+          python - <<'PY'
+import json, os
+from pathlib import Path
+ROOT = Path(__file__).resolve().parents[2]
+client = os.environ["CLIENT"]
+fps = int(os.environ["FPS"])
+seconds_in = os.environ["SECONDS_IN"]
+
+assets = ROOT / "content_studio" / "assets" / client
+cfg = assets / "config.json"
+imgs_dir = assets / "images"
+
+def parse_seconds(s):
+    try:
+        j = json.loads(s)
+        if isinstance(j, list): return j
+    except Exception:
+        pass
+    try:
+        return float(s)
+    except Exception:
+        return 1.2
+
+seconds = parse_seconds(seconds_in)
+
+images = []
+if cfg.exists():
+    try:
+        j = json.loads(cfg.read_text(encoding="utf-8"))
+        scenes = j.get("scenes", [])
+    except Exception:
+        scenes = []
+    for s in scenes:
+        if "image" in s:
+            p = s["image"]
+            pth = (imgs_dir / p).resolve() if not str(p).startswith(("content_studio","/")) else (ROOT / p)
+            images.append(str(pth))
+else:
+    images = [str(p.resolve()) for p in sorted(imgs_dir.glob("scene_*.png"))]
+
+if not images:
+    images = [str((ROOT / "content_studio/ai_images/outputs/scene_1.png").resolve()),
+              str((ROOT / "content_studio/ai_images/outputs/scene_2.png").resolve()),
+              str((ROOT / "content_studio/ai_images/outputs/scene_3.png").resolve())]
+
+texts = []
+if cfg.exists():
+    try:
+        j = json.loads(cfg.read_text(encoding="utf-8"))
+        scenes = j.get("scenes", [])
+        texts = [s.get("text","") for s in scenes]
+    except Exception:
+        texts = []
+
+meta = {
+  "title": "Sport Sync",
+  "subtitle": "Discover your sport identity",
+  "fps": fps,
+  "seconds": seconds,
+  "images": images,
+  "texts": texts
+}
+
+mp = ROOT / "tmp" / "metadata_client.json"
+mp.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+print("Wrote", mp)
+PY
+          echo "---- metadata ----"
+          cat tmp/metadata_client.json
+
+      - name: Render video (Python MoviePy)
+        run: |
+          mkdir -p content_studio/ai_video/final_videos
+          python content_studio/ai_video/generate_final_video.py \
+            --meta tmp/metadata_client.json \
+            --out content_studio/ai_video/final_videos/${{ env.CLIENT }}.mp4
+
+      - name: (Optional) Replace audio from URL
+        if: ${{ github.event.inputs.audio_url != '' }}
+        run: |
+          curl -L "${AUDIO_URL}" -o tmp/audio_in
+          ffmpeg -y -i content_studio/ai_video/final_videos/${CLIENT}.mp4 -i tmp/audio_in \
+            -c:v copy -c:a aac -shortest content_studio/ai_video/final_videos/${CLIENT}_with_audio.mp4
+          mv content_studio/ai_video/final_videos/${CLIENT}_with_audio.mp4 content_studio/ai_video/final_videos/${CLIENT}.mp4
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: video_${{ env.CLIENT }}
+          path: content_studio/ai_video/final_videos/${{ env.CLIENT }}.mp4
+          if-no-files-found: error
