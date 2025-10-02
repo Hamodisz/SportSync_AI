@@ -1,0 +1,132 @@
+name: Generate Client Video (RunPod optional)
+
+on:
+  workflow_dispatch:
+    inputs:
+      client:
+        description: "اسم العميل (مجلد داخل content_studio/assets مثل test_client)"
+        required: true
+        default: "test_client"
+      fps:
+        description: "Frames per second"
+        required: true
+        default: "30"
+      seconds:
+        description: "المدد بالثواني لكل لقطة (JSON) مثل 1.2 أو [6,8,7]"
+        required: true
+        default: "1.2"
+      audio_url:
+        description: "رابط ملف صوت اختياري mp3/wav"
+        required: false
+        default: ""
+      use_runpod:
+        description: "توليد الصور عبر RunPod/ComfyUI؟"
+        required: false
+        default: "false"
+
+jobs:
+  build_video:
+    runs-on: ubuntu-latest
+    env:
+      CLIENT: ${{ inputs.client }}
+      FPS: ${{ inputs.fps }}
+      SECONDS: ${{ inputs.seconds }}
+      AUDIO_URL: ${{ inputs.audio_url }}
+      USE_RUNPOD: ${{ inputs.use_runpod }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system deps (ffmpeg)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          # لو عندك requirements.txt استخدمه بدل السطرين الجاية
+          pip install moviepy pillow requests numpy
+          # في حال استخدمت RunPod لاحقًا
+          pip install pydantic
+
+      - name: Prepare folders
+        run: |
+          mkdir -p tmp content_studio/ai_video/final_videos
+
+      - name: Validate client assets
+        run: |
+          test -f "content_studio/assets/${CLIENT}/config.json"
+          echo "✅ found assets/config for ${CLIENT}"
+
+      - name: Build metadata.json from client config
+        run: |
+          python - <<'PY'
+          import json, sys, os
+          from pathlib import Path
+          client=os.environ["CLIENT"]
+          cfg = json.load(open(f"content_studio/assets/{client}/config.json", "r", encoding="utf-8"))
+          # توقعنا حقول: scenes[{image,text,duration}], voiceover(bool), music(str)
+          imgs  = [f"content_studio/assets/{client}/images/{s['image']}" for s in cfg.get("scenes",[])]
+          texts = [s.get("text","") for s in cfg.get("scenes",[])]
+          secs  = [s.get("duration", 1.2) for s in cfg.get("scenes",[])]
+          meta = {
+            "title": cfg.get("client_name", client),
+            "subtitle": "Discover your sport identity",
+            "fps": int(os.environ.get("FPS","30")),
+            "images": imgs,
+            "seconds": secs,
+            "texts": texts
+          }
+          Path("tmp").mkdir(exist_ok=True)
+          with open("tmp/metadata_client.json","w",encoding="utf-8") as f:
+            json.dump(meta,f,ensure_ascii=False,indent=2)
+          print("✅ wrote tmp/metadata_client.json")
+          PY
+
+      - name: (Optional) Generate images via RunPod
+        if: ${{ env.USE_RUNPOD == 'true' }}
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+          RUNPOD_ENDPOINT_ID: ${{ secrets.RUNPOD_ENDPOINT_ID }}
+        run: |
+          if [ -z "${RUNPOD_API_KEY}" ] || [ -z "${RUNPOD_ENDPOINT_ID}" ]; then
+            echo "❌ RUNPOD secrets غير موجودة" && exit 1
+          fi
+          echo "⚠️ Placeholder: هنا تستدعي سكربت التوليد tools/comfy_runsync_save_image.py"
+          # مثال (عدّل المسارات/الوركفلو حسب عندك):
+          # python tools/comfy_runsync_save_image.py \
+          #   --workflow tools/workflows/flux1_text2img.json \
+          #   --prompt "Sport Sync — cinematic teal tunnel..." \
+          #   --out content_studio/assets/${CLIENT}/images/scene_new.png
+
+      - name: Render video (no/with audio)
+        run: |
+          set -e
+          OUT="content_studio/ai_video/final_videos/${CLIENT}.mp4"
+          if [ -n "${AUDIO_URL}" ]; then
+            curl -L "${AUDIO_URL}" -o tmp/audio_in || true
+          fi
+          # نستخدم سكربتك الحالي
+          python content_studio/ai_video/generate_final_video.py \
+            --meta tmp/metadata_client.json \
+            --out "${OUT}"
+          # لو فيه صوت دمجه
+          if [ -f tmp/audio_in ]; then
+            ffmpeg -y -i "${OUT}" -i tmp/audio_in -c:v copy -c:a aac -shortest "${OUT%.mp4}_with_audio.mp4"
+            mv "${OUT%.mp4}_with_audio.mp4" "${OUT}"
+          fi
+          echo "✅ Final video at ${OUT}"
+          ls -la "${OUT}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: client_video_${{ inputs.client }}
+          path: content_studio/ai_video/final_videos/${{ inputs.client }}.mp4
