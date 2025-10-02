@@ -9,6 +9,9 @@
     "../content_studio/ai_images/outputs/scene_3.png",
     "../content_studio/ai_images/outputs/scene_4.png"
   ],
-  "animation": {},
+  "animation": {
+    "crossfade": 0.25,
+    "colorx": 1.0
+  },
   "narration_text": "User prefers low-intensity guided movement; anxious when crowded. — توصية: Pilates / Yoga flow (low-impact)"
 }

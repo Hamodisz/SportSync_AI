@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/workspaces/SportSync_AI/agents/marketing/video_pipeline/orchestrator.py", line 27, in <module>
+    ROOT = No
+           ^^
+NameError: name 'No' is not defined
