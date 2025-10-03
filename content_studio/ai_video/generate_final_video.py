@@ -1,111 +1,120 @@
-mkdir -p content_studio/ai_video
-
-cat > content_studio/ai_video/generate_final_video.py <<'PY'
-from __future__ import annotations
-import os, json, argparse
+# file: content_studio/ai_video/generate_final_video.py
+import argparse
+import json
+import os
+import tempfile
 from pathlib import Path
 
-# ---- Pillow compat (ANTIALIAS -> Resampling.LANCZOS) ----
+# توافق MoviePy 1.x / 2.x
 try:
-    from PIL import Image as _PILImage
-    if not hasattr(_PILImage, "ANTIALIAS"):
-        _PILImage.ANTIALIAS = _PILImage.Resampling.LANCZOS
+    # MoviePy 2.x
+    from moviepy import ImageClip, AudioFileClip, CompositeVideoClip, TextClip, concatenate_videoclips
 except Exception:
-    pass
+    # MoviePy 1.x
+    from moviepy.editor import ImageClip, AudioFileClip, CompositeVideoClip, TextClip, concatenate_videoclips  # type: ignore
 
-from moviepy.editor import (
-    ImageClip, AudioFileClip, concatenate_videoclips,
-    CompositeVideoClip, TextClip
-)
-
-try:
-    import moviepy.video.fx.resize as mp_resize
-    from PIL import Image as _PILImage2
-    if getattr(mp_resize, "Image", None) and not hasattr(mp_resize.Image, "ANTIALIAS"):
-        mp_resize.Image = _PILImage2
-        mp_resize.Image.ANTIALIAS = _PILImage2.Resampling.LANCZOS
-except Exception:
-    pass
+import requests
 
 
-def build_video(meta_path: str, out_path: str, width: int = 1920, height: int = 1920) -> str:
-    meta_p = Path(meta_path)
-    if not meta_p.exists():
-        raise FileNotFoundError(f"لم يتم العثور على ملف الميتاداتا: {meta_p}")
+def load_meta(p: str) -> dict:
+    with open(p, "r", encoding="utf-8") as f:
+        return json.load(f)
 
-    meta = json.loads(meta_p.read_text(encoding="utf-8"))
-    fps = int(meta.get("fps", 30))
-    images = list(meta.get("images", []))
-    seconds = list(meta.get("seconds", []))
-    texts = list(meta.get("texts", []))
+
+def ensure_len_seconds(seconds, n_images):
+    if not seconds or len(seconds) != n_images:
+        # fallback: 5s لكل صورة
+        return [5] * n_images
+    return [max(0.5, float(s)) for s in seconds]
+
+
+def text_overlay_clip(text, width, height, dur, margin=40):
+    """
+    يبني شريحة نص أسفل الصورة مع stroke بسيط. لو النص فاضي، يرجّع None.
+    """
+    txt = (text or "").strip()
+    if not txt:
+        return None
+
+    # TextClip API نفسه في 1.x و 2.x
+    clip = TextClip(
+        txt,
+        fontsize=60,
+        color="white",
+        stroke_color="black",
+        stroke_width=3,
+        method="caption",
+        size=(int(width * 0.9), None),
+    ).set_duration(dur).set_position(("center", height - margin - 200))  # قرب الأسفل
+    return clip
+
+
+def build_video(meta_path: str, out_path: str, width: int, height: int, audio_url: str = ""):
+    meta = load_meta(meta_path)
+
+    images = meta.get("images", [])
+    texts = meta.get("texts", [])
+    seconds = ensure_len_seconds(meta.get("seconds", []), len(images))
 
     if not images:
-        raise ValueError("قائمة الصور فارغة في metadata.json")
-
-    if not seconds or len(seconds) != len(images):
-        seconds = [5] * len(images)
+        raise ValueError("لا توجد صور في metadata.json")
 
     if len(texts) < len(images):
         texts += [""] * (len(images) - len(texts))
 
-    size = (width, height)
-    clips = []
+    size = (int(width), int(height))
 
+    # تأكد من وجود الصور
     missing = [p for p in images if not Path(p).exists()]
     if missing:
-        raise FileNotFoundError("الصور التالية غير موجودة:\n- " + "\n- ".join(missing))
+        raise FileNotFoundError("الصور التالية غير موجودة:\n" + "\n".join(missing))
 
+    clips = []
     for img_path, dur, txt in zip(images, seconds, texts):
-        base = ImageClip(img_path).resize(newsize=size).set_duration(float(dur))
-        if txt and txt.strip():
-            try:
-                txt_clip = TextClip(
-                    txt,
-                    fontsize=60,
-                    color="white",
-                    stroke_color="black",
-                    stroke_width=3,
-                    method="caption",
-                    size=(int(size[0]*0.9), None)
-                ).set_duration(float(dur)).set_position(("center", "bottom"))
-                clip = CompositeVideoClip([base, txt_clip])
-            except Exception:
-                clip = base
+        base = ImageClip(img_path).resize(newsize=size).set_duration(dur)
+        txt_clip = text_overlay_clip(txt, width, height, dur)
+
+        if txt_clip is not None:
+            clip = CompositeVideoClip([base, txt_clip])
         else:
             clip = base
+
         clips.append(clip)
 
     final = concatenate_videoclips(clips, method="compose")
 
-    audio_url = os.getenv("AUDIO_URL", "").strip()
-    if audio_url:
-        try:
-            import requests, tempfile
-            with tempfile.NamedTemporaryFile(suffix=os.path.splitext(audio_url)[1] or ".mp3", delete=False) as tmpf:
-                tmp = tmpf.name
-                r = requests.get(audio_url, timeout=30)
-                r.raise_for_status()
-                tmpf.write(r.content)
-            final = final.set_audio(AudioFileClip(tmp))
-        except Exception as e:
-            print(f"[تحذير] فشل تحميل الصوت من AUDIO_URL: {e}. سنكمل بدون صوت.")
+    # صوت اختياري من URL
+    if audio_url and audio_url.strip():
+        with tempfile.TemporaryDirectory() as td:
+            mp3_path = str(Path(td) / "audio.mp3")
+            r = requests.get(audio_url, timeout=30)
+            r.raise_for_status()
+            with open(mp3_path, "wb") as f:
+                f.write(r.content)
+            narration = AudioFileClip(mp3_path)
+            final = final.set_audio(narration)
 
-    out_p = Path(out_path)
-    out_p.parent.mkdir(parents=True, exist_ok=True)
-    final.write_videofile(str(out_p), fps=fps, codec="libx264", audio_codec="aac")
-    print(f"✅ تم إنتاج الفيديو: {out_p}")
-    return str(out_p)
+            Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+            final.write_videofile(out_path, fps=30, codec="libx264", audio_codec="aac")
+    else:
+        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+        final.write_videofile(out_path, fps=30, codec="libx264", audio_codec="aac")
+
+
+def parse_args():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--meta", required=True, help="path to tmp/metadata.json")
+    ap.add_argument("--out", required=True, help="output mp4 path")
+    ap.add_argument("--width", type=int, default=1080)
+    ap.add_argument("--height", type=int, default=1920)
+    ap.add_argument("--audio_url", default="", help="optional mp3/wav url")
+    return ap.parse_args()
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--meta", required=True, help="مسار ملف metadata.json")
-    parser.add_argument("--out", required=True, help="مسار حفظ الفيديو النهائي")
-    parser.add_argument("--width", type=int, default=1920)
-    parser.add_argument("--height", type=int, default=1920)
-    args = parser.parse_args()
-    build_video(args.meta, args.out, width=args.width, height=args.height)
+    args = parse_args()
+    build_video(args.meta, args.out, args.width, args.height, args.audio_url)
+
 
 if __name__ == "__main__":
     main()
-PY
