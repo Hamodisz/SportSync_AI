@@ -71,7 +71,8 @@ def build_video(meta_path: str, out_path: str, width: int, height: int, audio_ur
 
     clips = []
     for img_path, dur, txt in zip(images, seconds, texts):
-        base = ImageClip(img_path).resize(newsize=size).set_duration(dur)
+        # التعديل هنا: newsize -> size
+        base = ImageClip(img_path).resize(size=size).set_duration(dur)
         txt_clip = text_overlay_clip(txt, width, height, dur)
 
         if txt_clip is not None:
