@@ -1,0 +1,10 @@
+{
+  "client_name": "demo_client",
+  "scenes": [
+    { "image": "scene_1.png", "text": "Sport Sync — مشهد ١", "duration": 6 },
+    { "image": "scene_2.png", "text": "Sport Sync — مشهد ٢", "duration": 8 },
+    { "image": "scene_3.png", "text": "Sport Sync — مشهد ٣", "duration": 7 }
+  ],
+  "voiceover": true,
+  "music": "default"
+}
