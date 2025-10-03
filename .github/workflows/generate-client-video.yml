@@ -1,215 +1,109 @@
-name: Generate Client Video (RunPod optional)
+name: Generate Client Video
 
 on:
   workflow_dispatch:
     inputs:
       client:
-        description: "اسم مجلد العميل تحت content_studio/assets (مثال: test_client)"
+        description: "اسم مجلد العميل داخل content_studio/assets"
         required: true
-        default: "test_client"
+        default: "demo_client"
       fps:
         description: "Frames per second"
         required: true
         default: "30"
       seconds:
-        description: "مدة كل صورة (عدد أو قائمة JSON) مثل 1.2 أو [6,8,7]"
+        description: "مدد المشاهد (JSON array) مثل [6,8,7]"
         required: true
-        default: "1.2"
+        default: "[6,8,7]"
       audio_url:
-        description: "رابط ملف صوت (اختياري) mp3/wav"
+        description: "رابط ملف mp3/wav (اختياري)"
         required: false
         default: ""
       use_runpod:
-        description: "ولّد الصور عبر RunPod/ComfyUI لو مافي صور"
+        description: "توليد صور عبر RunPod/ComfyUI؟"
         required: false
         default: "false"
 
 jobs:
   build_video:
     runs-on: ubuntu-latest
-    env:
-      CLIENT: ${{ github.event.inputs.client }}
-      FPS: ${{ github.event.inputs.fps }}
-      SECONDS_IN: ${{ github.event.inputs.seconds }}
-      AUDIO_URL: ${{ github.event.inputs.audio_url }}
-      USE_RUNPOD: ${{ github.event.inputs.use_runpod }}
-      RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
-      RUNPOD_ENDPOINT_ID: ${{ secrets.RUNPOD_ENDPOINT_ID }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Debug listing
+        run: |
+          echo "CLIENT=${{ github.event.inputs.client }}"
+          ls -la
+          ls -la content_studio || true
+          ls -la content_studio/assets || true
+          ls -la content_studio/assets/${{ github.event.inputs.client }} || true
+          ls -la content_studio/assets/${{ github.event.inputs.client }}/images || true
+
+      - name: Validate client assets
+        env:
+          CLIENT: ${{ github.event.inputs.client }}
+        run: |
+          set -e
+          test -f "content_studio/assets/${CLIENT}/config.json"
+          echo "✅ Found config for ${CLIENT}"
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install system deps (ffmpeg)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
-
       - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
-          python -m pip install moviepy pillow imageio-ffmpeg requests
+          pip install -r requirements.txt || true
+          pip install moviepy pillow pydantic rich
 
-      - name: Show client assets
+      - name: Build metadata.json from client config
+        env:
+          CLIENT: ${{ github.event.inputs.client }}
+          FPS: ${{ github.event.inputs.fps }}
+          SECONDS: ${{ github.event.inputs.seconds }}
         run: |
-          echo "📁 content_studio/assets/$CLIENT"
-          ls -la "content_studio/assets/$CLIENT" || true
-          ls -la "content_studio/assets/$CLIENT/images" || true
-
-      - name: Optional: Generate images via RunPod if needed
-        if: ${{ env.USE_RUNPOD == 'true' }}
-        run: |
-          if [ -z "${RUNPOD_API_KEY}" ] || [ -z "${RUNPOD_ENDPOINT_ID}" ]; then
-            echo "⚠️ RUNPOD secrets missing. Skipping RunPod image gen."
-            exit 0
-          fi
           python - <<'PY'
-import os, json, subprocess
-from pathlib import Path
+          import json,sys
+          from pathlib import Path
+          client = "${CLIENT}"
+          meta_out = Path("tmp/metadata_client.json")
+          cfg = json.loads(Path(f"content_studio/assets/{client}/config.json").read_text(encoding="utf-8"))
+          secs = json.loads("${SECONDS}")
+          imgs = [f"content_studio/assets/{client}/images/{s['image']}" for s in cfg["scenes"]]
+          texts = [s["text"] for s in cfg["scenes"]]
+          meta = {
+            "title": "Sport Sync",
+            "subtitle": "Discover your sport identity",
+            "fps": int("${FPS}"),
+            "images": imgs,
+            "seconds": secs,
+            "texts": texts,
+          }
+          meta_out.parent.mkdir(parents=True, exist_ok=True)
+          meta_out.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+          print("Wrote", meta_out)
+          PY
 
-ROOT = Path(__file__).resolve().parents[2]
-client = os.environ["CLIENT"]
-assets = ROOT / "content_studio" / "assets" / client
-imgs_dir = assets / "images"
-imgs_dir.mkdir(parents=True, exist_ok=True)
-
-cfg = assets / "config.json"
-scenes = []
-if cfg.exists():
-    try:
-        scenes = json.loads(cfg.read_text(encoding="utf-8")).get("scenes", [])
-    except Exception:
-        scenes = []
-
-prompts = []
-if scenes:
-    for s in scenes:
-        p = s.get("text") or "Sport Sync cinematic teal tunnel athlete"
-        prompts.append(p)
-else:
-    prompts = [
-        "Sport Sync — moody teal tunnel, athlete silhouette, cinematic",
-        "close-up shoes, wet ground, motion blur, neon reflections",
-        "hero pose, volumetric light, editorial look"
-    ]
-
-wf = ROOT / "tools" / "workflows" / "flux1_text2img.json"
-tool = ROOT / "tools" / "comfy_runsync_save_image.py"
-if not wf.exists() or not tool.exists():
-    print("⚠️ Comfy tools/workflow not found. Skipping cloud gen.")
-    raise SystemExit(0)
-
-for i, prompt in enumerate(prompts, start=1):
-    out = imgs_dir / f"scene_{i}.png"
-    if out.exists():
-        continue
-    cmd = [
-        "python", str(tool),
-        "--workflow", str(wf),
-        "--prompt", prompt,
-        "--out", str(out)
-    ]
-    print(">>", " ".join(cmd))
-    subprocess.run(cmd, check=True)
-print("✅ RunPod (if available) step done.")
-PY
-
-      - name: Build metadata from client config
+      - name: (Optional) Generate images via RunPod
+        if: ${{ github.event.inputs.use_runpod == 'true' }}
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+          RUNPOD_ENDPOINT_ID: ${{ secrets.RUNPOD_ENDPOINT_ID }}
+          CLIENT: ${{ github.event.inputs.client }}
         run: |
-          mkdir -p tmp
-          python - <<'PY'
-import json, os
-from pathlib import Path
-ROOT = Path(__file__).resolve().parents[2]
-client = os.environ["CLIENT"]
-fps = int(os.environ["FPS"])
-seconds_in = os.environ["SECONDS_IN"]
+          echo "🌥️ Skipping detailed RunPod steps here (requires your endpoint + workflow)."
 
-assets = ROOT / "content_studio" / "assets" / client
-cfg = assets / "config.json"
-imgs_dir = assets / "images"
-
-def parse_seconds(s):
-    try:
-        j = json.loads(s)
-        if isinstance(j, list): return j
-    except Exception:
-        pass
-    try:
-        return float(s)
-    except Exception:
-        return 1.2
-
-seconds = parse_seconds(seconds_in)
-
-images = []
-if cfg.exists():
-    try:
-        j = json.loads(cfg.read_text(encoding="utf-8"))
-        scenes = j.get("scenes", [])
-    except Exception:
-        scenes = []
-    for s in scenes:
-        if "image" in s:
-            p = s["image"]
-            pth = (imgs_dir / p).resolve() if not str(p).startswith(("content_studio","/")) else (ROOT / p)
-            images.append(str(pth))
-else:
-    images = [str(p.resolve()) for p in sorted(imgs_dir.glob("scene_*.png"))]
-
-if not images:
-    images = [str((ROOT / "content_studio/ai_images/outputs/scene_1.png").resolve()),
-              str((ROOT / "content_studio/ai_images/outputs/scene_2.png").resolve()),
-              str((ROOT / "content_studio/ai_images/outputs/scene_3.png").resolve())]
-
-texts = []
-if cfg.exists():
-    try:
-        j = json.loads(cfg.read_text(encoding="utf-8"))
-        scenes = j.get("scenes", [])
-        texts = [s.get("text","") for s in scenes]
-    except Exception:
-        texts = []
-
-meta = {
-  "title": "Sport Sync",
-  "subtitle": "Discover your sport identity",
-  "fps": fps,
-  "seconds": seconds,
-  "images": images,
-  "texts": texts
-}
-
-mp = ROOT / "tmp" / "metadata_client.json"
-mp.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
-print("Wrote", mp)
-PY
-          echo "---- metadata ----"
-          cat tmp/metadata_client.json
-
-      - name: Render video (Python MoviePy)
+      - name: Render video (silent)
         run: |
-          mkdir -p content_studio/ai_video/final_videos
-          python content_studio/ai_video/generate_final_video.py \
+          PYTHONUNBUFFERED=1 python content_studio/ai_video/generate_final_video.py \
             --meta tmp/metadata_client.json \
-            --out content_studio/ai_video/final_videos/${{ env.CLIENT }}.mp4
-
-      - name: (Optional) Replace audio from URL
-        if: ${{ github.event.inputs.audio_url != '' }}
-        run: |
-          curl -L "${AUDIO_URL}" -o tmp/audio_in
-          ffmpeg -y -i content_studio/ai_video/final_videos/${CLIENT}.mp4 -i tmp/audio_in \
-            -c:v copy -c:a aac -shortest content_studio/ai_video/final_videos/${CLIENT}_with_audio.mp4
-          mv content_studio/ai_video/final_videos/${CLIENT}_with_audio.mp4 content_studio/ai_video/final_videos/${CLIENT}.mp4
+            --out content_studio/ai_video/final_videos/${{ github.event.inputs.client }}.mp4
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: video_${{ env.CLIENT }}
-          path: content_studio/ai_video/final_videos/${{ env.CLIENT }}.mp4
-          if-no-files-found: error
+          name: final_${{ github.event.inputs.client }}
+          path: content_studio/ai_video/final_videos/${{ github.event.inputs.client }}.mp4
