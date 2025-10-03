@@ -1,11 +1,11 @@
-# content_studio/ai_video/generate_final_video.py
-# يصنع فيديو من صور + (نص اختياري) بناءً على metadata.json
+mkdir -p content_studio/ai_video
 
+cat > content_studio/ai_video/generate_final_video.py <<'PY'
 from __future__ import annotations
 import os, json, argparse
 from pathlib import Path
 
-# ---- Pillow compat (ANTIALIAS -> Resampling.LANCZOS) قبل استيراد moviepy ----
+# ---- Pillow compat (ANTIALIAS -> Resampling.LANCZOS) ----
 try:
     from PIL import Image as _PILImage
     if not hasattr(_PILImage, "ANTIALIAS"):
@@ -13,13 +13,11 @@ try:
 except Exception:
     pass
 
-# ---- استيراد moviepy ----
 from moviepy.editor import (
     ImageClip, AudioFileClip, concatenate_videoclips,
-    CompositeVideoClip, TextClip, vfx
+    CompositeVideoClip, TextClip
 )
 
-# ---- Patch داخلي لخطأ ANTIALIAS داخل دالة resize في moviepy (إذا لزم) ----
 try:
     import moviepy.video.fx.resize as mp_resize
     from PIL import Image as _PILImage2
@@ -31,15 +29,6 @@ except Exception:
 
 
 def build_video(meta_path: str, out_path: str, width: int = 1920, height: int = 1920) -> str:
-    """
-    يبني الفيديو من صور حسب metadata.json:
-      {
-        "fps": 30,
-        "images": ["path/scene_1.png", ...],
-        "seconds": [6,8,7],
-        "texts": ["سطر نص", "", "سطر ثالث"]
-      }
-    """
     meta_p = Path(meta_path)
     if not meta_p.exists():
         raise FileNotFoundError(f"لم يتم العثور على ملف الميتاداتا: {meta_p}")
@@ -53,11 +42,9 @@ def build_video(meta_path: str, out_path: str, width: int = 1920, height: int = 
     if not images:
         raise ValueError("قائمة الصور فارغة في metadata.json")
 
-    # إذا لم تُحدَّد المدد، نفترض 5 ثواني لكل صورة
     if not seconds or len(seconds) != len(images):
         seconds = [5] * len(images)
 
-    # لو القائمة النصية أقصر من الصور نكمّلها بسلاسل فارغة
     if len(texts) < len(images):
         texts += [""] * (len(images) - len(texts))
 
@@ -66,14 +53,11 @@ def build_video(meta_path: str, out_path: str, width: int = 1920, height: int = 
 
     missing = [p for p in images if not Path(p).exists()]
     if missing:
-        # نطبع المفقود للمساعدة في الـ debug داخل Actions
-        raise FileNotFoundError(f"الصور التالية غير موجودة:\n- " + "\n- ".join(missing))
+        raise FileNotFoundError("الصور التالية غير موجودة:\n- " + "\n- ".join(missing))
 
     for img_path, dur, txt in zip(images, seconds, texts):
-        base_clip = ImageClip(img_path).resize(newsize=size).set_duration(float(dur))
-
+        base = ImageClip(img_path).resize(newsize=size).set_duration(float(dur))
         if txt and txt.strip():
-            # نص اختياري فوق الصورة
             try:
                 txt_clip = TextClip(
                     txt,
@@ -82,23 +66,19 @@ def build_video(meta_path: str, out_path: str, width: int = 1920, height: int = 
                     stroke_color="black",
                     stroke_width=3,
                     method="caption",
-                    size=(int(size[0]*0.9), None)  # عرض النص أقل قليلًا من عرض الفيديو
+                    size=(int(size[0]*0.9), None)
                 ).set_duration(float(dur)).set_position(("center", "bottom"))
-                clip = CompositeVideoClip([base_clip, txt_clip])
+                clip = CompositeVideoClip([base, txt_clip])
             except Exception:
-                # لو ما توفرت خطوط/إعدادات نص، نُكمل بدون نص
-                clip = base_clip
+                clip = base
         else:
-            clip = base_clip
-
+            clip = base
         clips.append(clip)
 
     final = concatenate_videoclips(clips, method="compose")
 
-    # صوت اختياري عبر متغير بيئي AUDIO_URL
     audio_url = os.getenv("AUDIO_URL", "").strip()
     if audio_url:
-        # يتطلب تنزيل الملف أولًا قبل AudioFileClip؛ هنا نتوقع أنه غير مستخدم عادة في Actions
         try:
             import requests, tempfile
             with tempfile.NamedTemporaryFile(suffix=os.path.splitext(audio_url)[1] or ".mp3", delete=False) as tmpf:
@@ -112,13 +92,7 @@ def build_video(meta_path: str, out_path: str, width: int = 1920, height: int = 
 
     out_p = Path(out_path)
     out_p.parent.mkdir(parents=True, exist_ok=True)
-    # نستخدم libx264 + aac (لو فيه صوت)
-    final.write_videofile(
-        str(out_p),
-        fps=fps,
-        codec="libx264",
-        audio_codec="aac"  # لا يضر لو ما فيه صوت
-    )
+    final.write_videofile(str(out_p), fps=fps, codec="libx264", audio_codec="aac")
     print(f"✅ تم إنتاج الفيديو: {out_p}")
     return str(out_p)
 
@@ -130,9 +104,8 @@ def main():
     parser.add_argument("--width", type=int, default=1920)
     parser.add_argument("--height", type=int, default=1920)
     args = parser.parse_args()
-
     build_video(args.meta, args.out, width=args.width, height=args.height)
-
 
 if __name__ == "__main__":
     main()
+PY
