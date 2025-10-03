@@ -1,75 +1,138 @@
-# file: content_studio/ai_video/generate_final_video.py
-import os
-from moviepy.editor import VideoFileClip, AudioFileClip, concatenate_videoclips
-from gtts import gTTS
+# content_studio/ai_video/generate_final_video.py
+# يصنع فيديو من صور + (نص اختياري) بناءً على metadata.json
 
-# مسار حفظ الفيديوهات النهائية
-FINAL_DIR = "content_studio/ai_video/final_videos"
-os.makedirs(FINAL_DIR, exist_ok=True)
+from __future__ import annotations
+import os, json, argparse
+from pathlib import Path
 
-def generate_final_video(video_paths, narration_text, output_name="final_video.mp4"):
+# ---- Pillow compat (ANTIALIAS -> Resampling.LANCZOS) قبل استيراد moviepy ----
+try:
+    from PIL import Image as _PILImage
+    if not hasattr(_PILImage, "ANTIALIAS"):
+        _PILImage.ANTIALIAS = _PILImage.Resampling.LANCZOS
+except Exception:
+    pass
+
+# ---- استيراد moviepy ----
+from moviepy.editor import (
+    ImageClip, AudioFileClip, concatenate_videoclips,
+    CompositeVideoClip, TextClip, vfx
+)
+
+# ---- Patch داخلي لخطأ ANTIALIAS داخل دالة resize في moviepy (إذا لزم) ----
+try:
+    import moviepy.video.fx.resize as mp_resize
+    from PIL import Image as _PILImage2
+    if getattr(mp_resize, "Image", None) and not hasattr(mp_resize.Image, "ANTIALIAS"):
+        mp_resize.Image = _PILImage2
+        mp_resize.Image.ANTIALIAS = _PILImage2.Resampling.LANCZOS
+except Exception:
+    pass
+
+
+def build_video(meta_path: str, out_path: str, width: int = 1920, height: int = 1920) -> str:
     """
-    يدمج مقاطع الفيديو + يضيف تعليق صوتي + يحفظ النتيجة النهائية
+    يبني الفيديو من صور حسب metadata.json:
+      {
+        "fps": 30,
+        "images": ["path/scene_1.png", ...],
+        "seconds": [6,8,7],
+        "texts": ["سطر نص", "", "سطر ثالث"]
+      }
     """
-    if not video_paths:
-        raise ValueError("قائمة الفيديوهات فارغة.")
+    meta_p = Path(meta_path)
+    if not meta_p.exists():
+        raise FileNotFoundError(f"لم يتم العثور على ملف الميتاداتا: {meta_p}")
 
-    # 1) دمج المقاطع
+    meta = json.loads(meta_p.read_text(encoding="utf-8"))
+    fps = int(meta.get("fps", 30))
+    images = list(meta.get("images", []))
+    seconds = list(meta.get("seconds", []))
+    texts = list(meta.get("texts", []))
+
+    if not images:
+        raise ValueError("قائمة الصور فارغة في metadata.json")
+
+    # إذا لم تُحدَّد المدد، نفترض 5 ثواني لكل صورة
+    if not seconds or len(seconds) != len(images):
+        seconds = [5] * len(images)
+
+    # لو القائمة النصية أقصر من الصور نكمّلها بسلاسل فارغة
+    if len(texts) < len(images):
+        texts += [""] * (len(images) - len(texts))
+
+    size = (width, height)
     clips = []
-    try:
-        for v in video_paths:
-            if not os.path.exists(v):
-                raise FileNotFoundError(f"لم يتم العثور على الملف: {v}")
-            clips.append(VideoFileClip(v).resize((1280, 720)))
 
-        final_clip = concatenate_videoclips(clips, method="compose")
+    missing = [p for p in images if not Path(p).exists()]
+    if missing:
+        # نطبع المفقود للمساعدة في الـ debug داخل Actions
+        raise FileNotFoundError(f"الصور التالية غير موجودة:\n- " + "\n- ".join(missing))
 
-        # 2) إنشاء التعليق الصوتي من النص
-        audio_path = os.path.join(FINAL_DIR, "narration.mp3")
-        tts = gTTS(text=narration_text, lang="ar")
-        tts.save(audio_path)
+    for img_path, dur, txt in zip(images, seconds, texts):
+        base_clip = ImageClip(img_path).resize(newsize=size).set_duration(float(dur))
 
-        # 3) إضافة التعليق الصوتي للفيديو
-        narration_audio = AudioFileClip(audio_path)
-        final_clip = final_clip.set_audio(narration_audio)
+        if txt and txt.strip():
+            # نص اختياري فوق الصورة
+            try:
+                txt_clip = TextClip(
+                    txt,
+                    fontsize=60,
+                    color="white",
+                    stroke_color="black",
+                    stroke_width=3,
+                    method="caption",
+                    size=(int(size[0]*0.9), None)  # عرض النص أقل قليلًا من عرض الفيديو
+                ).set_duration(float(dur)).set_position(("center", "bottom"))
+                clip = CompositeVideoClip([base_clip, txt_clip])
+            except Exception:
+                # لو ما توفرت خطوط/إعدادات نص، نُكمل بدون نص
+                clip = base_clip
+        else:
+            clip = base_clip
 
-        # 4) حفظ الفيديو النهائي
-        output_path = os.path.join(FINAL_DIR, output_name)
-        final_clip.write_videofile(
-            output_path,
-            fps=24,
-            codec="libx264",
-            audio_codec="aac",
-            threads=4
-        )
+        clips.append(clip)
 
-        print(f"✅ الفيديو النهائي جاهز: {output_path}")
-        return output_path
+    final = concatenate_videoclips(clips, method="compose")
 
-    finally:
-        # تنظيف الموارد
+    # صوت اختياري عبر متغير بيئي AUDIO_URL
+    audio_url = os.getenv("AUDIO_URL", "").strip()
+    if audio_url:
+        # يتطلب تنزيل الملف أولًا قبل AudioFileClip؛ هنا نتوقع أنه غير مستخدم عادة في Actions
         try:
-            for c in clips:
-                c.close()
-        except Exception:
-            pass
-        try:
-            if 'narration_audio' in locals():
-                narration_audio.close()
-        except Exception:
-            pass
-        try:
-            if 'final_clip' in locals():
-                final_clip.close()
-        except Exception:
-            pass
+            import requests, tempfile
+            with tempfile.NamedTemporaryFile(suffix=os.path.splitext(audio_url)[1] or ".mp3", delete=False) as tmpf:
+                tmp = tmpf.name
+                r = requests.get(audio_url, timeout=30)
+                r.raise_for_status()
+                tmpf.write(r.content)
+            final = final.set_audio(AudioFileClip(tmp))
+        except Exception as e:
+            print(f"[تحذير] فشل تحميل الصوت من AUDIO_URL: {e}. سنكمل بدون صوت.")
+
+    out_p = Path(out_path)
+    out_p.parent.mkdir(parents=True, exist_ok=True)
+    # نستخدم libx264 + aac (لو فيه صوت)
+    final.write_videofile(
+        str(out_p),
+        fps=fps,
+        codec="libx264",
+        audio_codec="aac"  # لا يضر لو ما فيه صوت
+    )
+    print(f"✅ تم إنتاج الفيديو: {out_p}")
+    return str(out_p)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--meta", required=True, help="مسار ملف metadata.json")
+    parser.add_argument("--out", required=True, help="مسار حفظ الفيديو النهائي")
+    parser.add_argument("--width", type=int, default=1920)
+    parser.add_argument("--height", type=int, default=1920)
+    args = parser.parse_args()
+
+    build_video(args.meta, args.out, width=args.width, height=args.height)
 
 
 if __name__ == "__main__":
-    # مثال تشغيل
-    video_files = [
-        "content_studio/ai_video/temp/video1.mp4",
-        "content_studio/ai_video/temp/video2.mp4"
-    ]
-    narration = "مرحباً بكم في الفيديو التجريبي من نظام Sport Sync AI."
-    generate_final_video(video_files, narration)
+    main()
