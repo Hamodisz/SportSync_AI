@@ -27,6 +27,7 @@ on:
 jobs:
   build_video:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout (use same ref as dispatch)
         uses: actions/checkout@v4
@@ -39,7 +40,7 @@ jobs:
           python-version: "3.12"
           cache: "pip"
 
-      - name: Install deps (moviepy, pillow, ffmpeg)
+      - name: Install deps (moviepy, pillow, ffmpeg, gTTS)
         run: |
           python -m pip install --upgrade pip
           pip install --upgrade \
@@ -49,9 +50,15 @@ jobs:
             numpy \
             requests \
             tqdm \
-            pydantic
+            pydantic \
+            gTTS==2.5.1 \
+            pydub
           sudo apt-get update
           sudo apt-get install -y ffmpeg
+
+      - name: Prepare folders
+        run: |
+          mkdir -p tmp content_studio/ai_video/final_videos
 
       - name: Debug listing
         run: |
@@ -78,15 +85,24 @@ jobs:
           import json
           from pathlib import Path
           client = "${{ github.event.inputs.client }}"
-          cfg = json.load(open(f"content_studio/assets/{client}/config.json", encoding="utf-8"))
-          scenes = cfg["scenes"]
+          with open(f"content_studio/assets/{client}/config.json", encoding="utf-8") as f:
+              cfg = json.load(f)
+          scenes = cfg.get("scenes", [])
           fps = int("${{ github.event.inputs.fps }}")
           seconds = json.loads('${{ github.event.inputs.seconds }}')
           images = [f"content_studio/assets/{client}/images/{s['image']}" for s in scenes]
           texts  = [s.get("text","") for s in scenes]
-          meta = {"title":"Sport Sync","subtitle":"", "fps":fps, "images":images, "seconds":seconds, "texts":texts}
+          meta = {
+              "title": "Sport Sync",
+              "subtitle": "",
+              "fps": fps,
+              "images": images,
+              "seconds": seconds,
+              "texts": texts
+          }
           Path("tmp").mkdir(exist_ok=True)
-          json.dump(meta, open("tmp/metadata.json","w", encoding="utf-8"), ensure_ascii=False, indent=2)
+          with open("tmp/metadata.json", "w", encoding="utf-8") as out:
+              json.dump(meta, out, ensure_ascii=False, indent=2)
           print("Wrote tmp/metadata.json")
           PY
 
