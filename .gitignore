@@ -1,2 +1,7 @@
 .env
 env/.env
+
+# build artifacts
+content_studio/ai_video/final_video.mp4
+content_studio/ai_video/final_videos/
+*.mp4
