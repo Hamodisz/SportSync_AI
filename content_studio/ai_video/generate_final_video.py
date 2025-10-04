@@ -5,13 +5,25 @@ import os
 import tempfile
 from pathlib import Path
 
-# توافق MoviePy 1.x / 2.x
+# ==== MoviePy 2.x أولاً، ولو فشل نرجع لـ 1.x (توافق كامل) ====
 try:
     # MoviePy 2.x
-    from moviepy import ImageClip, AudioFileClip, CompositeVideoClip, TextClip, concatenate_videoclips
+    from moviepy import (
+        ImageClip,
+        AudioFileClip,
+        CompositeVideoClip,
+        TextClip,
+        concatenate_videoclips,
+    )
 except Exception:
     # MoviePy 1.x
-    from moviepy.editor import ImageClip, AudioFileClip, CompositeVideoClip, TextClip, concatenate_videoclips  # type: ignore
+    from moviepy.editor import (  # type: ignore
+        ImageClip,
+        AudioFileClip,
+        CompositeVideoClip,
+        TextClip,
+        concatenate_videoclips,
+    )
 
 import requests
 
@@ -22,31 +34,51 @@ def load_meta(p: str) -> dict:
 
 
 def ensure_len_seconds(seconds, n_images):
+    """
+    يرجع durations مساوية لعدد الصور. إن كانت ناقصة نكمّل بـ 5 ثواني لكل صورة.
+    """
     if not seconds or len(seconds) != n_images:
-        # fallback: 5s لكل صورة
         return [5] * n_images
     return [max(0.5, float(s)) for s in seconds]
 
 
-def text_overlay_clip(text, width, height, dur, margin=40):
+def safe_text_clip(text: str, width: int, height: int, dur: float, margin: int = 40):
     """
     يبني شريحة نص أسفل الصورة مع stroke بسيط. لو النص فاضي، يرجّع None.
+    يعمل على MoviePy 1.x و 2.x.
     """
     txt = (text or "").strip()
     if not txt:
         return None
 
-    # TextClip API نفسه في 1.x و 2.x
-    clip = TextClip(
-        txt,
-        fontsize=60,
-        color="white",
-        stroke_color="black",
-        stroke_width=3,
-        method="caption",
-        size=(int(width * 0.9), None),
-    ).set_duration(dur).set_position(("center", height - margin - 200))  # قرب الأسفل
+    clip = (
+        TextClip(
+            txt,
+            fontsize=60,
+            color="white",
+            stroke_color="black",
+            stroke_width=3,
+            method="caption",
+            size=(int(width * 0.9), None),
+        )
+        .set_duration(dur)
+        .set_position(("center", height - margin - 200))
+    )
     return clip
+
+
+def _safe_resize(img_clip: ImageClip, size: tuple[int, int]) -> ImageClip:
+    """
+    ريسايز متوافق: نحاول .resize(newsize=...) أولاً (تشتغل على 1.x/2.x).
+    ولو صار شيء، نستخدم الدالة الوظيفية resize.
+    """
+    try:
+        return img_clip.resize(newsize=size)
+    except Exception:
+        # Fallback functional API
+        from moviepy.video.fx.resize import resize as _resize  # type: ignore
+
+        return _resize(img_clip, newsize=size)
 
 
 def build_video(meta_path: str, out_path: str, width: int, height: int, audio_url: str = ""):
@@ -71,20 +103,18 @@ def build_video(meta_path: str, out_path: str, width: int, height: int, audio_ur
 
     clips = []
     for img_path, dur, txt in zip(images, seconds, texts):
-        # التعديل هنا: newsize -> size
-        base = ImageClip(img_path).resize(size=size).set_duration(dur)
-        txt_clip = text_overlay_clip(txt, width, height, dur)
+        dur = float(dur)
+        base_clip = ImageClip(img_path)
+        base = _safe_resize(base_clip, size).set_duration(dur)
 
-        if txt_clip is not None:
-            clip = CompositeVideoClip([base, txt_clip])
-        else:
-            clip = base
-
+        txt_clip = safe_text_clip(txt, width, height, dur)
+        clip = CompositeVideoClip([base, txt_clip]) if txt_clip is not None else base
         clips.append(clip)
 
     final = concatenate_videoclips(clips, method="compose")
 
     # صوت اختياري من URL
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     if audio_url and audio_url.strip():
         with tempfile.TemporaryDirectory() as td:
             mp3_path = str(Path(td) / "audio.mp3")
@@ -95,11 +125,8 @@ def build_video(meta_path: str, out_path: str, width: int, height: int, audio_ur
             narration = AudioFileClip(mp3_path)
             final = final.set_audio(narration)
 
-            Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-            final.write_videofile(out_path, fps=30, codec="libx264", audio_codec="aac")
-    else:
-        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-        final.write_videofile(out_path, fps=30, codec="libx264", audio_codec="aac")
+    # تصدير
+    final.write_videofile(out_path, fps=30, codec="libx264", audio_codec="aac")
 
 
 def parse_args():
