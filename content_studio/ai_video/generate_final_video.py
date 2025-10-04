@@ -1,13 +1,22 @@
+<<<<<<< Updated upstream
 # file: content_studio/ai_video/generate_final_video.py
+=======
+# -*- coding: utf-8 -*-
+>>>>>>> Stashed changes
 import argparse
 import json
 import os
 import tempfile
 from pathlib import Path
 
+<<<<<<< Updated upstream
 # ==== MoviePy 2.x أولاً، ولو فشل نرجع لـ 1.x (توافق كامل) ====
 try:
     # MoviePy 2.x
+=======
+# ==== MoviePy 2.x أولاً، ولو فشل نرجع لـ 1.x ====
+try:
+>>>>>>> Stashed changes
     from moviepy import (
         ImageClip,
         AudioFileClip,
@@ -16,7 +25,10 @@ try:
         concatenate_videoclips,
     )
 except Exception:
+<<<<<<< Updated upstream
     # MoviePy 1.x
+=======
+>>>>>>> Stashed changes
     from moviepy.editor import (  # type: ignore
         ImageClip,
         AudioFileClip,
@@ -26,6 +38,7 @@ except Exception:
     )
 
 import requests
+<<<<<<< Updated upstream
 
 
 def load_meta(p: str) -> dict:
@@ -78,25 +91,74 @@ def _safe_resize(img_clip: ImageClip, size: tuple[int, int]) -> ImageClip:
         # Fallback functional API
         from moviepy.video.fx.resize import resize as _resize  # type: ignore
 
+=======
+
+
+def load_meta(p: str) -> dict:
+    with open(p, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def ensure_len_seconds(seconds, n_images):
+    if not seconds or len(seconds) != n_images:
+        return [5] * n_images
+    return [max(0.5, float(s)) for s in seconds]
+
+
+def safe_text_clip(text: str, width: int, height: int, dur: float, margin: int = 40):
+    txt = (text or "").strip()
+    if not txt:
+        return None
+    clip = (
+        TextClip(
+            txt,
+            fontsize=60,
+            color="white",
+            stroke_color="black",
+            stroke_width=3,
+            method="caption",
+            size=(int(width * 0.9), None),
+        )
+        .set_duration(dur)
+        .set_position(("center", height - margin - 200))
+    )
+    return clip
+
+
+def _safe_resize(img_clip: ImageClip, size: tuple[int, int]) -> ImageClip:
+    try:
+        return img_clip.resize(newsize=size)
+    except Exception:
+        from moviepy.video.fx.resize import resize as _resize  # type: ignore
+>>>>>>> Stashed changes
         return _resize(img_clip, newsize=size)
 
 
 def build_video(meta_path: str, out_path: str, width: int, height: int, audio_url: str = ""):
     meta = load_meta(meta_path)
+<<<<<<< Updated upstream
 
+=======
+>>>>>>> Stashed changes
     images = meta.get("images", [])
     texts = meta.get("texts", [])
     seconds = ensure_len_seconds(meta.get("seconds", []), len(images))
 
     if not images:
         raise ValueError("لا توجد صور في metadata.json")
+<<<<<<< Updated upstream
 
+=======
+>>>>>>> Stashed changes
     if len(texts) < len(images):
         texts += [""] * (len(images) - len(texts))
 
     size = (int(width), int(height))
 
+<<<<<<< Updated upstream
     # تأكد من وجود الصور
+=======
+>>>>>>> Stashed changes
     missing = [p for p in images if not Path(p).exists()]
     if missing:
         raise FileNotFoundError("الصور التالية غير موجودة:\n" + "\n".join(missing))
@@ -104,16 +166,25 @@ def build_video(meta_path: str, out_path: str, width: int, height: int, audio_ur
     clips = []
     for img_path, dur, txt in zip(images, seconds, texts):
         dur = float(dur)
+<<<<<<< Updated upstream
         base_clip = ImageClip(img_path)
         base = _safe_resize(base_clip, size).set_duration(dur)
 
         txt_clip = safe_text_clip(txt, width, height, dur)
         clip = CompositeVideoClip([base, txt_clip]) if txt_clip is not None else base
+=======
+        base = _safe_resize(ImageClip(img_path), size).set_duration(dur)
+        txt_clip = safe_text_clip(txt, width, height, dur)
+        clip = CompositeVideoClip([base, txt_clip]) if txt_clip else base
+>>>>>>> Stashed changes
         clips.append(clip)
 
     final = concatenate_videoclips(clips, method="compose")
 
+<<<<<<< Updated upstream
     # صوت اختياري من URL
+=======
+>>>>>>> Stashed changes
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     if audio_url and audio_url.strip():
         with tempfile.TemporaryDirectory() as td:
@@ -122,10 +193,15 @@ def build_video(meta_path: str, out_path: str, width: int, height: int, audio_ur
             r.raise_for_status()
             with open(mp3_path, "wb") as f:
                 f.write(r.content)
+<<<<<<< Updated upstream
             narration = AudioFileClip(mp3_path)
             final = final.set_audio(narration)
 
     # تصدير
+=======
+            final = final.set_audio(AudioFileClip(mp3_path))
+
+>>>>>>> Stashed changes
     final.write_videofile(out_path, fps=30, codec="libx264", audio_codec="aac")
 
 
@@ -134,7 +210,11 @@ def parse_args():
     ap.add_argument("--meta", required=True, help="path to tmp/metadata.json")
     ap.add_argument("--out", required=True, help="output mp4 path")
     ap.add_argument("--width", type=int, default=1080)
+<<<<<<< Updated upstream
     ap.add_argument("--height", type=int, default=1920)
+=======
+    ap.add_argument("--height", type:int, default=1920)
+>>>>>>> Stashed changes
     ap.add_argument("--audio_url", default="", help="optional mp3/wav url")
     return ap.parse_args()
 

@@ -1,0 +1,59 @@
+Collecting moviepy==1.0.3
+  Downloading moviepy-1.0.3.tar.gz (388 kB)
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Collecting pillow
+  Downloading pillow-11.3.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (9.0 kB)
+Collecting imageio-ffmpeg
+  Downloading imageio_ffmpeg-0.6.0-py3-none-manylinux2014_x86_64.whl.metadata (1.5 kB)
+Collecting requests
+  Downloading requests-2.32.5-py3-none-any.whl.metadata (4.9 kB)
+Collecting decorator<5.0,>=4.0.2 (from moviepy==1.0.3)
+  Downloading decorator-4.4.2-py2.py3-none-any.whl.metadata (4.2 kB)
+Collecting imageio<3.0,>=2.5 (from moviepy==1.0.3)
+  Downloading imageio-2.37.0-py3-none-any.whl.metadata (5.2 kB)
+Collecting tqdm<5.0,>=4.11.2 (from moviepy==1.0.3)
+  Downloading tqdm-4.67.1-py3-none-any.whl.metadata (57 kB)
+Collecting numpy>=1.17.3 (from moviepy==1.0.3)
+  Downloading numpy-2.3.3-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (62 kB)
+Collecting proglog<=1.0.0 (from moviepy==1.0.3)
+  Downloading proglog-0.1.12-py3-none-any.whl.metadata (794 bytes)
+Collecting charset_normalizer<4,>=2 (from requests)
+  Downloading charset_normalizer-3.4.3-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (36 kB)
+Collecting idna<4,>=2.5 (from requests)
+  Downloading idna-3.10-py3-none-any.whl.metadata (10 kB)
+Collecting urllib3<3,>=1.21.1 (from requests)
+  Downloading urllib3-2.5.0-py3-none-any.whl.metadata (6.5 kB)
+Collecting certifi>=2017.4.17 (from requests)
+  Downloading certifi-2025.8.3-py3-none-any.whl.metadata (2.4 kB)
+Downloading requests-2.32.5-py3-none-any.whl (64 kB)
+Downloading charset_normalizer-3.4.3-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (151 kB)
+Downloading decorator-4.4.2-py2.py3-none-any.whl (9.2 kB)
+Downloading idna-3.10-py3-none-any.whl (70 kB)
+Downloading imageio-2.37.0-py3-none-any.whl (315 kB)
+Downloading proglog-0.1.12-py3-none-any.whl (6.3 kB)
+Downloading tqdm-4.67.1-py3-none-any.whl (78 kB)
+Downloading urllib3-2.5.0-py3-none-any.whl (129 kB)
+Downloading pillow-11.3.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (6.6 MB)
+   ━━━━━━━━━ 6.6/6.6   25.3      0:00:00
+             MB        MB/s             
+Downloading imageio_ffmpeg-0.6.0-py3-none-manylinux2014_x86_64.whl (29.5 MB)
+   ━━━━━━━━━ 29.5/29.5 40.2      0:00:00
+             MB        MB/s             
+Downloading certifi-2025.8.3-py3-none-any.whl (161 kB)
+Downloading numpy-2.3.3-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (16.6 MB)
+   ━━━━━━━━━ 16.6/16.6 38.0      0:00:00
+             MB        MB/s             
+Building wheels for collected packages: moviepy
+  Building wheel for moviepy (pyproject.toml): started
+  Building wheel for moviepy (pyproject.toml): finished with status 'done'
+  Created wheel for moviepy: filename=moviepy-1.0.3-py3-none-any.whl size=110797 sha256=0aa87f56f4a3d47f20841403f55d924985d0c29953a4aab906067971f01bb4f5
+  Stored in directory: /home/codespace/.cache/pip/wheels/df/ba/4b/0917fc0c8833c8ba7016565fc975b74c67bc8610806e930272
+Successfully built moviepy
+Installing collected packages: urllib3, tqdm, pillow, numpy, imageio-ffmpeg, idna, decorator, charset_normalizer, certifi, requests, proglog, imageio, moviepy
+
+Successfully installed certifi-2025.8.3 charset_normalizer-3.4.3 decorator-4.4.2 idna-3.10 imageio-2.37.0 imageio-ffmpeg-0.6.0 moviepy-1.0.3 numpy-2.3.3 pillow-11.3.0 proglog-0.1.12 requests-2.32.5 tqdm-4.67.1 urllib3-2.5.0
