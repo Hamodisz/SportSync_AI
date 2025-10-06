@@ -17,7 +17,8 @@ import re, json, statistics
 from typing import Dict, Any, List, Tuple, Set, Optional
 
 # ============ نص عربي: إزالة تشكيل وتمطيط ============
-_AR_DIAC = r"[ًٌٍَُِّْـ]"
+# -*- coding: utf-8 -*-
+_AR_DIAC = r"[ـًٌٍَُِّْ]"
 def _normalize_ar(t: str) -> str:
     if not t: return ""
     import re as _re
