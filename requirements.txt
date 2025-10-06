@@ -1,5 +1,7 @@
 --prefer-binary
 streamlit==1.35.0
+Flask>=2.0.0
+openai>=1.6.1,<2
 requests>=2.31.0  # for stock image APIs
 moviepy==1.0.3
 Pillow>=10.0.0
@@ -9,6 +11,3 @@ gTTS==2.5.1
 python-dotenv>=1.0.0
 arabic-reshaper>=3.0.0
 python-bidi>=0.4.2
-openai>=1.6.1,<2
-
-Flask>=2.0.0
