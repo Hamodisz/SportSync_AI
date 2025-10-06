@@ -110,7 +110,14 @@ try:
 except Exception:
     CFG = {}
 
-CHAT_MODEL = (CFG.get("llm") or {}).get("model", os.getenv("CHAT_MODEL", "gpt-4o"))
+CHAT_MODEL = (CFG.get("llm") or {}).get(
+    "model",
+    os.getenv("CHAT_MODEL") or (
+        "llama3-70b-8192" if (os.getenv("GROQ_API_KEY") or str(os.getenv("OPENAI_BASE_URL","")).startswith("https://api.groq.com")) 
+        else "gpt-4o"
+    )
+)
+
 ALLOW_SPORT_NAMES = (CFG.get("recommendations") or {}).get("allow_sport_names", True)
 
 REC_RULES = CFG.get("recommendations") or {}
