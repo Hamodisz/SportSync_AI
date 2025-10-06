@@ -848,7 +848,8 @@ def _derive_binary_traits(analysis: Dict[str, Any], answers: Dict[str, Any], lan
     if ca >= 0.35 or sig.get("high_agg"):
         traits["sensation_seeking"] = max(traits.get("sensation_seeking", 0.0), 0.8)
 
-    ti = float(axes.get("tech_intuition", 0.0)) if isinstance(ti, (int, float)) else 0.0
+    ti_val = axes.get("tech_intuition", 0.0)
+ti = float(ti_val) if isinstance(ti_val, (int, float)) else 0.0
     if ti <= -0.35 or sig.get("precision"):
         traits["precision"] = max(traits.get("precision", 0.0), 0.8)
 
