@@ -165,13 +165,26 @@ except Exception:
     egate_evaluate = None  # سنستخدم fallback أدناه
 
 # ========= Helpers: Arabic normalization =========
-_AR_DIAC = r"[ًٌٍَُِّْـ]"
+_AR_DIAC_RE = re.compile(r"[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u0640]")
+
+_AR_MAP = str.maketrans({
+    "\u0623": "\u0627",  # أ -> ا
+    "\u0625": "\u0627",  # إ -> ا
+    "\u0622": "\u0627",  # آ -> ا
+    "\u0624": "\u0648",  # ؤ -> و
+    "\u0626": "\u064A",  # ئ -> ي
+    "\u0629": "\u0647",  # ة -> ه
+    "\u0649": "\u064A",  # ى -> ي
+})
+
 def _normalize_ar(t: str) -> str:
-    if not t: return ""
-    t = re.sub(_AR_DIAC, "", t)
-    t = t.replace("أ","ا").replace("إ","ا").replace("آ","ا")
-    t = t.replace("ؤ","و").replace("ئ","ي")
-    t = t.replace("ة","ه").replace("ى","ي")
+    if not t:
+        return ""
+    # احذف التشكيل والمدّة/الشّدّة والسكون… الخ + الكشيدة
+    t = _AR_DIAC_RE.sub("", t)
+    # طبّق التحويلات القياسية
+    t = t.translate(_AR_MAP)
+    # فرّغ المسافات الزائدة
     t = re.sub(r"\s+", " ", t).strip()
     return t
 
