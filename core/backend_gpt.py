@@ -54,27 +54,32 @@ def _job_note(job_id: str,
     except Exception:
         pass
 
-# ========= OpenAI =========
+# ========= OpenAI / Groq via OpenAI SDK =========
 try:
     from openai import OpenAI
 except Exception as e:
     raise RuntimeError("أضف الحزمة في requirements: openai>=1.6.1,<2") from e
 
-# نقرأ المفتاح من أكثر من احتمال (OpenAI / OpenRouter / Azure)
+# مفاتيح محتملة (Groq / OpenAI / OpenRouter / Azure)
 OPENAI_API_KEY = (
     os.getenv("OPENAI_API_KEY")
+    or os.getenv("GROQ_API_KEY")           # ← دعم Groq
     or os.getenv("OPENROUTER_API_KEY")
     or os.getenv("AZURE_OPENAI_API_KEY")
 )
 
-# عنوان الـ Base URL (اختياري مع OpenRouter/Azure)
+# Base URL (Groq يستخدم هذا العنوان)
 OPENAI_BASE_URL = (
-    os.getenv("OPENAI_BASE_URL")
+    os.getenv("OPENAI_BASE_URL")           # مثل: https://api.groq.com/openai/v1
     or os.getenv("OPENROUTER_BASE_URL")
     or os.getenv("AZURE_OPENAI_ENDPOINT")
 )
 
 OPENAI_ORG = os.getenv("OPENAI_ORG")  # غالباً فاضي
+
+def _mask_key(k: str) -> str:
+    if not k: return "empty"
+    return (k[:4] + "…" + k[-4:]) if len(k) >= 8 else "set"
 
 OpenAI_CLIENT = None
 if OPENAI_API_KEY:
@@ -86,7 +91,7 @@ if OPENAI_API_KEY:
             kwargs["organization"] = OPENAI_ORG
         OpenAI_CLIENT = OpenAI(**kwargs)
     except Exception as e:
-        print(f"[ENV] ⚠️ فشل إنشاء عميل OpenAI: {e}")
+        print(f"[ENV] ⚠️ فشل إنشاء عميل OpenAI/Groq: {e}")
         OpenAI_CLIENT = None
 else:
     print("[ENV] ⚠️ لا يوجد API key في المتغيرات البيئية.")
@@ -94,8 +99,9 @@ else:
 # طباعة حالة الإقلاع للتشخيص
 print(
     f"[BOOT] LLM READY? {'YES' if OpenAI_CLIENT else 'NO'} | "
+    f"key={_mask_key(OPENAI_API_KEY)} | "
     f"base={OPENAI_BASE_URL or 'default'} | "
-    f"model={os.getenv('CHAT_MODEL','gpt-4o-mini')}"
+    f"model={os.getenv('CHAT_MODEL','llama3-70b-8192')}"
 )
 
 # ========= App Config =========
