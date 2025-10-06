@@ -54,55 +54,89 @@ def _job_note(job_id: str,
     except Exception:
         pass
 
-# ========= LLM client (OpenAI-compatible, incl. Groq/OpenRouter/Azure) =========
-LLM_BOOT_ERR = None  # سنسجل هنا سبب الفشل لو حصل
+# ========= OpenAI / Groq (متوافق مع واجهة OpenAI) =========
+from typing import Optional
+import os, json
+
+def _read_secret_file(name: str) -> Optional[str]:
+    """
+    يقرأ السر من /etc/secrets/<name> لو موجود (Render Secret Files).
+    يرجّع None لو الملف غير موجود.
+    """
+    try:
+        p = f"/etc/secrets/{name}"
+        if os.path.exists(p):
+            with open(p, "r", encoding="utf-8") as f:
+                val = f.read().strip()
+                return val or None
+    except Exception:
+        pass
+    return None
 
 try:
     from openai import OpenAI
 except Exception as e:
     raise RuntimeError("أضف الحزمة في requirements: openai>=1.6.1,<2") from e
 
-# نقرأ من أكثر من مزود: OpenAI / Groq (OpenAI-compatible) / OpenRouter / Azure
+# 🔑 مصادر المفتاح (بالترتيب): ENV ثم Secret File، وأسماء بديلة احتياطًا
 OPENAI_API_KEY = (
     os.getenv("OPENAI_API_KEY")
-    or os.getenv("GROQ_API_KEY")          # احتياط
+    or _read_secret_file("OPENAI_API_KEY")
+    or os.getenv("GROQ_API_KEY")
+    or _read_secret_file("GROQ_API_KEY")
     or os.getenv("OPENROUTER_API_KEY")
+    or _read_secret_file("OPENROUTER_API_KEY")
     or os.getenv("AZURE_OPENAI_API_KEY")
+    or _read_secret_file("AZURE_OPENAI_API_KEY")
 )
 
+# 🌐 الـ base url (نحتاجه لـ Groq)
 OPENAI_BASE_URL = (
-    os.getenv("OPENAI_BASE_URL")          # Groq: https://api.groq.com/openai/v1
+    os.getenv("OPENAI_BASE_URL")
+    or _read_secret_file("OPENAI_BASE_URL")
     or os.getenv("OPENROUTER_BASE_URL")
+    or _read_secret_file("OPENROUTER_BASE_URL")
     or os.getenv("AZURE_OPENAI_ENDPOINT")
+    or _read_secret_file("AZURE_OPENAI_ENDPOINT")
 )
 
-OPENAI_ORG = os.getenv("OPENAI_ORG", "")
+OPENAI_ORG = (
+    os.getenv("OPENAI_ORG")
+    or _read_secret_file("OPENAI_ORG")
+)
 
 OpenAI_CLIENT = None
-try:
-    if not OPENAI_API_KEY:
-        LLM_BOOT_ERR = "ENV: missing OPENAI_API_KEY"
-    else:
+if OPENAI_API_KEY:
+    try:
         kwargs = {"api_key": OPENAI_API_KEY}
+        # لو ما حددت base_url، ورأينا مفتاح Groq، نضبطه تلقائيًا
+        if not OPENAI_BASE_URL and OPENAI_API_KEY.startswith("gsk_"):
+            OPENAI_BASE_URL = "https://api.groq.com/openai/v1"
+
         if OPENAI_BASE_URL:
             kwargs["base_url"] = OPENAI_BASE_URL
         if OPENAI_ORG:
             kwargs["organization"] = OPENAI_ORG
 
         OpenAI_CLIENT = OpenAI(**kwargs)
-except Exception as e:
-    LLM_BOOT_ERR = f"CLIENT_INIT: {e}"
-    OpenAI_CLIENT = None
+    except Exception as e:
+        print(f"[ENV] ⚠️ فشل إنشاء عميل OpenAI: {e}")
+        OpenAI_CLIENT = None
+else:
+    print("[ENV] ⚠️ لا يوجد API key في ENV أو Secret Files.")
+
+def _mask(s: Optional[str]) -> str:
+    if not s: return "MISSING"
+    return (s[:4] + "…" + s[-4:]) if len(s) >= 12 else "SET"
 
 print(
-    "[BOOT] LLM READY? {ready} | base={base} | model={model} | note={note}".format(
+    "[BOOT] LLM READY? {ready} | base={base} | model={model} | key={key}".format(
         ready=("YES" if OpenAI_CLIENT else "NO"),
         base=(OPENAI_BASE_URL or "default"),
-        model=os.getenv("CHAT_MODEL", "gpt-4o"),
-        note=(LLM_BOOT_ERR or "ok")
+        model=os.getenv("CHAT_MODEL", "gpt-4o-mini"),
+        key=_mask(OPENAI_API_KEY),
     )
 )
-
 # ========= App Config =========
 try:
     from core.app_config import get_config
