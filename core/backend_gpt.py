@@ -54,41 +54,33 @@ def _job_note(job_id: str,
     except Exception:
         pass
 
-# ========= OpenAI (Groq/OpenRouter/Azure compatible) =========
-import os
-from pathlib import Path
-
-def _read_secret_file(name: str) -> str:
-    for p in (f"/etc/secrets/{name}", f"/run/secrets/{name}", f".env.{name}", f".{name}"):
-        try:
-            v = Path(p).read_text(encoding="utf-8").strip()
-            if v:
-                return v
-        except Exception:
-            pass
-    return ""
+# ========= OpenAI / Groq (OpenAI-compatible) =========
+import os, json
 
 try:
     from openai import OpenAI
 except Exception as e:
-    raise RuntimeError("أضف الحزمة في requirements: openai>=1.6.1,<2") from e
+    raise RuntimeError("ثبّت الحزمة: openai>=1.6.1,<2 (أو حدّثها)") from e
 
+# مفاتيح/إعدادات من البيئة
 OPENAI_API_KEY = (
-    os.getenv("OPENAI_API_KEY")
-    or os.getenv("GROQ_API_KEY")
-    or os.getenv("OPENROUTER_API_KEY")
+    os.getenv("GROQ_API_KEY")           # ✅ جرّب أولاً مفتاح Groq
+    or os.getenv("OPENAI_API_KEY")      # أو مفتاح OpenAI العادي
+    or os.getenv("OPENROUTER_API_KEY")  # أو OpenRouter
     or os.getenv("AZURE_OPENAI_API_KEY")
-    or _read_secret_file("OPENAI_API_KEY")
 )
 
+# Base URL: إن كان عندك Groq وما حطّيت OPENAI_BASE_URL، نضبطه تلقائيًا
 OPENAI_BASE_URL = (
     os.getenv("OPENAI_BASE_URL")
     or os.getenv("OPENROUTER_BASE_URL")
     or os.getenv("AZURE_OPENAI_ENDPOINT")
-    or _read_secret_file("OPENAI_BASE_URL")
 )
 
-OPENAI_ORG = os.getenv("OPENAI_ORG") or ""
+if (not OPENAI_BASE_URL) and os.getenv("GROQ_API_KEY"):
+    OPENAI_BASE_URL = "https://api.groq.com/openai/v1"
+
+OPENAI_ORG = os.getenv("OPENAI_ORG")
 
 OpenAI_CLIENT = None
 if OPENAI_API_KEY:
@@ -100,19 +92,15 @@ if OPENAI_API_KEY:
             kwargs["organization"] = OPENAI_ORG
         OpenAI_CLIENT = OpenAI(**kwargs)
     except Exception as e:
-        print(f"[ENV] ⚠️ فشل إنشاء عميل OpenAI: {e}")
+        print(f"[ENV] ⚠️ فشل إنشاء عميل OpenAI/Groq: {e}")
         OpenAI_CLIENT = None
 else:
-    print("[ENV] ⚠️ لا يوجد API key في البيئة ولا في Secret Files.")
-
-def _mask(v: str) -> str:
-    return f"{len(v)} chars" if v else "NONE"
+    print("[ENV] ⚠️ لم أجد أي API key (GROQ_API_KEY أو OPENAI_API_KEY).")
 
 print(
     f"[BOOT] LLM READY? {'YES' if OpenAI_CLIENT else 'NO'} | "
     f"base={OPENAI_BASE_URL or 'default'} | "
-    f"model={os.getenv('CHAT_MODEL','gpt-4o-mini')} | "
-    f"key={_mask(OPENAI_API_KEY)}"
+    f"model={os.getenv('CHAT_MODEL','gpt-4o-mini')}"
 )
 
 # ========= App Config =========
