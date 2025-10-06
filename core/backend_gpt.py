@@ -1286,29 +1286,60 @@ def _strip_code_fence(s: str) -> str:
 def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
                  personality: Any, lang: str, style_seed: int) -> List[Dict[str, str]]:
     bullets = _answers_to_bullets(answers)
-    persona = personality if isinstance(personality, str) else json.dumps(personality, ensure_ascii=False)
+
+    # تأمين تحويل الشخصية إلى نص
+    try:
+        persona = personality if isinstance(personality, str) else json.dumps(personality, ensure_ascii=False)
+    except Exception:
+        persona = str(personality)
+
+    # ضغط التحليل ليدخل الحد الأقصى
     profile = analysis.get("encoded_profile") or {}
     compact_analysis = _compact_analysis_for_prompt(analysis, profile)
-
     comp_blob = json.dumps(compact_analysis, ensure_ascii=False)
     if len(comp_blob) > MAX_PROMPT_CHARS:
-        compact_analysis = {"z_axes": compact_analysis.get("z_axes", {}), "z_intent": compact_analysis.get("z_intent", [])}
+        compact_analysis = {
+            "z_axes": compact_analysis.get("z_axes", {}),
+            "z_intent": compact_analysis.get("z_intent", [])
+        }
 
+    # بناء تلميحات المحاور (مع تسطيح أي قوائم داخلية)
     axis = compact_analysis.get("z_axes", {})
     exp = _axes_expectations(axis, lang)
-    exp_lines = []
+    exp_lines: List[str] = []
     if exp:
-        title = {"calm_adrenaline":"هدوء/أدرينالين","solo_group":"فردي/جماعي","tech_intuition":"تقني/حدسي"} \
-                if lang=="العربية" else \
-                {"calm_adrenaline":"Calm/Adrenaline","solo_group":"Solo/Group","tech_intuition":"Technical/Intuitive"}
+        title = (
+            {"calm_adrenaline":"هدوء/أدرينالين","solo_group":"فردي/جماعي","tech_intuition":"تقني/حدسي"}
+            if lang == "العربية" else
+            {"calm_adrenaline":"Calm/Adrenaline","solo_group":"Solo/Group","tech_intuition":"Technical/Intuitive"}
+        )
         for k, words in exp.items():
-            if words:
-                exp_lines.append(f"{title[k]}: {', '.join(words)}")
-    axis_hint = ("\n".join(exp_lines)) if exp_lines else ""
+            # سطّح وحوّل كل عنصر إلى نص
+            flat: List[str] = []
+            for w in (words or []):
+                if isinstance(w, (list, tuple, set)):
+                    flat.extend([str(x) for x in w])
+                else:
+                    flat.append(str(w))
+            joined = ("، " if lang == "العربية" else ", ").join(s for s in flat if str(s).strip())
+            if joined:
+                exp_lines.append(f"{title.get(k, k)}: {joined}")
+    axis_hint = "\n".join(exp_lines) if exp_lines else ""
 
-    z_intent = compact_analysis.get("z_intent", [])
-    intent_hint = ("، ".join(z_intent) if lang=="العربية" else ", ".join(z_intent)) if z_intent else ""
+    # بناء تلميحات نوايا Z (مع تسطيح)
+    z_intent_raw = compact_analysis.get("z_intent", [])
+    z_intent_flat: List[str] = []
+    for z in (z_intent_raw or []):
+        if isinstance(z, (list, tuple, set)):
+            z_intent_flat.extend([str(x) for x in z])
+        else:
+            z_intent_flat.append(str(z))
+    intent_hint = (
+        "، ".join([s for s in z_intent_flat if str(s).strip()]) if lang == "العربية"
+        else ", ".join([s for s in z_intent_flat if str(s).strip()])
+    )
 
+    # نصوص النظام/المستخدم
     if lang == "العربية":
         sys = (
             "أنت مدرّب SportSync AI بنبرة إنسانية لطيفة (صديق محترف).\n"
@@ -1325,7 +1356,7 @@ def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
             "\"core_skills\":[\"...\",\"...\"],\"mode\":\"Solo/Team\",\"variant_vr\":\"...\",\"variant_no_vr\":\"...\",\"difficulty\":1-5"
             "}]} "
             "قواعد إلزامية: اذكر win_condition و 3–5 core_skills على الأقل. "
-            "حاذِ Z-axes بالكلمات التالية إن أمكن:\n" + axis_hint +
+            "حاذِ محاور Z بالكلمات التالية إن أمكن:\n" + axis_hint +
             ("\n\n— نوايا Z المحتملة: " + intent_hint if intent_hint else "") + "\n\n"
             f"— شخصية المدرب:\n{persona}\n\n"
             "— تحليل موجز:\n" + json.dumps(compact_analysis, ensure_ascii=False) + "\n\n"
@@ -1344,10 +1375,11 @@ def _json_prompt(analysis: Dict[str, Any], answers: Dict[str, Any],
             "\"first_week\":\"...\",\"progress_markers\":\"...\",\"win_condition\":\"...\",\"core_skills\":[\"...\"]," 
             "\"mode\":\"Solo/Team\",\"variant_vr\":\"...\",\"variant_no_vr\":\"...\",\"difficulty\":1-5}]}"
             " Align with Z-axes using words:\n" + axis_hint +
-            ( "\n\n— Z intents: " + intent_hint if intent_hint else "" ) + "\n\n"
+            ("\n\n— Z intents: " + intent_hint if intent_hint else "") + "\n\n"
             f"— Coach persona:\n{persona}\n— Compact analysis:\n" + json.dumps(compact_analysis, ensure_ascii=False) + "\n"
             "— Bulleted answers:\n" + bullets + f"\n— style_seed: {style_seed}\nJSON only."
         )
+
     return [{"role": "system", "content": sys}, {"role": "user", "content": usr}]
 
 def _parse_json(text: str) -> Optional[List[Dict[str, Any]]]:
