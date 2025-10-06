@@ -54,54 +54,53 @@ def _job_note(job_id: str,
     except Exception:
         pass
 
-# ========= OpenAI / Groq via OpenAI SDK =========
+# ========= LLM client (OpenAI-compatible, incl. Groq/OpenRouter/Azure) =========
+LLM_BOOT_ERR = None  # سنسجل هنا سبب الفشل لو حصل
+
 try:
     from openai import OpenAI
 except Exception as e:
     raise RuntimeError("أضف الحزمة في requirements: openai>=1.6.1,<2") from e
 
-# مفاتيح محتملة (Groq / OpenAI / OpenRouter / Azure)
+# نقرأ من أكثر من مزود: OpenAI / Groq (OpenAI-compatible) / OpenRouter / Azure
 OPENAI_API_KEY = (
     os.getenv("OPENAI_API_KEY")
-    or os.getenv("GROQ_API_KEY")           # ← دعم Groq
+    or os.getenv("GROQ_API_KEY")          # احتياط
     or os.getenv("OPENROUTER_API_KEY")
     or os.getenv("AZURE_OPENAI_API_KEY")
 )
 
-# Base URL (Groq يستخدم هذا العنوان)
 OPENAI_BASE_URL = (
-    os.getenv("OPENAI_BASE_URL")           # مثل: https://api.groq.com/openai/v1
+    os.getenv("OPENAI_BASE_URL")          # Groq: https://api.groq.com/openai/v1
     or os.getenv("OPENROUTER_BASE_URL")
     or os.getenv("AZURE_OPENAI_ENDPOINT")
 )
 
-OPENAI_ORG = os.getenv("OPENAI_ORG")  # غالباً فاضي
-
-def _mask_key(k: str) -> str:
-    if not k: return "empty"
-    return (k[:4] + "…" + k[-4:]) if len(k) >= 8 else "set"
+OPENAI_ORG = os.getenv("OPENAI_ORG", "")
 
 OpenAI_CLIENT = None
-if OPENAI_API_KEY:
-    try:
+try:
+    if not OPENAI_API_KEY:
+        LLM_BOOT_ERR = "ENV: missing OPENAI_API_KEY"
+    else:
         kwargs = {"api_key": OPENAI_API_KEY}
         if OPENAI_BASE_URL:
             kwargs["base_url"] = OPENAI_BASE_URL
         if OPENAI_ORG:
             kwargs["organization"] = OPENAI_ORG
-        OpenAI_CLIENT = OpenAI(**kwargs)
-    except Exception as e:
-        print(f"[ENV] ⚠️ فشل إنشاء عميل OpenAI/Groq: {e}")
-        OpenAI_CLIENT = None
-else:
-    print("[ENV] ⚠️ لا يوجد API key في المتغيرات البيئية.")
 
-# طباعة حالة الإقلاع للتشخيص
+        OpenAI_CLIENT = OpenAI(**kwargs)
+except Exception as e:
+    LLM_BOOT_ERR = f"CLIENT_INIT: {e}"
+    OpenAI_CLIENT = None
+
 print(
-    f"[BOOT] LLM READY? {'YES' if OpenAI_CLIENT else 'NO'} | "
-    f"key={_mask_key(OPENAI_API_KEY)} | "
-    f"base={OPENAI_BASE_URL or 'default'} | "
-    f"model={os.getenv('CHAT_MODEL','llama3-70b-8192')}"
+    "[BOOT] LLM READY? {ready} | base={base} | model={model} | note={note}".format(
+        ready=("YES" if OpenAI_CLIENT else "NO"),
+        base=(OPENAI_BASE_URL or "default"),
+        model=os.getenv("CHAT_MODEL", "gpt-4o"),
+        note=(LLM_BOOT_ERR or "ok")
+    )
 )
 
 # ========= App Config =========
