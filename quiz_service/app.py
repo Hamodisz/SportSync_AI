@@ -23,9 +23,10 @@ for p in (ROOT, ROOT / "core", ROOT / "analysis"):
 try:
     from core.backend_gpt import generate_sport_recommendation
 except Exception:
+    # ملاحظة: ما نحدّد مزوّد بعينه (OpenAI/Groq...) لأنك قد تستخدم Groq
     def generate_sport_recommendation(answers, lang="العربية"):
         return [
-            "❌ OPENAI_API_KEY غير مضبوط في خدمة الـ Quiz.",
+            "❌ لم يتم تهيئة عميل الـ LLM في خدمة الـ Quiz (تأكد من المتغيرات البيئية والنشر).",
             "—",
             "—",
         ]
@@ -73,7 +74,15 @@ try:
     with st.sidebar.expander("🧪 Diagnostics"):
         stats = get_cache_stats()
         st.write("Model:", os.getenv("CHAT_MODEL", "gpt-4o"))
+        st.write("GROQ key set:", bool(os.getenv("GROQ_API_KEY")))
         st.write("OPENAI key set:", bool(os.getenv("OPENAI_API_KEY")))
+        st.write(
+            "Base URL:",
+            os.getenv("OPENAI_BASE_URL")
+            or os.getenv("OPENROUTER_BASE_URL")
+            or os.getenv("AZURE_OPENAI_ENDPOINT")
+            or "default",
+        )
         st.write("Cache hits:", stats.get("hits"))
         st.write("Cache misses:", stats.get("misses"))
         st.write("Cache size:", stats.get("size"))
@@ -124,11 +133,11 @@ def typewriter_chat(role: str, text: str, ms_per_char: int = 6):
         typewriter_write(ph, text, ms_per_char)
 
 def status_steps(enabled: bool):
-    """context manager بسيط لمراحل التفكير."""
+    """Context manager بسيط لمراحل التفكير (إصلاح __enter__/__exit__)."""
     class _Dummy:
-        def _enter_(self):
+        def __enter__(self):
             return self
-        def _exit_(self, *exc):
+        def __exit__(self, *exc):
             return False
         def write(self, *a, **k): pass
         def update(self, *a, **k): pass
@@ -143,20 +152,22 @@ def status_steps(enabled: bool):
         # Streamlit >= 1.25
         return st.status(T("🤖 يفكّر الآن…", "🤖 Thinking…"), expanded=True)
     except Exception:
-        # بديل قديم
+        # بديل متوافق مع with
         class _Alt:
-            def _init_(self):
+            def __init__(self):
                 self.box = st.empty()
                 self.lines = []
                 self.box.write("\n".join(str(x) for x in self.lines))
-            def _enter_(self): return self
-            def _exit_(self, *exc): return False
-            def write(self, text): 
-                self.lines.append(text)
+            def __enter__(self):
+                return self
+            def __exit__(self, *exc):
+                return False
+            def write(self, text):
+                self.lines.append(str(text))
                 self.box.write("\n".join(str(x) for x in self.lines))
-            def info(self, text): self.write("ℹ " + text)
-            def warning(self, text): self.write("⚠ " + text)
-            def success(self, text): self.write("✅ " + text)
+            def info(self, text): self.write("ℹ " + str(text))
+            def warning(self, text): self.write("⚠ " + str(text))
+            def success(self, text): self.write("✅ " + str(text))
             def update(self, **kwargs): pass
         return _Alt()
 
