@@ -56,10 +56,15 @@ except Exception as e:
     raise RuntimeError("ملف core/llm_client.py مفقود أو فيه خطأ. تأكد من إضافته.") from e
 
 LLM_CLIENT = make_llm_client()
-_models = pick_models()
-CHAT_MODEL = _models.get("main")
-CHAT_MODEL_FALLBACK = _models.get("fallback")
-print(f"[BOOT] LLM READY? {'YES' if LLM_CLIENT else 'NO'} | model={CHAT_MODEL}")
+try:
+    CHAT_MODEL, CHAT_MODEL_FALLBACK = pick_models()  # يرجّع Tuple
+except Exception:
+    # لو عندك نسخة قديمة ترجع dict، نتعامل معها برشاقة
+    _models = pick_models()
+    CHAT_MODEL = getattr(_models, "get", lambda *_: None)("main")
+    CHAT_MODEL_FALLBACK = getattr(_models, "get", lambda *_: None)("fallback")
+
+print(f"[BOOT] LLM READY? {'YES' if LLM_CLIENT else 'NO'} | main={CHAT_MODEL} fb={CHAT_MODEL_FALLBACK}")
 
 # ========= App Config =========
 try:
