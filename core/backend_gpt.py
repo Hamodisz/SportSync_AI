@@ -1168,40 +1168,77 @@ def _llm_fallback(user_id: str, analysis: Dict[str, Any], answers: Dict[str, Any
     return cards
 
 # ========= Global ensure / rendering =========
-def _fill_defaults_batch(cards: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]]:
-    return [_fill_defaults(c, lang) for c in cards]
+def _to_bullets(text_or_list: Any, max_items: int = 6) -> List[str]:
+    out: List[str] = []
 
-def _quality_filter(cards: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    out = []
-    for c in cards:
-        if not _is_meaningful(c): continue
-        if _too_generic(c.get("what_it_looks_like",""), _MIN_CHARS): continue
-        if _REQUIRE_WIN and not (c.get("win_condition") or "").strip(): continue
-        if len(c.get("core_skills") or []) < _MIN_CORE_SKILLS: continue
-        # إن حبيت تلزم الحسّ الجسدي فعليًا، بدّل pass إلى continue
-        # if not _has_sensory(c.get("inner_sensation","") + " " + c.get("what_it_looks_like","")): continue
-        out.append(c)
-    return out
+    def _flat_add(x: Any) -> None:
+        if x is None:
+            return
+        if isinstance(x, (list, tuple, set)):
+            for y in x:
+                _flat_add(y)
+            return
+        if isinstance(x, dict):
+            for k in ("text", "desc", "value", "answer", "label", "title"):
+                if k in x and isinstance(x[k], str) and x[k].strip():
+                    out.append(x[k].strip())
+                    return
+            out.append(json.dumps(x, ensure_ascii=False))
+            return
+        s = _norm_text(x).strip()  # تأكد أنها نص
+        if s:
+            out.append(s)
 
-def _brand_footer(lang: str) -> str:
-    return "— Sports Sync" if lang != "العربية" else "— Sports Sync"
+    _flat_add(text_or_list)
+
+    if len(out) == 1 and isinstance(text_or_list, str):
+        raw = re.split(r"[;\n\.،]+", out[0])
+        out = [i.strip(" -•\t ") for i in raw if i.strip()]
+
+    out = out[:max_items]
+    return [str(i) for i in out if str(i).strip()]  # كل العناصر نصوص 100%
+
 
 def _format_card(c: Dict[str, Any], lang: str) -> str:
-    lines = []
+    lines: List[str] = []
     lines.append(f"### {c.get('sport_label','')}")
-    if c.get('what_it_looks_like'): lines.append(f"{c['what_it_looks_like']}")
-    if c.get('inner_sensation'): lines.append(f"• الإحساس الداخلي: {c['inner_sensation']}" if lang=="العربية" else f"• Inner feel: {c['inner_sensation']}")
-    if c.get('why_you'): lines.append(f"• لماذا أنت: {c['why_you']}" if lang=="العربية" else f"• Why you: {c['why_you']}")
-    if c.get('first_week'): lines.append(f"• أول أسبوع: {c['first_week']}" if lang=="العربية" else f"• First week: {c['first_week']}")
-    if c.get('progress_markers'): lines.append(f"• مؤشرات التقدم: {c['progress_markers']}" if lang=="العربية" else f"• Progress markers: {c['progress_markers']}")
-    if c.get('win_condition'): lines.append(f"• شرط الفوز/الهدف: {c['win_condition']}" if lang=="العربية" else f"• Win condition: {c['win_condition']}")
+    if c.get('what_it_looks_like'):
+        lines.append(f"{c['what_it_looks_like']}")
+    if c.get('inner_sensation'):
+        lines.append(f"• الإحساس الداخلي: {c['inner_sensation']}" if lang=="العربية" else f"• Inner feel: {c['inner_sensation']}")
+    if c.get('why_you'):
+        lines.append(f"• لماذا أنت: {c['why_you']}" if lang=="العربية" else f"• Why you: {c['why_you']}")
+    if c.get('first_week'):
+        lines.append(f"• أول أسبوع: {c['first_week']}" if lang=="العربية" else f"• First week: {c['first_week']}")
+
+    # مؤشرات التقدم: ندعم قائمة أو نص
+    pm = c.get('progress_markers')
+    if isinstance(pm, (list, tuple, set)):
+        pm_list = _to_bullets(pm, 6)
+        if pm_list:
+            lines.append(("• مؤشرات التقدم: " if lang=="العربية" else "• Progress markers: ")
+                         + "، ".join(map(str, pm_list)))
+    elif pm:
+        lines.append(f"• مؤشرات التقدم: {pm}" if lang=="العربية" else f"• Progress markers: {pm}")
+
+    if c.get('win_condition'):
+        lines.append(f"• شرط الفوز/الهدف: {c['win_condition']}" if lang=="العربية" else f"• Win condition: {c['win_condition']}")
+
+    # مهارات أساسية (join آمن)
     skills = _to_bullets(c.get('core_skills', []), 6)
-    if skills: lines.append(("• مهارات أساسية: " if lang=="العربية" else "• Core skills: ") + "، ".join(skills))
-    if c.get('mode'): lines.append(("• النمط: " if lang=="العربية" else "• Mode: ") + c['mode'])
-    if c.get('variant_vr'): lines.append(("• نسخة VR: " if lang=="العربية" else "• VR variant: ") + c['variant_vr'])
-    if c.get('variant_no_vr'): lines.append(("• نسخة بلا VR: " if lang=="العربية" else "• No-VR variant: ") + c['variant_no_vr'])
+    if skills:
+        lines.append(("• مهارات أساسية: " if lang=="العربية" else "• Core skills: ")
+                     + "، ".join(map(str, skills)))
+
+    if c.get('mode'):
+        lines.append(("• النمط: " if lang=="العربية" else "• Mode: ") + str(c['mode']))
+    if c.get('variant_vr'):
+        lines.append(("• نسخة VR: " if lang=="العربية" else "• VR variant: ") + str(c['variant_vr']))
+    if c.get('variant_no_vr'):
+        lines.append(("• نسخة بلا VR: " if lang=="العربية" else "• No-VR variant: ") + str(c['variant_no_vr']))
+
     lines.append(_brand_footer(lang))
-    return "\n".join(lines).strip()
+    return "\n".join(map(str, lines)).strip()
 
 # ========= Public API =========
 def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العربية") -> List[str]:
