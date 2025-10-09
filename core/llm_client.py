@@ -3,16 +3,23 @@
 """
 موحِّد الاتصال بنماذج OpenAI/Groq/OpenRouter/Azure (واجهة OpenAI المتوافقة).
 - يقرأ المفاتيح من: GROQ_API_KEY / OPENAI_API_KEY / OPENROUTER_API_KEY / AZURE_OPENAI_API_KEY
-- يضبط base_url تلقائيًا (Groq/OpenRouter/Azure)
+- يضبط base_url تلقائيًا (Groq/OpenRouter)، ويدعم Azure عبر AzureOpenAI
 - يوفّر: make_llm_client, pick_models, chat_once
 """
 
 from __future__ import annotations
 import os, time, random
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Tuple
 
 try:
     from openai import OpenAI
+    try:
+        # متى توفّر AzureOpenAI نستخدمه (SDK >= 1.6)
+        from openai import AzureOpenAI  # type: ignore
+        _HAS_AZURE = True
+    except Exception:
+        AzureOpenAI = None  # type: ignore
+        _HAS_AZURE = False
 except Exception as e:
     raise RuntimeError("ثبّت الحزمة: openai>=1.6.1,<2") from e
 
@@ -27,7 +34,7 @@ def _bool_env(name: str, default: bool = False) -> bool:
 def make_llm_client() -> Optional[OpenAI]:
     """
     يبني عميل OpenAI-compatible. يرجع None لو ما فيه مفتاح — حتى يكمل النظام بالـKB فقط.
-    يدعم Azure بأن يضيف api-version وheader api-key بدل Authorization Bearer.
+    يدعم Azure عبر AzureOpenAI لتولّي المسارات والمعلمات تلقائيًا.
     """
     key = (
         os.getenv("GROQ_API_KEY")
@@ -38,7 +45,6 @@ def make_llm_client() -> Optional[OpenAI]:
     if not key:
         return None
 
-    # اكتشاف الأنماط
     is_groq = bool(os.getenv("GROQ_API_KEY")) or str(os.getenv("OPENAI_BASE_URL", "")).startswith("https://api.groq.com")
     is_openrouter = bool(os.getenv("OPENROUTER_API_KEY")) or str(os.getenv("OPENROUTER_BASE_URL", "")).startswith("https://openrouter.ai")
     is_azure = bool(os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_OPENAI_ENDPOINT"))
@@ -46,44 +52,38 @@ def make_llm_client() -> Optional[OpenAI]:
     base = (
         os.getenv("OPENAI_BASE_URL")
         or os.getenv("OPENROUTER_BASE_URL")
-        or os.getenv("AZURE_OPENAI_ENDPOINT")  # قد يكون None لغير Azure
+        or os.getenv("AZURE_OPENAI_ENDPOINT")
     )
 
-    # قواعد base_url الافتراضية
+    # Azure: استخدم AzureOpenAI إن توفّر
+    if is_azure and _HAS_AZURE:
+        azure_version = os.getenv("OPENAI_API_VERSION") or os.getenv("AZURE_OPENAI_API_VERSION") or "2024-02-01"
+        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT") or base
+        if not endpoint:
+            return None
+        try:
+            return AzureOpenAI(  # type: ignore
+                api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+                api_version=azure_version,
+                azure_endpoint=endpoint,
+            )
+        except Exception:
+            # لو فشلت تهيئة Azure لأي سبب، نرجّع None ليكمل النظام بدون LLM
+            return None
+
+    # غير Azure: OpenAI-compatible (OpenAI/Groq/OpenRouter)
     if not base and is_groq:
         base = "https://api.groq.com/openai/v1"
     if not base and is_openrouter:
         base = "https://openrouter.ai/api/v1"
-    # Azure: لازم يكون endpoint مثل: https://<name>.openai.azure.com
-    # ونستخدم المسار /openai/deployments ونمرر api-version كـ default_query
-    azure_version = os.getenv("OPENAI_API_VERSION") or os.getenv("AZURE_OPENAI_API_VERSION") or "2024-02-01"
-    if is_azure:
-        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT") or base
-        if not endpoint:
-            return None
-        base = endpoint.rstrip("/") + "/openai/deployments"
 
     org = os.getenv("OPENAI_ORG") or None
 
-    # إعدادات العميل
     kw: Dict[str, Any] = {}
     default_headers: Dict[str, str] = {}
     default_query: Dict[str, str] = {}
 
-    if is_azure:
-        # Azure يستخدم header: api-key ولا يستعمل Bearer
-        kw["api_key"] = None
-        default_headers["api-key"] = key
-        default_query["api-version"] = azure_version
-    else:
-        kw["api_key"] = key
-
-    if base:
-        kw["base_url"] = base
-    if org:
-        kw["organization"] = org
-
-    # OpenRouter headers الاختيارية (تحسّن الـrate/نسبة القبول)
+    # OpenRouter: ترويسات اختيارية
     if is_openrouter:
         ref = os.getenv("OPENROUTER_REFERRER")
         title = os.getenv("OPENROUTER_APP_TITLE")
@@ -92,6 +92,11 @@ def make_llm_client() -> Optional[OpenAI]:
         if title:
             default_headers["X-Title"] = title
 
+    kw["api_key"] = key
+    if base:
+        kw["base_url"] = base
+    if org:
+        kw["organization"] = org
     if default_headers:
         kw["default_headers"] = default_headers
     if default_query:
@@ -100,38 +105,34 @@ def make_llm_client() -> Optional[OpenAI]:
     try:
         return OpenAI(**kw)
     except Exception:
-        # لو فشل البناء لأي سبب، رجّع None حتى يكمّل النظام بدون LLM
         return None
 
 
-def pick_models() -> Dict[str, str]:
+def pick_models() -> Tuple[str, str]:
     """
     يختار النموذج الرئيسي والبديل حسب المزود. يمكن override عبر CHAT_MODEL و CHAT_MODEL_FALLBACK.
-    - Groq: llama3
-    - Azure/OpenAI: gpt-4o / gpt-4o-mini (أو Deployment names مع Azure)
-    - OpenRouter: gpt-4o كافتراضي (يمكن تغييره)
+    * يَرْجِع (main, fallback) ليتوافق مع backend_gpt.py
     """
     using_groq = bool(
         os.getenv("GROQ_API_KEY")
         or str(os.getenv("OPENAI_BASE_URL", "")).startswith("https://api.groq.com")
     )
     using_azure = bool(os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_OPENAI_ENDPOINT"))
-    using_openrouter = bool(os.getenv("OPENROUTER_API_KEY"))
 
     if using_groq:
         main_default = "llama3-70b-8192"
         fb_default = "llama3-8b-8192"
     else:
-        # سواء OpenAI أو OpenRouter أو Azure (يفترض أن يكون اسم الـdeployment في Azure)
+        # OpenAI/OpenRouter/Azure (في Azure يجب أن يكون اسم الـdeployment)
         main_default = "gpt-4o"
         fb_default = "gpt-4o-mini"
 
-    # في Azure، الاسم هنا يجب أن يطابق "deployment name" وليس اسم الموديل الأصلي
     main = os.getenv("CHAT_MODEL", main_default)
     fb = os.getenv("CHAT_MODEL_FALLBACK", fb_default)
 
-    # تلميح: لو Azure وما عرّفت deployment، ستفشل المكالمة. لذلك نوّضح باللوج إن رغبت.
-    return {"main": main, "fallback": fb}
+    # تنبيه اختياري يمكن تفعيله بالـLOGS: في Azure يجب أن يكون main/fb اسم deployment فعلي.
+    _ = using_azure  # فقط لتهدئة linters
+    return (main, fb)
 
 
 def chat_once(
@@ -146,22 +147,26 @@ def chat_once(
     frequency_penalty: float = 0.1,
     timeout_s: float = 20.0,
     retries: int = 2,
+    seed: Optional[int] = None,
 ) -> str:
     """
     استدعاء واحد بسيط مع retries/backoff.
-    - يمرّر seed لو LLM_SEED موجود (بعض المزودين يدعمه).
+    - يدعم seed اختياريًا (إذا تجاهله المزود لا يضر).
+    - يعيد string (محتوى أول اختيار).
     """
     if client is None:
         raise RuntimeError("لا يوجد عميل LLM (المفتاح غير مضبوط أو فشل التهيئة)")
 
     last_err: Optional[Exception] = None
-    seed_env = os.getenv("LLM_SEED")
-    seed_val: Optional[int] = None
-    if seed_env:
-        try:
-            seed_val = int(seed_env)
-        except Exception:
-            seed_val = None
+
+    # لو ما مرّرت seed يدويًا، خذه من LLM_SEED إن وُجد
+    if seed is None:
+        seed_env = os.getenv("LLM_SEED")
+        if seed_env:
+            try:
+                seed = int(seed_env)
+            except Exception:
+                seed = None
 
     for attempt in range(retries + 1):
         try:
@@ -175,9 +180,9 @@ def chat_once(
                 frequency_penalty=frequency_penalty,
                 max_tokens=max_tokens,
             )
-            if seed_val is not None:
+            if seed is not None:
                 # ليس كل مزود يدعمه؛ لو تجاهله المزود ما يضر
-                create_kwargs["seed"] = seed_val
+                create_kwargs["seed"] = seed
 
             resp = client_t.chat.completions.create(**create_kwargs)
             choice = (resp.choices[0].message.content if resp and resp.choices else "") or ""
