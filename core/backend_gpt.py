@@ -56,7 +56,9 @@ except Exception as e:
     raise RuntimeError("ملف core/llm_client.py مفقود أو فيه خطأ. تأكد من إضافته.") from e
 
 LLM_CLIENT = make_llm_client()
-CHAT_MODEL, CHAT_MODEL_FALLBACK = pick_models()
+_models = pick_models()
+CHAT_MODEL = _models.get("main")
+CHAT_MODEL_FALLBACK = _models.get("fallback")
 print(f"[BOOT] LLM READY? {'YES' if LLM_CLIENT else 'NO'} | model={CHAT_MODEL}")
 
 # ========= App Config =========
@@ -84,18 +86,17 @@ def _dbg(msg: str) -> None:
     if REC_DEBUG:
         print(f"[RECDBG] {msg}")
 
-# Evidence Gate thresholds (defaults if not provided)
-EGCFG = (CFG.get("analysis") or {}).get("egate", {}) if isinstance(CFG.get("analysis"), dict) else {}
-_EG_MIN_ANSWERS = int(EGCFG.get("min_answered", 3))
-_EG_MIN_TOTAL_CHARS = int(EGCFG.get("min_total_chars", 120))
-_EG_REQUIRED_KEYS = list(EGCFG.get("required_keys", []))
-
-# ========= Light logging helper =========
 def _warn(msg: str) -> None:
     print(f"[WARN] {msg}")
 
 def _err(msg: str) -> None:
     print(f"[ERROR] {msg}")
+
+# Evidence Gate thresholds (defaults if not provided)
+EGCFG = (CFG.get("analysis") or {}).get("egate", {}) if isinstance(CFG.get("analysis"), dict) else {}
+_EG_MIN_ANSWERS = int(EGCFG.get("min_answered", 3))
+_EG_MIN_TOTAL_CHARS = int(EGCFG.get("min_total_chars", 120))
+_EG_REQUIRED_KEYS = list(EGCFG.get("required_keys", []))
 
 # ========= DataPipe (Zapier/Webhook/Disk) =========
 try:
@@ -131,29 +132,11 @@ KB_PATH = DATA_DIR / "sportsync_knowledge.json"
 AL_PATH = DATA_DIR / "labels_aliases.json"
 
 # ========= File Lock (race-safe) =========
-_FILELOCK_AVAILABLE = False
 try:
     from filelock import FileLock, Timeout
-    _FILELOCK_AVAILABLE = True
+    FILELOCK_OK = True
 except Exception:
-    _FILELOCK_AVAILABLE = False
-
-def _with_lock(path: Path, timeout: float = 3.0):
-    """Context manager: file lock using filelock if available; otherwise naive retry."""
-    class _Noop:
-        def __enter__(self): return None
-        def __exit__(self, exc_type, exc, tb): return False
-    if _FILELOCK_AVAILABLE:
-        lock = FileLock(str(path) + ".lock")
-        return lock.acquire(timeout=timeout), lock.release  # type: ignore
-    # fallback: naive sleep/jitter before R/W to reduce collisions
-    class _Naive:
-        def __enter__(self):
-            time.sleep(0.02 + random.random() * 0.05)
-            return None
-        def __exit__(self, exc_type, exc, tb):
-            return False
-    return _Naive()
+    FILELOCK_OK = False
 
 # ========= Helpers: Files =========
 def _load_json_safe(p: Path) -> dict:
@@ -175,7 +158,6 @@ _ALIAS_MAP: Dict[str, str] = {}
 if isinstance(KB.get("label_aliases"), dict):
     for canon, alist in KB["label_aliases"].items():
         for a in alist:
-            # map normalized alias -> canonical key
             _ALIAS_MAP[re.sub(r"\s+", " ", a.strip().lower())] = canon
 
 AL2 = _load_json_safe(AL_PATH)
@@ -183,7 +165,6 @@ if isinstance(AL2.get("canonical"), dict):
     for a, canon in AL2["canonical"].items():
         _ALIAS_MAP[re.sub(r"\s+", " ", a.strip().lower())] = canon
 
-# New KB knobs (priors & links & guards & z-intent keywords)
 KB_PRIORS: Dict[str, float] = dict(KB.get("priors") or {})
 TRAIT_LINKS: Dict[str, Dict[str, float]] = dict(KB.get("trait_links") or {})
 GUARDS: Dict[str, Any] = dict(KB.get("guards") or {})
@@ -197,13 +178,8 @@ _FORBIDDEN_GENERIC = set(
 # ========= Arabic normalization =========
 _AR_DIAC_RE = re.compile(r"[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u0640]")
 _AR_MAP = str.maketrans({
-    "\u0623": "\u0627",
-    "\u0625": "\u0627",
-    "\u0622": "\u0627",
-    "\u0624": "\u0648",
-    "\u0626": "\u064A",
-    "\u0629": "\u0647",
-    "\u0649": "\u064A",
+    "\u0623": "\u0627", "\u0625": "\u0627", "\u0622": "\u0627",
+    "\u0624": "\u0648", "\u0626": "\u064A", "\u0629": "\u0647", "\u0649": "\u064A",
 })
 def _normalize_ar(t: str) -> str:
     if not t: return ""
@@ -449,7 +425,6 @@ def _format_followup_card(followups: List[str], lang: str) -> str:
     return "\n".join(lines)
 
 # ========= Rules & helpers =========
-# ملاحظة: فكّكنا البلوك لنسختين عربي/إنجليزي لتقليل false positives
 _BLOCKLIST_AR = r"(جري|ركض|سباحة|كرة|قدم|سلة|طائرة|تنس|ملاكمة|كاراتيه|كونغ فو|يوجا|يوغا|بيلاتس|رفع|أثقال|تزلج|دراج|دراجة|ركوب|خيول|باركور|جودو|سكواش|بلياردو|جولف|كرة طائرة|كرة اليد|هوكي|سباق|ماراثون|مصارعة)"
 _BLOCKLIST_EN = r"(MMA|Boxing|Karate|Judo|Taekwondo|Soccer|Football|Basketball|Tennis|Swim|Swimming|Running|Run|Cycle|Cycling|Bike|Biking|Yoga|Pilates|Rowing|Row|Skate|Skating|Ski|Skiing|Climb|Climbing|Surf|Surfing|Golf|Volleyball|Handball|Hockey|Parkour|Wrestling)"
 _name_re = re.compile(_BLOCKLIST_AR + "|" + _BLOCKLIST_EN, re.IGNORECASE)
@@ -464,11 +439,10 @@ _SENSORY = [
     "إحساس","امتداد","حرق لطيف","صفاء","تماسك"
 ]
 _GENERIC_LABELS = {
-    "impressive compact", "impressive-compact", "generic sport", "sport identity",
+    "impressive compact", "generic sport", "sport identity",
     "movement flow", "basic flow", "simple flow", "body flow"
 }
 
-# ✅ Regex فاصل الأسطر (إصلاح \n)
 def _split_sentences(text: str) -> List[str]:
     if not text: return []
     return [s.strip() for s in re.split(r'(?<=[.!؟])\s+|[\n،]+', text) if s.strip()]
@@ -496,16 +470,14 @@ def _mask_names(t: str) -> str:
     return s
 
 def _scrub_forbidden(text: str) -> str:
-    # تعقيم غير مُفرغ: لو فَرّغ النص بعد التعقيم نرجع للأصل
     if not text: return ""
     kept = [s for s in _split_sentences(text) if not _FORBIDDEN_SENT.search(_normalize_ar(s))]
     out = "، ".join(kept).strip(" .،")
     if not out:
-        # إعادة صياغة بسيطة: حذف العبارات المخالفة فقط داخل الجملة
         out = _FORBIDDEN_SENT.sub("", _normalize_ar(text))
         out = re.sub(r"\s{2,}", " ", out).strip(" .،")
         if not out:
-            out = text  # آخر حل: نرجّع الأصل لتفادي نص فارغ
+            out = text
     return out
 
 def _clip(s: str, n: int) -> str:
@@ -518,7 +490,8 @@ def _to_bullets(text_or_list: Any, max_items: int = 6) -> List[str]:
     def _flat_add(x: Any) -> None:
         if x is None: return
         if isinstance(x, (list, tuple, set)):
-            for y in x: _flat_add(y); return
+            for y in x: _flat_add(y)
+            return
         if isinstance(x, dict):
             for k in ("text", "desc", "value", "answer", "label", "title"):
                 if k in x and isinstance(x[k], str) and x[k].strip():
@@ -577,7 +550,6 @@ def _mismatch_with_axes(rec: Dict[str, Any], axes: Dict[str, float], lang: str) 
     return False
 
 # ========= Label normalization / similarity =========
-_GENERIC_LABELS_CANON = { "impressive compact","impressive compact","generic sport","sport identity","movement flow","basic flow","simple flow","body flow" }
 def _canonical_label(label: str) -> str:
     if not label: return ""
     lab = re.sub(r"\s+", " ", label).strip(" -—:،").lower()
@@ -586,7 +558,7 @@ def _canonical_label(label: str) -> str:
 
 def _label_is_generic(label: str) -> bool:
     lab = _canonical_label(label)
-    return (lab in _GENERIC_LABELS_CANON) or (len(lab) <= 3)
+    return (lab in _GENERIC_LABELS) or (len(lab) <= 3)
 
 def _tokenize(text: str) -> List[str]:
     if not text: return []
@@ -831,7 +803,7 @@ def _derive_binary_traits(analysis: Dict[str, Any], answers: Dict[str, Any], lan
     if ca >= 0.35 or sig.get("high_agg"):
         traits["sensation_seeking"] = max(traits.get("sensation_seeking", 0.0), 0.8)
 
-    # ✅ إصلاح هوامش/المسافة (Indentation) — لا تكسر التشغيل
+    # إصلاح الهوامش
     ti_val = axes.get("tech_intuition", 0.0)
     ti = float(ti_val) if isinstance(ti_val, (int, float)) else 0.0
     if ti <= -0.35 or sig.get("precision"):
@@ -889,9 +861,7 @@ def _is_forbidden_generic(label: str) -> bool:
     return any(g in base for g in _FORBIDDEN_GENERIC)
 
 def _template_for_label(label: str, lang: str) -> Optional[Dict[str, Any]]:
-    # (اختصرنا — نفس القوالب الجاهزة الموجودة فوق بالـ fallback/المعروفة + بعض الأمثلة)
     L = _canon_label(label)
-    ar = (lang == "العربية")
     KB_PRESETS = {
         "tactical_immersive_combat": _fallback_identity(0, lang),
         "stealth_flow_missions": _fallback_identity(1, lang),
@@ -901,29 +871,18 @@ def _template_for_label(label: str, lang: str) -> Optional[Dict[str, Any]]:
     }
     if L in KB_PRESETS:
         return _sanitize_record(_fill_defaults(KB_PRESETS[L], lang))
-    # أمثلة قصيرة إضافية (archery/esports/…)
-    if L in ("esports", "archery", "marksmanship", "safe_range", "climbing", "swimming", "calm_lines",
-             "distance_running","running","tennis","yoga","free_diving","freediving","chess",
-             "football","soccer","basketball"):
-        # استخدم نفس القوالب التعريفية من نسختك السابقة (اختصارًا)
-        # نولّدها من fallback/تبديلات
-        return _sanitize_record(_fill_defaults(_fallback_identity(0 if L=="esports" else 1, lang), lang))
     return None
 
 # ====== Blacklist (persistent, JSON) =========================================
 def _load_blacklist() -> dict:
-    bl = {}
-    # قفل القراءة
-    if _FILELOCK_AVAILABLE:
-        lock = FileLock(str(BL_PATH) + ".lock")
+    if FILELOCK_OK:
         try:
-            with lock.acquire(timeout=3):
+            with FileLock(str(BL_PATH) + ".lock", timeout=3):
                 bl = _load_json_safe(BL_PATH)
         except Timeout:
             _warn("blacklist lock timeout on read; proceeding without lock")
             bl = _load_json_safe(BL_PATH)
     else:
-        # naive jitter
         time.sleep(0.01 + random.random()*0.02)
         bl = _load_json_safe(BL_PATH)
 
@@ -996,7 +955,6 @@ def _ensure_unique_labels_v_global(recs: List[Dict[str, Any]], lang: str, bl: di
     return out
 
 def _persist_blacklist(recs: List[Dict[str, Any]], bl: dict) -> None:
-    # قفل الكتابة
     def _write():
         for r in recs:
             lab = r.get("sport_label") or ""
@@ -1004,10 +962,9 @@ def _persist_blacklist(recs: List[Dict[str, Any]], bl: dict) -> None:
                 _bl_add(bl, lab, alias=lab)
         _save_json_atomic(BL_PATH, bl)
 
-    if _FILELOCK_AVAILABLE:
-        lock = FileLock(str(BL_PATH) + ".lock")
+    if FILELOCK_OK:
         try:
-            with lock.acquire(timeout=4):
+            with FileLock(str(BL_PATH) + ".lock", timeout=4):
                 _write()
         except Timeout:
             _warn("blacklist lock timeout on write; writing without lock")
@@ -1028,7 +985,6 @@ def _answers_to_bullets(answers: Dict[str, Any]) -> str:
     lines: List[str] = []
     for k, v in (answers or {}).items():
         lines.append(f"- {k}: {_norm_answer_value(v)}")
-    # قصّ أيضًا لو طويل
     text = "\n".join(lines)
     if len(text) > MAX_PROMPT_CHARS//2:
         text = text[:MAX_PROMPT_CHARS//2] + "\n- …"
@@ -1045,12 +1001,10 @@ def _strip_code_fence(s: str) -> str:
 def _parse_llm_json(txt: str) -> Optional[dict]:
     if not txt: return None
     raw = _strip_code_fence(txt)
-    # حاول مباشرة
     try:
         return json.loads(raw)
     except Exception:
         pass
-    # التقط أول جسم JSON
     m = re.search(r"\{.*\}", raw, re.DOTALL)
     if m:
         frag = m.group(0)
@@ -1058,7 +1012,6 @@ def _parse_llm_json(txt: str) -> Optional[dict]:
             return json.loads(frag)
         except Exception:
             if REC_REPAIR_ENABLED:
-                # تصليح بدائي: إزالة tail commas
                 frag2 = re.sub(r",(\s*[}\]])", r"\1", frag)
                 try:
                     return json.loads(frag2)
@@ -1100,7 +1053,6 @@ def _kb_candidates(analysis: Dict[str, Any], answers: Dict[str, Any], lang: str)
     profile = (analysis or {}).get("encoded_profile") or {}
     axes = (profile or {}).get("axes") or {}
     signals = _extract_signals(answers, lang)
-    # 1) من الـKB identities إن وُجدت
     ids = KB.get("identities") or []
     ranked_from_kb: List[Dict[str, Any]] = []
     if ids:
@@ -1122,11 +1074,12 @@ def _kb_candidates(analysis: Dict[str, Any], answers: Dict[str, Any], lang: str)
     return ranked_from_kb
 
 def _llm_fallback(user_id: str, analysis: Dict[str, Any], answers: Dict[str, Any], lang: str) -> List[Dict[str, Any]]:
-    # بناء برومبت قوي + تقوية JSON
+    if not LLM_CLIENT:
+        return []
     profile = analysis.get("encoded_profile") or {}
-    seed = _style_seed(user_id, profile)
     bullets = _answers_to_bullets(answers)
     compact = _compact_analysis_for_prompt(analysis, profile)
+
     sys_ar = (
         "أنت نظام توصيات رياضية. أعد JSON فقط بدون أي نص خارج JSON. امنع ذكر الوقت/التكلفة/المكان/العدات."
         " يجب أن تُرجع 3 عناصر تحت المفتاح 'cards'، كل عنصر يحوي: "
@@ -1145,47 +1098,44 @@ def _llm_fallback(user_id: str, analysis: Dict[str, Any], answers: Dict[str, Any
         "constraints": {
             "no_time_cost_place_sets": True,
             "min_chars_each": _MIN_CHARS,
-            "require_win": __REQUIRE_WIN,
+            "require_win": _REQUIRE_WIN,
             "min_core_skills": _MIN_CORE_SKILLS
         }
     }
-    temp_primary = 0.6 if not REC_FAST_MODE else 0.5
-    temp_repair  = 0.35
 
     msgs = [
         {"role":"system","content":system},
         {"role":"user","content":json.dumps(user_blob, ensure_ascii=False)}
     ]
+    temp_primary = 0.6 if not REC_FAST_MODE else 0.5
+    temp_repair  = 0.35
+
     t0 = time.perf_counter()
-    out = None
+    out_txt = ""
     try:
-        out = chat_once(
+        out_txt = chat_once(
             client=LLM_CLIENT,
             model=CHAT_MODEL,
             messages=msgs,
             temperature=temp_primary,
             timeout_s=min(REC_BUDGET_S, 18.0),
-            seed=seed if hasattr(LLM_CLIENT, "supports_seed") else None
         )
     except Exception as e:
         _warn(f"chat_once primary failed: {e}")
         try:
-            out = chat_once(
+            out_txt = chat_once(
                 client=LLM_CLIENT,
                 model=CHAT_MODEL_FALLBACK or CHAT_MODEL,
                 messages=msgs,
                 temperature=temp_primary,
                 timeout_s=min(REC_BUDGET_S, 18.0),
-                seed=seed if hasattr(LLM_CLIENT, "supports_seed") else None
             )
         except Exception as e2:
             _err(f"chat_once fallback failed: {e2}")
             return []
 
-    txt = (out or {}).get("content") if isinstance(out, dict) else str(out)
-    data = _parse_llm_json(txt or "")
+    data = _parse_llm_json(out_txt or "")
     if not data and REC_REPAIR_ENABLED:
-        # محاولة إصلاح بجولة قصيرة
         _dbg("repair: forcing JSON only")
         msgs2 = [
             {"role":"system","content":system},
@@ -1193,14 +1143,14 @@ def _llm_fallback(user_id: str, analysis: Dict[str, Any], answers: Dict[str, Any
              else "Return the same answer as pure JSON only, with no prose outside JSON."}
         ]
         try:
-            out2 = chat_once(
+            out_txt2 = chat_once(
                 client=LLM_CLIENT,
                 model=CHAT_MODEL_FALLBACK or CHAT_MODEL,
                 messages=msgs + msgs2,
                 temperature=temp_repair,
-                timeout_s=min(REC_BUDGET_S - (time.perf_counter()-t0), 8.0)
+                timeout_s=max(4.0, min(REC_BUDGET_S - (time.perf_counter()-t0), 8.0)),
             )
-            data = _parse_llm_json((out2 or {}).get("content",""))
+            data = _parse_llm_json(out_txt2 or "")
         except Exception as e:
             _warn(f"repair round failed: {e}")
             data = None
@@ -1223,7 +1173,8 @@ def _quality_filter(cards: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if _too_generic(c.get("what_it_looks_like",""), _MIN_CHARS): continue
         if _REQUIRE_WIN and not (c.get("win_condition") or "").strip(): continue
         if len(c.get("core_skills") or []) < _MIN_CORE_SKILLS: continue
-        if not _has_sensory(c.get("inner_sensation","") + " " + c.get("what_it_looks_like","")): pass
+        # إن حبيت تلزم الحسّ الجسدي فعليًا، بدّل pass إلى continue
+        # if not _has_sensory(c.get("inner_sensation","") + " " + c.get("what_it_looks_like","")): continue
         out.append(c)
     return out
 
@@ -1231,10 +1182,9 @@ def _brand_footer(lang: str) -> str:
     return "— Sports Sync" if lang != "العربية" else "— Sports Sync"
 
 def _format_card(c: Dict[str, Any], lang: str) -> str:
-    # نص بسيط منظّم (بدون توقيت/تكلفة/مكان)
     lines = []
     lines.append(f"### {c.get('sport_label','')}")
-    lines.append(f"{c.get('what_it_looks_like','')}")
+    if c.get('what_it_looks_like'): lines.append(f"{c['what_it_looks_like']}")
     if c.get('inner_sensation'): lines.append(f"• الإحساس الداخلي: {c['inner_sensation']}" if lang=="العربية" else f"• Inner feel: {c['inner_sensation']}")
     if c.get('why_you'): lines.append(f"• لماذا أنت: {c['why_you']}" if lang=="العربية" else f"• Why you: {c['why_you']}")
     if c.get('first_week'): lines.append(f"• أول أسبوع: {c['first_week']}" if lang=="العربية" else f"• First week: {c['first_week']}")
@@ -1243,4 +1193,59 @@ def _format_card(c: Dict[str, Any], lang: str) -> str:
     skills = _to_bullets(c.get('core_skills', []), 6)
     if skills: lines.append(("• مهارات أساسية: " if lang=="العربية" else "• Core skills: ") + "، ".join(skills))
     if c.get('mode'): lines.append(("• النمط: " if lang=="العربية" else "• Mode: ") + c['mode'])
-    if c.get('variant
+    if c.get('variant_vr'): lines.append(("• نسخة VR: " if lang=="العربية" else "• VR variant: ") + c['variant_vr'])
+    if c.get('variant_no_vr'): lines.append(("• نسخة بلا VR: " if lang=="العربية" else "• No-VR variant: ") + c['variant_no_vr'])
+    lines.append(_brand_footer(lang))
+    return "\n".join(lines).strip()
+
+# ========= Public API =========
+def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العربية") -> List[str]:
+    """
+    واجهة موحّدة لـ app.py: ترجع 3 بطاقات نصّية (List[str]).
+    - Evidence Gate → followups إن لزم
+    - KB-first
+    - LLM fallback (إن توفر مفتاح)
+    - Sanitize + dedupe + blacklist global uniqueness
+    """
+    # 0) Evidence Gate
+    eg = _run_egate(answers, lang=lang)
+    if eg.get("status") != "pass":
+        follow = _format_followup_card(eg.get("followup_questions", [])[:3], lang)
+        return [follow, "—", "—"]
+
+    user_id = "web_user"
+    analysis = {
+        "encoded_profile": _extract_profile(answers, lang) or {},
+        "silent_drivers": analyze_silent_drivers(answers, lang=lang),
+        "z_intent": _call_analyze_intent(answers, lang=lang)
+    }
+
+    # 1) KB candidates
+    cards_struct = _kb_candidates(analysis, answers, lang)
+
+    # 2) Fallback LLM لو ناقص
+    if len(cards_struct) < 3:
+        extra = _llm_fallback(user_id, analysis, answers, lang)
+        cards_struct += extra
+
+    if not cards_struct:
+        # fallback قاسٍ: خُذ من presets
+        cards_struct = [_fallback_identity(i, lang) for i in range(3)]
+
+    # 3) جوده + fill + dedupe
+    cards_struct = _fill_defaults_batch(cards_struct, lang)
+    cards_struct = _quality_filter(cards_struct)
+    cards_struct = _hard_dedupe_and_fill(cards_struct, lang)
+
+    # 4) Global uniqueness via blacklist
+    bl = _load_blacklist()
+    cards_struct = _ensure_unique_labels_v_global(cards_struct, lang, bl)
+    _persist_blacklist(cards_struct, bl)
+
+    # 5) Scrub URLs (لو فيه)
+    cards_struct = [json.loads(scrub_unknown_urls(json.dumps(c, ensure_ascii=False), CFG)) if isinstance(c, dict) else c
+                    for c in cards_struct]
+
+    # 6) Render → List[str]
+    rendered = [_format_card(c, lang) for c in cards_struct[:3]]
+    return rendered
