@@ -276,10 +276,13 @@ def _lang_key(lang: str) -> str:
     return "ar" if (lang or "").startswith("الع") else "en"
 
 def _extract_signals(answers: Dict[str, Any], lang: str) -> Dict[str, int]:
-    blob = " ".join(
-        (v.get("answer") if isinstance(v, dict) and "answer" in v else str(v))
-        for v in (answers or {}).values()
-    )
+    # حول كل قيمة لإجابة إلى نص آمن (يدعم list/dict/str)
+    parts: List[str] = []
+    for v in (answers or {}).values():
+        vv = v.get("answer") if isinstance(v, dict) and "answer" in v else v
+        parts.append(_norm_answer_value(vv))  # يحوّل القائمة إلى "a, b, c" مثلاً
+
+    blob = " ".join(parts)
     blob_l = blob.lower()
     blob_n = _normalize_ar(blob_l)
     res: Dict[str, int] = {}
