@@ -1288,6 +1288,7 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     cards_struct = [json.loads(scrub_unknown_urls(json.dumps(c, ensure_ascii=False), CFG)) if isinstance(c, dict) else c
                     for c in cards_struct]
 
-    # 6) Render → List[str]
+        # 6) Render → List[str] (force-safe strings)
     rendered = [_format_card(c, lang) for c in cards_struct[:3]]
+    rendered = [str(x) for x in rendered]  # ✅ نضمن أنها نصوص حتى لو رجع شيء غير str
     return rendered
