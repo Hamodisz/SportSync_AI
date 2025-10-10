@@ -20,6 +20,40 @@ for p in (ROOT, ROOT / "core", ROOT / "analysis"):
 # =========================
 # استيرادات مع بدائل آمنة
 # =========================
+def _safe_str(x) -> str:
+    """يحوّل أي نوع نص/قائمة/ديكت إلى نص قابل للعرض."""
+    if x is None:
+        return ""
+    if isinstance(x, str):
+        return x
+    if isinstance(x, (list, tuple, set)):
+        # نحاول تفطيح أي عناصر داخلية إلى نصوص
+        flat = []
+        for item in x:
+            if isinstance(item, (list, tuple, set)):
+                flat.append(_safe_str(list(item)))
+            elif isinstance(item, dict):
+                # خذ حقول نصية مفيدة إن وجدت
+                for k in ("text", "desc", "value", "answer", "label", "title"):
+                    if k in item and isinstance(item[k], str) and item[k].strip():
+                        flat.append(item[k].strip())
+                        break
+                else:
+                    flat.append(json.dumps(item, ensure_ascii=False))
+            else:
+                flat.append(str(item))
+        return "، ".join([s for s in (str(i).strip() for i in flat) if s])
+    if isinstance(x, dict):
+        # حاول استخراج نص منطقي
+        for k in ("text", "desc", "value", "answer", "label", "title"):
+            if k in x and isinstance(x[k], str):
+                return x[k]
+        try:
+            return json.dumps(x, ensure_ascii=False)
+        except Exception:
+            return str(x)
+    return str(x)
+
 try:
     from core.backend_gpt import generate_sport_recommendation
 except Exception:
@@ -36,7 +70,7 @@ try:
 except Exception:
     def start_dynamic_chat(**kwargs):
         user_msg = kwargs.get("user_message", "")
-        return f"فهمت: {user_msg}\nسنعدّل الخطة تدريجيًا ونراعي تفضيلاتك خطوة بخطوة."
+        return f"فهمت: {_safe_str(user_msg)}\nسنعدّل الخطة تدريجيًا ونراعي تفضيلاتك خطوة بخطوة."
 
 # (اختياري) ستريم حقيقي إن وفّرته لاحقًا
 try:
@@ -54,6 +88,15 @@ except Exception:
         def analyze_silent_drivers(answers, lang="العربية"):
             return ["تحفيز قصير المدى", "إنجازات سريعة", "تفضيل تدريبات فردية"]
 
+# (تشخيص) معرفة حالة LLM اختيارياً
+try:
+    from core.llm_client import make_llm_client, pick_models
+    _LLM_CLIENT_FOR_DIAG = make_llm_client()
+    _MODELS_FOR_DIAG = pick_models() if callable(pick_models) else ("gpt-4o", "gpt-4o-mini")
+except Exception:
+    _LLM_CLIENT_FOR_DIAG = None
+    _MODELS_FOR_DIAG = {"main": os.getenv("CHAT_MODEL", "gpt-4o"), "fallback": os.getenv("CHAT_MODEL_FALLBACK", "gpt-4o-mini")}
+
 # =========================
 # إعدادات واجهة + لغة
 # =========================
@@ -69,20 +112,22 @@ with st.sidebar.expander(T("⚙ إعدادات العرض", "⚙ Display Setting
     TYPE_SPEED_MS = st.slider(T("سرعة الكتابة (ملّي ثانية/حرف)", "Typing speed (ms/char)"), 1, 30, value=6)
 
 # 🧪 Diagnostics (اختياري يظهر في الشريط الجانبي)
-try:
-    from core.memory_cache import get_cache_stats, clear_cache
-    with st.sidebar.expander("🧪 Diagnostics"):
+with st.sidebar.expander("🧪 Diagnostics", expanded=False):
+    st.write("Model (main):", _MODELS_FOR_DIAG["main"] if isinstance(_MODELS_FOR_DIAG, dict) else _MODELS_FOR_DIAG)
+    st.write("Model (fallback):", (_MODELS_FOR_DIAG.get("fallback") if isinstance(_MODELS_FOR_DIAG, dict) else ""))
+    st.write("LLM ready:", bool(_LLM_CLIENT_FOR_DIAG))
+    st.write("GROQ key set:", bool(os.getenv("GROQ_API_KEY")))
+    st.write("OPENAI key set:", bool(os.getenv("OPENAI_API_KEY")))
+    st.write(
+        "Base URL:",
+        os.getenv("OPENAI_BASE_URL")
+        or os.getenv("OPENROUTER_BASE_URL")
+        or os.getenv("AZURE_OPENAI_ENDPOINT")
+        or "default",
+    )
+    try:
+        from core.memory_cache import get_cache_stats, clear_cache
         stats = get_cache_stats()
-        st.write("Model:", os.getenv("CHAT_MODEL", "gpt-4o"))
-        st.write("GROQ key set:", bool(os.getenv("GROQ_API_KEY")))
-        st.write("OPENAI key set:", bool(os.getenv("OPENAI_API_KEY")))
-        st.write(
-            "Base URL:",
-            os.getenv("OPENAI_BASE_URL")
-            or os.getenv("OPENROUTER_BASE_URL")
-            or os.getenv("AZURE_OPENAI_ENDPOINT")
-            or "default",
-        )
         st.write("Cache hits:", stats.get("hits"))
         st.write("Cache misses:", stats.get("misses"))
         st.write("Cache size:", stats.get("size"))
@@ -91,8 +136,8 @@ try:
         if st.button("🧹 Clear cache"):
             clear_cache()
             st.rerun()
-except Exception:
-    pass
+    except Exception:
+        pass
 
 # =========================
 # تحميل الأسئلة
@@ -117,6 +162,7 @@ with q_path.open("r", encoding="utf-8") as f:
 # =========================
 def typewriter_write(container, text: str, ms_per_char: int = 6):
     """كتابة حيّة داخل نفس الوعاء."""
+    text = _safe_str(text)
     if not LIVE_TYPING:
         container.markdown(text)
         return
@@ -157,17 +203,17 @@ def status_steps(enabled: bool):
             def __init__(self):
                 self.box = st.empty()
                 self.lines = []
-                self.box.write("\n".join(str(x) for x in self.lines))
+                self.box.write("\n".join(_safe_str(x) for x in self.lines))
             def __enter__(self):
                 return self
             def __exit__(self, *exc):
                 return False
             def write(self, text):
-                self.lines.append(str(text))
-                self.box.write("\n".join(str(x) for x in self.lines))
-            def info(self, text): self.write("ℹ " + str(text))
-            def warning(self, text): self.write("⚠ " + str(text))
-            def success(self, text): self.write("✅ " + str(text))
+                self.lines.append(_safe_str(text))
+                self.box.write("\n".join(_safe_str(x) for x in self.lines))
+            def info(self, text): self.write("ℹ " + _safe_str(text))
+            def warning(self, text): self.write("⚠ " + _safe_str(text))
+            def success(self, text): self.write("✅ " + _safe_str(text))
             def update(self, **kwargs): pass
         return _Alt()
 
@@ -187,16 +233,16 @@ for q in questions:
     allow_custom = bool(q.get("allow_custom", False))
 
     if choices and isinstance(choices, list):
-        sel = st.multiselect(text, choices, key=q_key)
+        sel = st.multiselect(text, [str(c) for c in choices], key=q_key)
         if allow_custom:
             custom = st.text_input(T("✏ إجابتك الخاصة (اختياري)", "✏ Your own answer (optional)"),
                                    key=f"{q_key}_custom")
             if custom:
                 sel.append(custom)
-        answers[q_key] = {"question": text, "answer": sel}
+        answers[q_key] = {"question": _safe_str(text), "answer": sel}
     else:
         t = st.text_input(text, key=q_key)
-        answers[q_key] = {"question": text, "answer": t}
+        answers[q_key] = {"question": _safe_str(text), "answer": _safe_str(t)}
 
 st.divider()
 
@@ -230,10 +276,17 @@ if go:
             if SHOW_THINKING: stat.info(T("تحليل الإجابات…", "Analyzing answers…"))
             # ➊ توليد التوصيات
             raw_recs = generate_sport_recommendation(answers, lang=lang)
-            st.session_state["recs"] = raw_recs[:3] if isinstance(raw_recs, list) else []
+            # قوّة: نضمن أنها قائمة نصوص
+            cleaned = []
+            if isinstance(raw_recs, (list, tuple)):
+                for r in list(raw_recs)[:3]:
+                    cleaned.append(_safe_str(r))
+            else:
+                cleaned = [_safe_str(raw_recs)]
+            st.session_state["recs"] = cleaned[:3]
             if SHOW_THINKING: stat.info(T("مواءمة مع محاور Z…", "Aligning with Z-axes…"))
         except Exception as e:
-            st.error(T("خطأ أثناء توليد التوصيات: ", "Error generating recommendations: ") + str(e))
+            st.error(T("خطأ أثناء توليد التوصيات: ", "Error generating recommendations: ") + _safe_str(e))
             st.session_state["recs"] = []
 
         # ➋ Layer Z
@@ -241,7 +294,7 @@ if go:
             z = analyze_silent_drivers(answers, lang=lang) or []
         except Exception:
             z = []
-        st.session_state["z_drivers"] = z
+        st.session_state["z_drivers"] = [ _safe_str(i) for i in (z or []) ]
 
         if SHOW_THINKING:
             if z:
@@ -255,7 +308,7 @@ z = st.session_state.get("z_drivers", [])
 if z:
     st.subheader(T("🧭 ما يحركك دون أن تدري", "🧭 Your Silent Drivers"))
     for item in z:
-        st.write("• " + str(item))
+        st.write("• " + _safe_str(item))
     st.divider()
 
 # =========================
@@ -270,7 +323,7 @@ if recs:
     for i, rec in enumerate(recs[:3]):
         st.subheader(headers_ar[i] if is_ar else headers_en[i])
         ph = st.empty()
-        text_to_show = str(rec)
+        text_to_show = _safe_str(rec)
 
         # كتابة حيّة للتوصية
         typewriter_write(ph, text_to_show, TYPE_SPEED_MS)
@@ -288,7 +341,7 @@ if recs:
 
     # تنزيل التوصيات كنص
     if dl and rendered_text:
-        all_text = "\n\n".join(str(x) for x in rendered_text)
+        all_text = "\n\n".join(_safe_str(x) for x in rendered_text)
         st.download_button(
             label=T("⬇ تنزيل كملف TXT", "⬇ Download as TXT"),
             data=all_text.encode("utf-8"),
@@ -305,7 +358,7 @@ if st.session_state.get("chat_open", False):
     # عرض السجل القديم
     for msg in st.session_state["chat_history"]:
         with st.chat_message("user" if msg["role"] == "user" else "assistant"):
-            st.markdown(msg["content"])
+            st.markdown(_safe_str(msg["content"]))
 
     user_msg = st.chat_input(
         T("اكتب ما الذي لم يعجبك أو ما الذي تريد تعديله…", "Tell me what you didn’t like or what to adjust…")
@@ -313,11 +366,11 @@ if st.session_state.get("chat_open", False):
 
     if user_msg:
         # أضف رسالة المستخدم للسجل
-        st.session_state["chat_history"].append({"role": "user", "content": user_msg})
-        typewriter_chat("user", user_msg, TYPE_SPEED_MS)
+        st.session_state["chat_history"].append({"role": "user", "content": _safe_str(user_msg)})
+        typewriter_chat("user", _safe_str(user_msg), TYPE_SPEED_MS)
 
         # حضّر معطيات المكالمة
-        recs_for_chat = st.session_state.get("recs", [])[:3]
+        recs_for_chat = [ _safe_str(r) for r in st.session_state.get("recs", [])[:3] ]
         ratings = [st.session_state.get(f"rating_{i}", st.session_state["ratings"][i]) for i in range(3)]
 
         # ردّ المساعد — ستريم حقيقي إن توفر، وإلا كتابة حيّة للناتج النهائي
@@ -334,16 +387,16 @@ if st.session_state.get("chat_open", False):
                         user_id="web_user",
                         lang=lang,
                         chat_history=st.session_state["chat_history"],
-                        user_message=user_msg
+                        user_message=_safe_str(user_msg)
                     ):
-                        buf.append(chunk)
+                        buf.append(_safe_str(chunk))
                         if LIVE_TYPING:
-                            ph.markdown("".join(str(x) for x in buf))
-                    reply = "".join(str(x) for x in buf).strip()
+                            ph.markdown("".join(_safe_str(x) for x in buf))
+                    reply = "".join(_safe_str(x) for x in buf).strip()
                 except Exception:
                     reply = T("تم! سنعدّل الخطة بالتدريج حسب ملاحظتك.",
                               "Got it! We’ll adjust the plan gradually based on your feedback.")
-                st.session_state["chat_history"].append({"role": "assistant", "content": reply})
+                st.session_state["chat_history"].append({"role": "assistant", "content": _safe_str(reply)})
         else:
             # نداء عادي ثم كتابة حيّة
             try:
@@ -354,13 +407,13 @@ if st.session_state.get("chat_open", False):
                     user_id="web_user",
                     lang=lang,
                     chat_history=st.session_state["chat_history"],
-                    user_message=user_msg
+                    user_message=_safe_str(user_msg)
                 )
             except Exception:
                 reply = T("تم! سنعدّل الخطة بالتدريج حسب ملاحظتك.",
                           "Got it! We’ll adjust the plan gradually based on your feedback.")
-            st.session_state["chat_history"].append({"role": "assistant", "content": reply})
-            typewriter_chat("assistant", reply, TYPE_SPEED_MS)
+            st.session_state["chat_history"].append({"role": "assistant", "content": _safe_str(reply)})
+            typewriter_chat("assistant", _safe_str(reply), TYPE_SPEED_MS)
 
     st.caption("💬 " + T("تقدر تواصل الدردشة لين توصّل لهويتك الرياضية اللي تحسها ملكك.",
                           "Keep chatting until the plan feels like yours."))
