@@ -59,7 +59,6 @@ LLM_CLIENT = make_llm_client()
 try:
     CHAT_MODEL, CHAT_MODEL_FALLBACK = pick_models()  # يرجّع Tuple
 except Exception:
-    # لو عندك نسخة قديمة ترجع dict، نتعامل معها برشاقة
     _models = pick_models()
     CHAT_MODEL = getattr(_models, "get", lambda *_: None)("main")
     CHAT_MODEL_FALLBACK = getattr(_models, "get", lambda *_: None)("fallback")
@@ -808,7 +807,6 @@ def _derive_binary_traits(analysis: Dict[str, Any], answers: Dict[str, Any], lan
     if ca >= 0.35 or sig.get("high_agg"):
         traits["sensation_seeking"] = max(traits.get("sensation_seeking", 0.0), 0.8)
 
-    # إصلاح الهوامش
     ti_val = axes.get("tech_intuition", 0.0)
     ti = float(ti_val) if isinstance(ti_val, (int, float)) else 0.0
     if ti <= -0.35 or sig.get("precision"):
@@ -1168,36 +1166,28 @@ def _llm_fallback(user_id: str, analysis: Dict[str, Any], answers: Dict[str, Any
     return cards
 
 # ========= Global ensure / rendering =========
-def _to_bullets(text_or_list: Any, max_items: int = 6) -> List[str]:
-    out: List[str] = []
+def _fill_defaults_batch(cards: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]]:
+    return [_fill_defaults(c, lang) for c in cards]
 
-    def _flat_add(x: Any) -> None:
-        if x is None:
-            return
-        if isinstance(x, (list, tuple, set)):
-            for y in x:
-                _flat_add(y)
-            return
-        if isinstance(x, dict):
-            for k in ("text", "desc", "value", "answer", "label", "title"):
-                if k in x and isinstance(x[k], str) and x[k].strip():
-                    out.append(x[k].strip())
-                    return
-            out.append(json.dumps(x, ensure_ascii=False))
-            return
-        s = _norm_text(x).strip()  # تأكد أنها نص
-        if s:
-            out.append(s)
+def _quality_filter(cards: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out = []
+    for c in cards:
+        if not _is_meaningful(c): 
+            continue
+        if _too_generic(c.get("what_it_looks_like",""), _MIN_CHARS):
+            continue
+        if _REQUIRE_WIN and not (c.get("win_condition") or "").strip():
+            continue
+        if len(c.get("core_skills") or []) < _MIN_CORE_SKILLS:
+            continue
+        # لتشديد الحسّ الجسدي فعّل:
+        # if not _has_sensory((c.get("inner_sensation","") + " " + c.get("what_it_looks_like","")).strip()):
+        #     continue
+        out.append(c)
+    return out
 
-    _flat_add(text_or_list)
-
-    if len(out) == 1 and isinstance(text_or_list, str):
-        raw = re.split(r"[;\n\.،]+", out[0])
-        out = [i.strip(" -•\t ") for i in raw if i.strip()]
-
-    out = out[:max_items]
-    return [str(i) for i in out if str(i).strip()]  # كل العناصر نصوص 100%
-
+def _brand_footer(lang: str) -> str:
+    return "— Sports Sync" if lang != "العربية" else "— Sports Sync"
 
 def _format_card(c: Dict[str, Any], lang: str) -> str:
     lines: List[str] = []
@@ -1211,7 +1201,6 @@ def _format_card(c: Dict[str, Any], lang: str) -> str:
     if c.get('first_week'):
         lines.append(f"• أول أسبوع: {c['first_week']}" if lang=="العربية" else f"• First week: {c['first_week']}")
 
-    # مؤشرات التقدم: ندعم قائمة أو نص
     pm = c.get('progress_markers')
     if isinstance(pm, (list, tuple, set)):
         pm_list = _to_bullets(pm, 6)
@@ -1224,7 +1213,6 @@ def _format_card(c: Dict[str, Any], lang: str) -> str:
     if c.get('win_condition'):
         lines.append(f"• شرط الفوز/الهدف: {c['win_condition']}" if lang=="العربية" else f"• Win condition: {c['win_condition']}")
 
-    # مهارات أساسية (join آمن)
     skills = _to_bullets(c.get('core_skills', []), 6)
     if skills:
         lines.append(("• مهارات أساسية: " if lang=="العربية" else "• Core skills: ")
@@ -1271,7 +1259,6 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         cards_struct += extra
 
     if not cards_struct:
-        # fallback قاسٍ: خُذ من presets
         cards_struct = [_fallback_identity(i, lang) for i in range(3)]
 
     # 3) جوده + fill + dedupe
@@ -1288,7 +1275,7 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     cards_struct = [json.loads(scrub_unknown_urls(json.dumps(c, ensure_ascii=False), CFG)) if isinstance(c, dict) else c
                     for c in cards_struct]
 
-        # 6) Render → List[str] (force-safe strings)
+    # 6) Render → List[str] (force-safe strings)
     rendered = [_format_card(c, lang) for c in cards_struct[:3]]
-    rendered = [str(x) for x in rendered]  # ✅ نضمن أنها نصوص حتى لو رجع شيء غير str
+    rendered = [str(x) for x in rendered]
     return rendered
