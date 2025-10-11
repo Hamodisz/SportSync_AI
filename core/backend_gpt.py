@@ -276,35 +276,59 @@ def _lang_key(lang: str) -> str:
     return "ar" if (lang or "").startswith("الع") else "en"
 
 def _extract_signals(answers: Dict[str, Any], lang: str) -> Dict[str, int]:
-    # حول كل قيمة لإجابة إلى نص آمن (يدعم list/dict/str)
+    """
+    يجمع كل إجابات المستخدم (أي نوع) كسلسلة نصية موحّدة (AR-normalized + lowercase)
+    ثم يبحث عن كلمات دالة (بالعربي/الإنجليزي) بحسب z_intent_keywords من الـKB مع بعض الافتراضات.
+    """
+    # 1) طبيع كل القيم لنص
     parts: List[str] = []
     for v in (answers or {}).values():
         vv = v.get("answer") if isinstance(v, dict) and "answer" in v else v
-        parts.append(_norm_answer_value(vv))  # يحوّل القائمة إلى "a, b, c" مثلاً
+        parts.append(_norm_answer_value(vv))   # يحوّل القوائم إلى "a, b, c" تلقائياً
 
-    blob = " ".join(parts)
+    blob = " ".join(parts) if parts else ""
     blob_l = blob.lower()
-    blob_n = _normalize_ar(blob_l)
+    blob_n = _normalize_ar(blob_l)  # يحذف التشكيل ويوحّد الألف/التاء المربوطة.. إلخ
+
     res: Dict[str, int] = {}
-    zi = KB_ZI.get(_lang_key(lang), {})
+    zi = KB_ZI.get(_lang_key(lang), {}) or {}
 
+    # 2) دالة مساعدة للبحث عن أي كلمة من قائمة
     def any_kw(keys: List[str]) -> bool:
-        return any((k.lower() in blob_l) or (_normalize_ar(k).lower() in blob_n) for k in keys)
+        if not keys: 
+            return False
+        for k in keys:
+            k_norm = _normalize_ar(str(k).lower())
+            if (k_norm and (k_norm in blob_n)) or (str(k).lower() in blob_l):
+                return True
+        return False
 
-    if any_kw(zi.get("VR", ["vr","virtual reality","headset","واقع افتراضي","نظاره"])): res["vr"] = 1
-    if any_kw(zi.get("دقة/تصويب", []) + zi.get("Precision", []) + ["precision","aim","نشان","دقه"]): res["precision"] = 1
-    if any_kw(zi.get("تخفّي", []) + zi.get("Stealth", []) + ["stealth","ظل","تخفي"]): res["stealth"] = 1
-    if any_kw(zi.get("قتالي", []) + zi.get("Combat", []) + ["قتال","مبارزه","اشتباك","combat"]): res["combat"] = 1
-    if any_kw(zi.get("ألغاز/خداع", []) + zi.get("Puzzles/Feint", []) + ["puzzle","لغز","خدعه"]): res["puzzles"] = 1
-    if any_kw(zi.get("فردي", []) + ["solo","وحيد","لوحدي"]): res["solo_pref"] = 1
-    if any_kw(zi.get("جماعي", []) + ["team","group","فريق","جماعي"]): res["team_pref"] = 1
-    if any_kw(zi.get("هدوء/تنفّس", []) + zi.get("Calm/Breath", []) + ["breath","calm","هدوء","تنفس"]):
-        res["breath"] = 1; res["calm"] = 1
-    if any_kw(zi.get("أدرينالين", []) + zi.get("Adrenaline", []) + ["fast","rush","اندفاع"]):
-        res["high_agg"] = 1
+    # 3) قوائم افتراضية صغيرة (نضيف صيغ إملائية شائعة)
+    vr_keys = zi.get("VR", []) + ["vr", "virtual reality", "headset", "واقع افتراضي", "الواقع الافتراضي", "نظاره", "نظارة"]
+    prec_keys = zi.get("دقة/تصويب", []) + zi.get("Precision", []) + ["precision","aim","نشان","دقه","تصويب","دقة"]
+    stealth_keys = zi.get("تخفّي", []) + zi.get("Stealth", []) + ["stealth","ظل","تخفي","اختباء"]
+    combat_keys = zi.get("قتالي", []) + zi.get("Combat", []) + ["قتال","مبارزه","اشتباك","combat"]
+    puzzles_keys = zi.get("ألغاز/خداع", []) + zi.get("Puzzles/Feint", []) + ["puzzle","لغز","ألغاز","خدعه","خداع"]
+    solo_keys = zi.get("فردي", []) + ["solo","وحيد","لوحدي","فردي"]
+    team_keys = zi.get("جماعي", []) + ["team","group","فريق","جماعي","تعاوني"]
+    calm_keys = zi.get("هدوء/تنفّس", []) + zi.get("Calm/Breath", []) + ["breath","calm","هدوء","تنفس"]
+    adren_keys = zi.get("أدرينالين", []) + zi.get("Adrenaline", []) + ["fast","rush","اندفاع","أدرينالين"]
+
+    # 4) الاستخراج
+    if any_kw(vr_keys):       res["vr"] = 1
+    if any_kw(prec_keys):     res["precision"] = 1
+    if any_kw(stealth_keys):  res["stealth"] = 1
+    if any_kw(combat_keys):   res["combat"] = 1
+    if any_kw(puzzles_keys):  res["puzzles"] = 1
+    if any_kw(solo_keys):     res["solo_pref"] = 1
+    if any_kw(team_keys):     res["team_pref"] = 1
+    if any_kw(calm_keys):     res["breath"] = 1; res["calm"] = 1
+    if any_kw(adren_keys):    res["high_agg"] = 1
+
     return res
 
-def _call_analyze_intent(answers: Dict[str, Any], lang: str="العربية") -> List[str]:
+def _call_analyze_intent(answers: Dict[str, Any], lang: str = "العربية") -> List[str]:
+    # جرّب تنفيذ analyze_user_intent من أي طبقة متوفرة
     for modpath in ("core.layer_z_engine", "analysis.layer_z_engine"):
         try:
             mod = importlib.import_module(modpath)
@@ -312,19 +336,21 @@ def _call_analyze_intent(answers: Dict[str, Any], lang: str="العربية") ->
                 return list(mod.analyze_user_intent(answers, lang=lang) or [])
         except Exception:
             pass
+
+    # fallback باستخدام الإشارات
     intents = set()
     sig = _extract_signals(answers, lang)
-    if sig.get("vr"): intents.add("VR")
-    if sig.get("stealth"): intents.add("تخفّي")
-    if sig.get("puzzles"): intents.add("ألغاز/خداع")
-    if sig.get("precision"): intents.add("دقة/تصويب")
-    if sig.get("combat"): intents.add("قتالي")
-    if sig.get("solo_pref"): intents.add("فردي")
-    if sig.get("team_pref"): intents.add("جماعي")
-    if sig.get("breath"): intents.add("هدوء/تنفّس")
-    if sig.get("high_agg"): intents.add("أدرينالين")
+    if sig.get("vr"):         intents.add("VR")
+    if sig.get("stealth"):    intents.add("تخفّي")
+    if sig.get("puzzles"):    intents.add("ألغاز/خداع")
+    if sig.get("precision"):  intents.add("دقة/تصويب")
+    if sig.get("combat"):     intents.add("قتالي")
+    if sig.get("solo_pref"):  intents.add("فردي")
+    if sig.get("team_pref"):  intents.add("جماعي")
+    if sig.get("breath"):     intents.add("هدوء/تنفّس")
+    if sig.get("high_agg"):   intents.add("أدرينالين")
     return list(intents)
-
+    
 # ========= Optional encoder =========
 def _extract_profile(answers: Dict[str, Any], lang: str) -> Optional[Dict[str, Any]]:
     prof = answers.get("profile") if isinstance(answers, dict) else None
