@@ -471,10 +471,10 @@ _SENSORY = [
     "تعرّق","شدّ","مرونة","هدوء","تركيز","تدفّق","انسجام","ثِقل","خِفّة",
     "إحساس","امتداد","حرق لطيف","صفاء","تماسك"
 ]
-_GENERIC_LABELS = {
-    "impressive compact", "generic sport", "sport identity",
-    "movement flow", "basic flow", "simple flow", "body flow"
-}
+_GENERIC_LABEL_RE = re.compile(
+    r"(impress\w*\s+compact|generic\s+(sport|identity)|basic\s+flow|simple\s+flow|body\s+flow)",
+    re.IGNORECASE
+)
 
 def _split_sentences(text: str) -> List[str]:
     if not text: return []
@@ -590,8 +590,13 @@ def _canonical_label(label: str) -> str:
     return lab
 
 def _label_is_generic(label: str) -> bool:
+    # نتحقق من النسخة الـcanonical ومن أي تطابق مع الريجيكس المرن
+    if not label:
+        return True
     lab = _canonical_label(label)
-    return (lab in _GENERIC_LABELS) or (len(lab) <= 3)
+    if (lab in _GENERIC_LABELS) or (len(lab) <= 3):
+        return True
+    return bool(_GENERIC_LABEL_RE.search(label))
 
 def _tokenize(text: str) -> List[str]:
     if not text: return []
