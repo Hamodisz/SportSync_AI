@@ -11,16 +11,17 @@ core/dynamic_chat.py
 - قراءة الإعدادات من data/app_config.json (model/temperature/max_tokens/..)
 
 ملاحظات:
-- يعتمد على OPENAI_API_KEY.
-- يدعم العربية والإنجليزية.
-- يحافظ على سجل المحادثة مختصر لتقليل التكلفة.
+- تعتمد على طبقة llm_client.py (OpenAI/Groq… عبر واجهة واحدة).
+- تدعم العربية والإنجليزية.
+- تحافظ على سجل المحادثة مختصر لتقليل التكلفة.
 """
 
-from _future_ import annotations
+from __future__ import annotations
 
 import os
 import json
 import logging
+import math
 from typing import List, Dict, Any, Optional, Generator
 
 # ============== إعداد اللوجينغ ==============
@@ -43,25 +44,24 @@ def _cfg_chat() -> Dict[str, Any]:
     chat = (cfg.get("chat") or {})
     llm  = (cfg.get("llm") or {})
     return {
-        "model": llm.get("model", os.getenv("CHAT_MODEL", "gpt-4o")),
+        "model": llm.get("model", os.getenv("CHAT_MODEL", "gpt-4o-mini")),
         "temperature": float(chat.get("temperature", 0.8)),
         "max_tokens": int(chat.get("max_tokens", 450)),
         "stream_temperature": float(chat.get("stream_temperature", chat.get("temperature", 0.8))),
         "app_version": cfg.get("app_version", "dev")
     }
 
-# ============== OpenAI Client ==============
+# ============== LLM Client (موحّد) ==============
 try:
-    from openai import OpenAI
+    from core.llm_client import make_llm_client, pick_models, chat_once
 except Exception as e:
-    raise RuntimeError(
-        "حزمة openai غير مثبتة. أضفها في requirements.txt: openai>=1.6.1,<2"
-    ) from e
+    raise RuntimeError("llm_client.py مفقود أو غير متاح — لازم يكون ضمن core/") from e
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    logging.warning("⚠ OPENAI_API_KEY غير مضبوط. ستفشل الدالة عند أول استدعاء لنموذج الدردشة.")
-client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+LLM_CLIENT = make_llm_client()
+try:
+    CHAT_MODEL_MAIN, CHAT_MODEL_FALLBACK = pick_models()  # يُفضّل استخدام ما يجي من pick_models
+except Exception:
+    CHAT_MODEL_MAIN, CHAT_MODEL_FALLBACK = None, None
 
 # ============== Telemetry (DataPipe) ==============
 try:
@@ -187,8 +187,11 @@ def _profile_brief(profile: Dict[str, Any], lang: str) -> str:
     prefs = profile.get("prefs", {})
     scores = profile.get("scores", {})
     top_scores = []
-    for k, v in sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:5]:
-        top_scores.append(f"{k}:{v}")
+    try:
+        for k, v in sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:5]:
+            top_scores.append(f"{k}:{v}")
+    except Exception:
+        pass
     if lang == "العربية":
         return (
             "ملخص بروفايل مرمّز:\n"
@@ -219,12 +222,12 @@ def start_dynamic_chat(
     ترجع نص ردّ المدرب.
     """
     try:
-        if client is None:
-            return "❌ لا يمكن تشغيل المحادثة: مفتاح OPENAI_API_KEY غير مضبوط."
+        if not LLM_CLIENT:
+            return "❌ لا يمكن تشغيل المحادثة: عميل LLM غير مهيأ."
 
         # إعدادات المحادثة الحية من الكونفيج
         C = _cfg_chat()
-        CHAT_MODEL = C["model"]
+        CHAT_MODEL = CHAT_MODEL_MAIN or C["model"]
         TEMP = C["temperature"]
         MAXTOK = C["max_tokens"]
 
@@ -317,15 +320,17 @@ def start_dynamic_chat(
                 else "Refine my weekly plan into two simple, immediate steps."
             })
 
-        # 8) استدعاء نموذج الدردشة
-        logging.info(f"Calling OpenAI chat completion (model={CHAT_MODEL})...")
-        resp = client.chat.completions.create(
+        # 8) استدعاء النموذج عبر طبقة llm_client
+        logging.info(f"Calling LLM (model={CHAT_MODEL})...")
+        reply = chat_once(
+            client=LLM_CLIENT,
             model=CHAT_MODEL,
             messages=messages,
             temperature=TEMP,
+            timeout_s=30,
             max_tokens=MAXTOK
         )
-        reply = (resp.choices[0].message.content or "").strip()
+        reply = (reply or "").strip()
 
         # 9) تسجيل التفاعل (user_logger + DataPipe)
         payload_log = {
@@ -381,167 +386,32 @@ def start_dynamic_chat_stream(
     user_message: str = ""
 ) -> Generator[str, None, None]:
     """
-    توليد ردّ المساعد ببث حي (stream). ترجع جنريتور يسلّم مقاطع نصية.
-    تستخدم نفس بايبلاين start_dynamic_chat لضمان ثبات الأسلوب والشخصية.
+    توليد ردّ المساعد ببث حي (stream). إذا ما توفر ستريم حقيقي في llm_client،
+    سنحاكيه بتقطيع الردّ النهائي إلى أجزاء صغيرة.
     """
-    if client is None:
-        yield ("❌ لا يمكن البث لأن OPENAI_API_KEY غير مضبوط."
-               if lang == "العربية" else
-               "❌ Streaming unavailable: OPENAI_API_KEY is missing.")
-        return
-
-    # إعدادات المحادثة الحية من الكونفيج
-    C = _cfg_chat()
-    CHAT_MODEL = C["model"]
-    TEMP = C["stream_temperature"]
-    MAXTOK = C["max_tokens"]
-
-    # 1) ترميز + تحليل مختصر
-    try:
-        encoded = encode_answers(answers, lang=lang)
-        if not isinstance(encoded, dict):
-            encoded = {"scores": {}, "axes": {}, "z_markers": [], "prefs": {}, "signals": []}
-    except Exception:
-        encoded = {"scores": {}, "axes": {}, "z_markers": [], "prefs": {}, "signals": []}
-
-    try:
-        ua = apply_all_analysis_layers(_safe_json(answers), user_id=user_id, lang=lang)
-    except Exception:
-        ua = {"quick_profile": "fallback", "raw": answers, "traits": []}
-
-    ua["encoded_profile"] = encoded
-    ua["z_scores"] = encoded.get("scores", {})
-    ua["z_axes"]   = encoded.get("axes", {})
-    ua["z_markers"]= encoded.get("z_markers", [])
-
-    try:
-        z = analyze_silent_drivers(answers, lang=lang) or []
-    except Exception:
-        z = []
-    ua["silent_drivers"] = z
-
-    # 2) شخصية المدرب (محفوظة في الكاش بنفس المفتاح)
-    cache_key = f"{lang}:{hash(_safe_json({'ua': ua.get('quick_profile',''), 'scores': encoded.get('scores', {}), 'prefs': encoded.get('prefs', {})}))}"
-    personality = get_cached_personality(cache_key)
-    if not personality:
-        personality = build_dynamic_personality(ua, lang)
-        save_cached_personality(cache_key, personality)
-
-    # 3) برومبت النظام
-    system_prompt = build_main_prompt(
-        analysis=ua,
+    # نبني نفس الرسائل ثم نستخدم chat_once ونقسّم الناتج على دفعات
+    text = start_dynamic_chat(
         answers=answers,
-        personality=personality,
         previous_recommendation=previous_recommendation,
         ratings=ratings,
-        lang=lang
+        user_id=user_id,
+        lang=lang,
+        chat_history=chat_history,
+        user_message=user_message
     )
-
-    # 4) بناء الرسائل (مع ملخّص Z والبروفايل)
-    messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
-    brief = []
-    if z:
-        brief.append(("محركات Z: " if lang=="العربية" else "Layer-Z: ") + ", ".join(str(x) for x in z))
-    brief.append(_profile_brief(encoded, lang))
-    messages.append({"role": "system", "content": "\n".join(str(x) for x in brief)})
-
-    if previous_recommendation:
-        rec_join = "\n- " + "\n- ".join(map(str, previous_recommendation[:3]))
-    else:
-        rec_join = "\n- (no previous recs)"
-    ratings_str = ", ".join(map(str, ratings[:3])) if ratings else "n/a"
-    brief_context = (
-        ("ملخص سياقي:\n" if lang == "العربية" else "Context brief:\n") +
-        f"- Lang: {lang}\n"
-        f"- Recommendations: {rec_join}\n"
-        f"- Ratings: {ratings_str}\n"
-    )
-    try:
-        brief_context += (
-            f"- Z-axes: {json.dumps(encoded.get('axes', {}), ensure_ascii=False)}\n"
-            f"- Z-markers: {', '.join(str(x) for x in encoded.get('z_markers', []))}\n"
-        )
-    except Exception:
-        pass
-    messages.append({"role": "system", "content": brief_context})
-
-    for m in _trim_chat_history(chat_history or [], max_msgs=8):
-        if m.get("role") in ("user", "assistant"):
-            messages.append({"role": m["role"], "content": m.get("content", "")})
-
-    messages.append({"role": "user", "content": user_message or (
-        "أعد ضبط الخطة بخطوتين بسيطتين للأسبوع القادم."
-        if lang=="العربية" else
-        "Refine my weekly plan into two simple, immediate steps."
-    )})
-
-    # 5) اتصال ستريم مع OpenAI
-    try:
-        stream = client.chat.completions.create(
-            model=CHAT_MODEL,
-            messages=messages,
-            temperature=TEMP,
-            max_tokens=MAXTOK,
-            stream=True
-        )
-    except Exception as e:
-        yield (f"❌ خطأ اتصال: {e}" if lang=="العربية" else f"❌ API error: {e}")
-        return
-
-    # 6) بث حي للنص (ونجمع نسخة نهائية للّوج)
-    final_buf: List[str] = []
-    try:
-        for chunk in stream:
-            part = ""
-            try:
-                part = chunk.choices[0].delta.content or ""
-            except Exception:
-                part = ""
-            if part:
-                final_buf.append(part)
-                yield part
-    finally:
-        # تسجيل التفاعل بعد اكتمال البث
-        reply_full = "".join(str(x) for x in final_buf).strip()
-        payload_log = {
-            "language": lang,
-            "answers": answers,
-            "ratings": ratings,
-            "user_analysis": ua,
-            "previous_recommendation": previous_recommendation,
-            "personality_used": personality,
-            "user_message": user_message,
-            "ai_reply": reply_full,
-            "streaming": True
-        }
-        try:
-            log_user_insight(
-                user_id=user_id,
-                content=payload_log,
-                event_type="chat_interaction"
-            )
-        except Exception:
-            pass
-        if _PIPE:
-            try:
-                _PIPE.send(
-                    event_type="chat_interaction",
-                    payload=payload_log,
-                    user_id=user_id,
-                    lang=lang,
-                    model=CHAT_MODEL
-                )
-            except Exception:
-                pass
+    # محاكاة بث: تقسيم النص chunks
+    chunk_size = 48
+    for i in range(0, len(text), chunk_size):
+        yield text[i:i+chunk_size]
 
 
 # (اختياري) فحص صحة سريع
 def healthcheck() -> Dict[str, Any]:
     C = _cfg_chat()
     return {
-        "openai_key_set": bool(OPENAI_API_KEY),
-        "model": C["model"],
-        "client_ready": client is not None,
+        "llm_client_ready": bool(LLM_CLIENT),
+        "model_main": CHAT_MODEL_MAIN or C["model"],
+        "model_fallback": CHAT_MODEL_FALLBACK or "",
         "temperature": C["temperature"],
         "max_tokens": C["max_tokens"],
         "app_version": C["app_version"]
