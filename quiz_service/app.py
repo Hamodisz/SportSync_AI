@@ -27,13 +27,11 @@ def _safe_str(x) -> str:
     if isinstance(x, str):
         return x
     if isinstance(x, (list, tuple, set)):
-        # نحاول تفطيح أي عناصر داخلية إلى نصوص
         flat = []
         for item in x:
             if isinstance(item, (list, tuple, set)):
                 flat.append(_safe_str(list(item)))
             elif isinstance(item, dict):
-                # خذ حقول نصية مفيدة إن وجدت
                 for k in ("text", "desc", "value", "answer", "label", "title"):
                     if k in item and isinstance(item[k], str) and item[k].strip():
                         flat.append(item[k].strip())
@@ -44,7 +42,6 @@ def _safe_str(x) -> str:
                 flat.append(str(item))
         return "، ".join([s for s in (str(i).strip() for i in flat) if s])
     if isinstance(x, dict):
-        # حاول استخراج نص منطقي
         for k in ("text", "desc", "value", "answer", "label", "title"):
             if k in x and isinstance(x[k], str):
                 return x[k]
@@ -57,7 +54,6 @@ def _safe_str(x) -> str:
 try:
     from core.backend_gpt import generate_sport_recommendation
 except Exception:
-    # ملاحظة: ما نحدّد مزوّد بعينه (OpenAI/Groq...) لأنك قد تستخدم Groq
     def generate_sport_recommendation(answers, lang="العربية"):
         return [
             "❌ لم يتم تهيئة عميل الـ LLM في خدمة الـ Quiz (تأكد من المتغيرات البيئية والنشر).",
@@ -74,7 +70,7 @@ except Exception:
 
 # (اختياري) ستريم حقيقي إن وفّرته لاحقًا
 try:
-    from core.dynamic_chat import start_dynamic_chat_stream  # يجب أن يُرجع generator للنص/التوكِنز
+    from core.dynamic_chat import start_dynamic_chat_stream  # generator
 except Exception:
     start_dynamic_chat_stream = None
 
@@ -198,7 +194,6 @@ def status_steps(enabled: bool):
         # Streamlit >= 1.25
         return st.status(T("🤖 يفكّر الآن…", "🤖 Thinking…"), expanded=True)
     except Exception:
-        # بديل متوافق مع with
         class _Alt:
             def __init__(self):
                 self.box = st.empty()
@@ -265,6 +260,13 @@ st.session_state.setdefault("chat_open", False)
 st.session_state.setdefault("chat_history", [])
 st.session_state.setdefault("z_drivers", [])
 
+def _is_followup_cards(recs_list):
+    """نحدد هل اللي ظهر هو بطاقة متابعة (Evidence Gate)"""
+    if not isinstance(recs_list, (list, tuple)) or not recs_list:
+        return False
+    head = _safe_str(recs_list[0]).strip().lower()
+    return ("🧭" in _safe_str(recs_list[0])) or ("need a few quick answers" in head) or ("نحتاج إجابات" in head) or (len(recs_list) >= 2 and _safe_str(recs_list[1]).strip() == "—")
+
 # =========================
 # توليد التوصيات + Layer Z (مع مراحل تفكير)
 # =========================
@@ -276,7 +278,6 @@ if go:
             if SHOW_THINKING: stat.info(T("تحليل الإجابات…", "Analyzing answers…"))
             # ➊ توليد التوصيات
             raw_recs = generate_sport_recommendation(answers, lang=lang)
-            # قوّة: نضمن أنها قائمة نصوص
             cleaned = []
             if isinstance(raw_recs, (list, tuple)):
                 for r in list(raw_recs)[:3]:
@@ -284,6 +285,9 @@ if go:
             else:
                 cleaned = [_safe_str(raw_recs)]
             st.session_state["recs"] = cleaned[:3]
+            # 🔔 افتح المحادثة تلقائيًا إذا كانت Follow-ups
+            if _is_followup_cards(st.session_state["recs"]):
+                st.session_state["chat_open"] = True
             if SHOW_THINKING: stat.info(T("مواءمة مع محاور Z…", "Aligning with Z-axes…"))
         except Exception as e:
             st.error(T("خطأ أثناء توليد التوصيات: ", "Error generating recommendations: ") + _safe_str(e))
@@ -336,7 +340,13 @@ if recs:
 
     st.divider()
     cA, cB = st.columns([1,1])
-    if cA.button(T("🙅‍♂ لم تعجبني — افتح محادثة", "🙅‍♂ Not satisfied — open chat")):
+
+    # 🔘 زر فتح المحادثة — يغيّر النص حسب الحالة
+    open_label = T(
+        "🙅‍♂ لم تعجبني — افتح محادثة" if not _is_followup_cards(recs) else "🧭 أكمل الإجابات — افتح محادثة",
+        "🙅‍♂ Not satisfied — open chat" if not _is_followup_cards(recs) else "🧭 Complete quick answers — open chat"
+    )
+    if cA.button(open_label):
         st.session_state["chat_open"] = True
 
     # تنزيل التوصيات كنص
@@ -353,12 +363,25 @@ if recs:
 # واجهة محادثة شبيهة بالشات (chat UI) + كتابة حيّة/ستريم
 # =========================
 if st.session_state.get("chat_open", False):
+    # زر إغلاق سريع
+    top_c1, top_c2 = st.columns([1,6])
+    if top_c1.button(T("✖ إغلاق المحادثة", "✖ Close Chat")):
+        st.session_state["chat_open"] = False
+        st.rerun()
+
     st.subheader(T("🧠 محادثة المدرب الذكي", "🧠 AI Coach Chat"))
 
     # عرض السجل القديم
     for msg in st.session_state["chat_history"]:
         with st.chat_message("user" if msg["role"] == "user" else "assistant"):
             st.markdown(_safe_str(msg["content"]))
+
+    # تنبيه صغير لو الحالة Follow-ups
+    if _is_followup_cards(st.session_state.get("recs", [])):
+        st.info(T(
+            "🧭 عندنا أسئلة قصيرة جدًا قبل ما نضبط الهوية. اكتب إجابات مختصرة هنا.",
+            "🧭 I need a couple of quick answers before I lock the identity. Reply here."
+        ))
 
     user_msg = st.chat_input(
         T("اكتب ما الذي لم يعجبك أو ما الذي تريد تعديله…", "Tell me what you didn’t like or what to adjust…")
@@ -375,7 +398,6 @@ if st.session_state.get("chat_open", False):
 
         # ردّ المساعد — ستريم حقيقي إن توفر، وإلا كتابة حيّة للناتج النهائي
         if start_dynamic_chat_stream is not None:
-            # ستريم حقيقي (generator)
             with st.chat_message("assistant"):
                 ph = st.empty()
                 buf = []
@@ -398,7 +420,6 @@ if st.session_state.get("chat_open", False):
                               "Got it! We’ll adjust the plan gradually based on your feedback.")
                 st.session_state["chat_history"].append({"role": "assistant", "content": _safe_str(reply)})
         else:
-            # نداء عادي ثم كتابة حيّة
             try:
                 reply = start_dynamic_chat(
                     answers=answers,
