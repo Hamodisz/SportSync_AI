@@ -1296,42 +1296,62 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         "z_intent": _call_analyze_intent(answers, lang=lang)
     }
     timings["analysis_ms"] = int((time.perf_counter() - ana_t0) * 1000)
+    try:
+        axes_dbg = (analysis.get("encoded_profile") or {}).get("axes", {})
+        _dbg(f"analysis: intents={analysis.get('z_intent', [])} | axes_keys={list(axes_dbg.keys())}")
+    except Exception:
+        pass
 
     # 1) KB candidates
     kb_t0 = time.perf_counter()
     cards_struct = _kb_candidates(analysis, answers, lang)
     timings["kb_ms"] = int((time.perf_counter() - kb_t0) * 1000)
+    _dbg(f"kb_candidates: {len(cards_struct)}")
 
     # 2) Fallback LLM لو ناقص
     if len(cards_struct) < 3:
+        _dbg(f"fallback: kb_candidates={len(cards_struct)} (<3) → calling LLM")
         llm_t0 = time.perf_counter()
         extra = _llm_fallback(user_id, analysis, answers, lang)
         timings["llm_ms"] = int((time.perf_counter() - llm_t0) * 1000)
+        _dbg(f"fallback: llm_returned={len(extra)} cards")
         cards_struct += extra
     else:
         timings["llm_ms"] = 0
 
     if not cards_struct:
+        _dbg("no_candidates_after_kb_llm → using static fallbacks")
         cards_struct = [_fallback_identity(i, lang) for i in range(3)]
 
     # 3) جوده + fill + dedupe
     post_t0 = time.perf_counter()
     cards_struct = _fill_defaults_batch(cards_struct, lang)
-    cards_struct = _quality_filter(cards_struct)
+    _dbg(f"quality_filter: input_cards={len(cards_struct)}")
+    before_q = len(cards_struct)
+    cards_struct = _quality_filter(cards_struct)   # تطبع أسباب الرفض بطاقة بطاقة عند REC_DEBUG=1 (لو استبدلت الدالة كما أرسلتها لك)
+    _dbg(f"quality_filter: kept={len(cards_struct)} removed={before_q - len(cards_struct)}")
+
     cards_struct = _hard_dedupe_and_fill(cards_struct, lang)
+
+    # ملاحظة: _hard_dedupe_and_fill يضمن 3 بطاقات حتى لو قلّ العدد بعد الفلترة
     timings["post_ms"] = int((time.perf_counter() - post_t0) * 1000)
 
     # 4) Global uniqueness via blacklist
     bl_t0 = time.perf_counter()
-    bl = _load_blacklist()
-    cards_struct = _ensure_unique_labels_v_global(cards_struct, lang, bl)
-    _persist_blacklist(cards_struct, bl)
+    try:
+        bl = _load_blacklist()
+        cards_struct = _ensure_unique_labels_v_global(cards_struct, lang, bl)
+        _persist_blacklist(cards_struct, bl)
+    except Exception as e:
+        _warn(f"blacklist step skipped: {e}")
     timings["blacklist_ms"] = int((time.perf_counter() - bl_t0) * 1000)
 
     # 5) Scrub URLs (لو فيه)
     scrub_t0 = time.perf_counter()
-    cards_struct = [json.loads(scrub_unknown_urls(json.dumps(c, ensure_ascii=False), CFG)) if isinstance(c, dict) else c
-                    for c in cards_struct]
+    cards_struct = [
+        json.loads(scrub_unknown_urls(json.dumps(c, ensure_ascii=False), CFG)) if isinstance(c, dict) else c
+        for c in cards_struct
+    ]
     timings["scrub_ms"] = int((time.perf_counter() - scrub_t0) * 1000)
 
     # 6) Render → List[str] (force-safe strings)
@@ -1339,6 +1359,13 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     rendered = [_format_card(c, lang) for c in cards_struct[:3]]
     rendered = [str(x) for x in rendered]
     timings["render_ms"] = int((time.perf_counter() - render_t0) * 1000)
+
+    # Debug: اطبع الملصقات النهائية
+    try:
+        final_labels = [str(c.get("sport_label","")).strip() for c in cards_struct[:3]]
+        _dbg(f"final_labels: {final_labels}")
+    except Exception:
+        pass
 
     timings["total_ms"] = int((time.perf_counter() - t0) * 1000)
     _dbg(
