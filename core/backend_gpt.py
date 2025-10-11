@@ -1206,6 +1206,9 @@ def _fill_defaults_batch(cards: List[Dict[str, Any]], lang: str) -> List[Dict[st
 def _quality_filter(cards: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     out = []
     for c in cards:
+        # ⬅️ جديد: ارفض البطاقة إذا الاسم جنرك/مشبوه
+        if _label_is_generic(c.get("sport_label","")):
+            continue
         if not _is_meaningful(c): 
             continue
         if _too_generic(c.get("what_it_looks_like",""), _MIN_CHARS):
