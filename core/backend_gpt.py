@@ -584,7 +584,7 @@ def _mismatch_with_axes(rec: Dict[str, Any], axes: Dict[str, float], lang: str) 
 
 # ========= Label normalization / similarity =========
 
-# ⬅️ أضِف هذولين قبل _label_is_generic لتفادي NameError
+# ⬅️ ثوابت محليّة لتفادي الأسماء الجنرك (تُدمج مع _FORBIDDEN_GENERIC من الـKB إن وُجد)
 _GENERIC_LABELS = {
     # EN
     "impressive compact", "generic sport", "sport identity",
@@ -593,7 +593,7 @@ _GENERIC_LABELS = {
     "رياضة عامة", "هوية رياضية", "تدفق بسيط", "تدفق جسدي", "هوية حركة"
 }
 
-# ريجيكس مرن لأي عبارات عامة بالعربي/الإنجليزي
+# ⬅️ ريجيكس مرن لأي عبارات عامة بالعربي/الإنجليزي
 _GENERIC_LABEL_RE = re.compile(
     r"(generic|basic|simple|identity|flow|movement|sport)"
     r"|(?:عام(?:ة)?)|(?:بسيط(?:ة)?)|(?:هوية)|(?:تدفق)|(?:حركة)",
@@ -608,16 +608,41 @@ def _canonical_label(label: str) -> str:
     return lab
 
 def _label_is_generic(label: str) -> bool:
-    """يكشف الأسماء الجنرك/المشبوهة ويمنعها من المرور."""
+    """
+    يكشف الأسماء الجنرك/المشبوهة ويمنعها من المرور.
+    يعتمد على:
+      - قائمة ثابتة _GENERIC_LABELS
+      - قائمة ديناميكية من الـKB: _FORBIDDEN_GENERIC
+      - ريجيكس مرن _GENERIC_LABEL_RE
+      - طول الاسم بعد التطبيع (≤ 3 يعتبر جنرك)
+    """
     if not label:
         return True
+
     lab = _canonical_label(label)
-    # نستخدم globals().get لنتجنّب NameError لو تغيّر الترتيب
-    generic_set = globals().get("_GENERIC_LABELS", set())
+
+    # اجمع كل المصادر (مع التطبيع) بدون الاعتماد على ترتيب التعريفات
+    generic_set: set = set()
+    for src in (
+        globals().get("_GENERIC_LABELS", set()),
+        globals().get("_FORBIDDEN_GENERIC", set()),
+    ):
+        for x in (src or []):
+            try:
+                generic_set.add(_canonical_label(str(x)))
+            except Exception:
+                pass
+
+    # 1) مطابقة مباشرة أو قِصر الاسم
     if (lab in generic_set) or (len(lab) <= 3):
         return True
+
+    # 2) ريجيكس مرن (عربي/إنجليزي) ضد النص الخام وبعد التطبيع
     regex = globals().get("_GENERIC_LABEL_RE")
-    return bool(regex.search(label)) if regex else False
+    if regex and (regex.search(label) or regex.search(lab)):
+        return True
+
+    return False
 
 def _tokenize(text: str) -> List[str]:
     if not text:
