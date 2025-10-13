@@ -1,4 +1,3 @@
-# core/llm_client.py
 # -*- coding: utf-8 -*-
 """
 موحِّد الاتصال بنماذج OpenAI/Groq/OpenRouter (واجهة OpenAI المتوافقة).
@@ -41,9 +40,19 @@ def make_llm_client() -> Optional[OpenAI]:
         or os.getenv("OPENROUTER_BASE_URL")
         or ""
     )
+
     is_groq = bool(os.getenv("GROQ_API_KEY")) or base.startswith("https://api.groq.com")
     is_openrouter = bool(os.getenv("OPENROUTER_API_KEY")) or base.startswith("https://openrouter.ai")
 
+    # تنبيه توضيحي لو أكثر من مفتاح موجود
+    if sum([
+        bool(os.getenv("GROQ_API_KEY")),
+        bool(os.getenv("OPENAI_API_KEY")),
+        bool(os.getenv("OPENROUTER_API_KEY"))
+    ]) > 1:
+        _log("WARN: Multiple API keys detected; priority is GROQ > OPENAI > OPENROUTER.")
+
+    # ضبط base تلقائيًا لمزوّدات الـcompat
     if not base and is_groq:
         base = "https://api.groq.com/openai/v1"
     if not base and is_openrouter:
@@ -56,8 +65,10 @@ def make_llm_client() -> Optional[OpenAI]:
     if is_openrouter:
         ref = os.getenv("OPENROUTER_REFERRER")
         title = os.getenv("OPENROUTER_APP_TITLE")
-        if ref:   default_headers["HTTP-Referer"] = ref
-        if title: default_headers["X-Title"] = title
+        if ref:
+            default_headers["HTTP-Referer"] = ref
+        if title:
+            default_headers["X-Title"] = title
 
     kw: Dict[str, Any] = {"api_key": key}
     if base:
@@ -69,7 +80,8 @@ def make_llm_client() -> Optional[OpenAI]:
 
     try:
         client = OpenAI(**kw)
-        _log(f"INIT OK | base_url={base or 'default'} | org={bool(org)} | provider={'Groq' if is_groq else 'OpenRouter' if is_openrouter else 'OpenAI'}")
+        provider = "Groq" if is_groq else ("OpenRouter" if is_openrouter else "OpenAI")
+        _log(f"INIT OK | base_url={base or 'default'} | org={bool(org)} | provider={provider}")
         return client
     except Exception as e:
         _log(f"INIT FAILED: {e!r}")
@@ -79,6 +91,10 @@ def make_llm_client() -> Optional[OpenAI]:
 
 
 def pick_models() -> Tuple[str, str]:
+    """
+    يحدد موديلات المحادثة الافتراضية حسب المزود.
+    يمكن override عبر CHAT_MODEL / CHAT_MODEL_FALLBACK.
+    """
     using_groq = bool(
         os.getenv("GROQ_API_KEY")
         or str(os.getenv("OPENAI_BASE_URL", "")).startswith("https://api.groq.com")
@@ -89,6 +105,7 @@ def pick_models() -> Tuple[str, str]:
     else:
         main_default = "gpt-4o"
         fb_default   = "gpt-4o-mini"
+
     main = os.getenv("CHAT_MODEL", main_default)
     fb   = os.getenv("CHAT_MODEL_FALLBACK", fb_default)
     _log(f"MODELS -> main={main}, fb={fb}")
@@ -109,14 +126,21 @@ def chat_once(
     retries: int = 2,
     seed: Optional[int] = None,
 ) -> str:
+    """
+    مكالمة دردشة واحدة.
+    - يعيد المحاولة تلقائيًا لو حصل خطأ مؤقت.
+    - يحاول تلقائيًا إزالة بعض الباراميترات إذا رفضها مزوّد الـcompat (400 Bad Request).
+    """
     if client is None:
         raise RuntimeError("لا يوجد عميل LLM (المفتاح غير مضبوط أو فشل التهيئة)")
 
     if seed is None:
         env_seed = os.getenv("LLM_SEED")
         if env_seed:
-            try: seed = int(env_seed)
-            except Exception: seed = None
+            try:
+                seed = int(env_seed)
+            except Exception:
+                seed = None
 
     last_err: Optional[Exception] = None
     for attempt in range(retries + 1):
@@ -132,15 +156,29 @@ def chat_once(
                 max_tokens=max_tokens,
             )
             if seed is not None:
-                kwargs["seed"] = seed  # قد يُتجاهل
+                kwargs["seed"] = seed  # قد يُتجاهل عند بعض المزودين
 
-            resp = client_t.chat.completions.create(**kwargs)
-            content = (resp.choices[0].message.content if resp and resp.choices else "") or ""
+            try:
+                resp = client_t.chat.completions.create(**kwargs)
+            except Exception as inner_e:
+                # لو واضح أنها مشكلة باراميترات (أحيانًا مزوّدات الـcompat ترفض penalties/top_p)
+                msg = str(inner_e)
+                if ("400" in msg) or ("Bad Request" in msg) or ("invalid" in msg.lower()):
+                    _log("retrying without penalties/top_p due to provider param rejection…")
+                    kwargs.pop("presence_penalty", None)
+                    kwargs.pop("frequency_penalty", None)
+                    kwargs["top_p"] = 1.0
+                    resp = client_t.chat.completions.create(**kwargs)
+                else:
+                    raise
+
+            content = (resp.choices[0].message.content if resp and getattr(resp, "choices", None) else "") or ""
             return content.strip()
         except Exception as e:
             last_err = e
             _log(f"chat attempt#{attempt} failed: {e!r}")
-            if attempt >= retries: break
+            if attempt >= retries:
+                break
             time.sleep(0.6 * (2 ** attempt) + random.random() * 0.2)
 
     raise RuntimeError(f"فشل chat_once بعد محاولات متعددة: {last_err}")
