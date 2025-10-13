@@ -1384,9 +1384,11 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         )
     )
 
-    # 7) تسجيل اختياري للنتيجة (لن يتسبب في كراش لو الموديول غير موجود)
+        # 7) تسجيل اختياري للنتيجة
     try:
         from core.user_logger import log_recommendation_result
+        # (اختياري) مرّر eg/intents لو تبي
+        eg_info = eg  # من مرحلة Evidence Gate أعلى الدالة
         log_recommendation_result(
             user_id=user_id,
             answers=answers,
@@ -1394,7 +1396,10 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
             timings=timings,
             lang=lang,
             model=str(CHAT_MODEL) if 'CHAT_MODEL' in globals() else None,
-            app_version=(CFG or {}).get("app_version")
+            app_version=(CFG or {}).get("app_version"),
+            session_id=(answers or {}).get("_session_id"),
+            intent=analysis.get("z_intent"),
+            egate=eg_info
         )
     except Exception:
         pass
