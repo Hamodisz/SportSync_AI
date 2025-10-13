@@ -1,5 +1,5 @@
 # -- coding: utf-8 --
-import os, sys, json, time, textwrap
+import os, sys, json, time, textwrap, uuid
 from pathlib import Path
 import streamlit as st
 
@@ -92,6 +92,18 @@ try:
 except Exception:
     _LLM_CLIENT_FOR_DIAG = None
     _MODELS_FOR_DIAG = {"main": os.getenv("CHAT_MODEL", "gpt-4o"), "fallback": os.getenv("CHAT_MODEL_FALLBACK", "gpt-4o-mini")}
+
+# ✅ User Logger
+try:
+    from core.user_logger import (
+        log_quiz_submission, log_rating, log_chat_message, log_event
+    )
+except Exception:
+    # نسخ صامتة لا تكسر الخدمة
+    def log_quiz_submission(**kw): return kw.get("session_id") or "nosession"
+    def log_rating(**kw): pass
+    def log_chat_message(**kw): pass
+    def log_event(**kw): pass
 
 # =========================
 # إعدادات واجهة + لغة
@@ -259,6 +271,7 @@ st.session_state.setdefault("ratings", [4, 4, 4])
 st.session_state.setdefault("chat_open", False)
 st.session_state.setdefault("chat_history", [])
 st.session_state.setdefault("z_drivers", [])
+st.session_state.setdefault("session_id", uuid.uuid4().hex)
 
 def _is_followup_cards(recs_list):
     """نحدد هل اللي ظهر هو بطاقة متابعة (Evidence Gate)"""
@@ -272,6 +285,20 @@ def _is_followup_cards(recs_list):
 # =========================
 if go:
     user_id = "web_user"
+
+    # اربط الـsession_id بالإجابات ليسحبها backend_gpt للّوق
+    answers["_session_id"] = st.session_state["session_id"]
+    # سجّل submission
+    try:
+        log_quiz_submission(
+            user_id=user_id,
+            answers=answers,
+            lang=lang,
+            session_id=st.session_state["session_id"],
+            meta={"source": "quiz_ui"}
+        )
+    except Exception:
+        pass
 
     with status_steps(SHOW_THINKING) as stat:
         try:
@@ -288,6 +315,16 @@ if go:
             # 🔔 افتح المحادثة تلقائيًا إذا كانت Follow-ups
             if _is_followup_cards(st.session_state["recs"]):
                 st.session_state["chat_open"] = True
+                try:
+                    log_event(
+                        user_id=user_id,
+                        session_id=st.session_state["session_id"],
+                        name="open_chat",
+                        payload={"reason": "followups_auto"},
+                        lang=lang
+                    )
+                except Exception:
+                    pass
             if SHOW_THINKING: stat.info(T("مواءمة مع محاور Z…", "Aligning with Z-axes…"))
         except Exception as e:
             st.error(T("خطأ أثناء توليد التوصيات: ", "Error generating recommendations: ") + _safe_str(e))
@@ -333,10 +370,24 @@ if recs:
         typewriter_write(ph, text_to_show, TYPE_SPEED_MS)
         rendered_text.append(text_to_show)
 
-        st.session_state["ratings"][i] = st.slider(
+        # ⭐ تسجيل التقييم عند التغيير
+        old_val = st.session_state["ratings"][i]
+        new_rating = st.slider(
             "⭐ " + T("قيّم هذه التوصية", "Rate this recommendation"),
-            1, 5, value=st.session_state["ratings"][i], key=f"rating_{i}"
+            1, 5, value=old_val, key=f"rating_{i}"
         )
+        if new_rating != old_val:
+            st.session_state["ratings"][i] = new_rating
+            try:
+                log_rating(
+                    user_id="web_user",
+                    session_id=st.session_state["session_id"],
+                    index=i,
+                    rating=int(new_rating),
+                    lang=lang
+                )
+            except Exception:
+                pass
 
     st.divider()
     cA, cB = st.columns([1,1])
@@ -348,6 +399,16 @@ if recs:
     )
     if cA.button(open_label):
         st.session_state["chat_open"] = True
+        try:
+            log_event(
+                user_id="web_user",
+                session_id=st.session_state["session_id"],
+                name="open_chat",
+                payload={"reason": "manual_click", "followups": bool(_is_followup_cards(recs))},
+                lang=lang
+            )
+        except Exception:
+            pass
 
     # تنزيل التوصيات كنص
     if dl and rendered_text:
@@ -366,6 +427,16 @@ if st.session_state.get("chat_open", False):
     # زر إغلاق سريع
     top_c1, top_c2 = st.columns([1,6])
     if top_c1.button(T("✖ إغلاق المحادثة", "✖ Close Chat")):
+        try:
+            log_event(
+                user_id="web_user",
+                session_id=st.session_state["session_id"],
+                name="close_chat",
+                payload={},
+                lang=lang
+            )
+        except Exception:
+            pass
         st.session_state["chat_open"] = False
         st.rerun()
 
@@ -388,9 +459,21 @@ if st.session_state.get("chat_open", False):
     )
 
     if user_msg:
-        # أضف رسالة المستخدم للسجل
-        st.session_state["chat_history"].append({"role": "user", "content": _safe_str(user_msg)})
-        typewriter_chat("user", _safe_str(user_msg), TYPE_SPEED_MS)
+        # أضف رسالة المستخدم للسجل + لوق
+        user_text = _safe_str(user_msg)
+        st.session_state["chat_history"].append({"role": "user", "content": user_text})
+        try:
+            log_chat_message(
+                user_id="web_user",
+                session_id=st.session_state["session_id"],
+                role="user",
+                content=user_text,
+                lang=lang,
+                extra={"where": "quiz_ui"}
+            )
+        except Exception:
+            pass
+        typewriter_chat("user", user_text, TYPE_SPEED_MS)
 
         # حضّر معطيات المكالمة
         recs_for_chat = [ _safe_str(r) for r in st.session_state.get("recs", [])[:3] ]
@@ -409,7 +492,7 @@ if st.session_state.get("chat_open", False):
                         user_id="web_user",
                         lang=lang,
                         chat_history=st.session_state["chat_history"],
-                        user_message=_safe_str(user_msg)
+                        user_message=user_text
                     ):
                         buf.append(_safe_str(chunk))
                         if LIVE_TYPING:
@@ -419,6 +502,18 @@ if st.session_state.get("chat_open", False):
                     reply = T("تم! سنعدّل الخطة بالتدريج حسب ملاحظتك.",
                               "Got it! We’ll adjust the plan gradually based on your feedback.")
                 st.session_state["chat_history"].append({"role": "assistant", "content": _safe_str(reply)})
+                # لوق ردّ المساعد
+                try:
+                    log_chat_message(
+                        user_id="web_user",
+                        session_id=st.session_state["session_id"],
+                        role="assistant",
+                        content=_safe_str(reply),
+                        lang=lang,
+                        extra={"where": "quiz_ui"}
+                    )
+                except Exception:
+                    pass
         else:
             try:
                 reply = start_dynamic_chat(
@@ -428,12 +523,24 @@ if st.session_state.get("chat_open", False):
                     user_id="web_user",
                     lang=lang,
                     chat_history=st.session_state["chat_history"],
-                    user_message=_safe_str(user_msg)
+                    user_message=user_text
                 )
             except Exception:
                 reply = T("تم! سنعدّل الخطة بالتدريج حسب ملاحظتك.",
                           "Got it! We’ll adjust the plan gradually based on your feedback.")
             st.session_state["chat_history"].append({"role": "assistant", "content": _safe_str(reply)})
+            # لوق ردّ المساعد
+            try:
+                log_chat_message(
+                    user_id="web_user",
+                    session_id=st.session_state["session_id"],
+                    role="assistant",
+                    content=_safe_str(reply),
+                    lang=lang,
+                    extra={"where": "quiz_ui"}
+                )
+            except Exception:
+                pass
             typewriter_chat("assistant", _safe_str(reply), TYPE_SPEED_MS)
 
     st.caption("💬 " + T("تقدر تواصل الدردشة لين توصّل لهويتك الرياضية اللي تحسها ملكك.",
