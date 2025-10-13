@@ -583,23 +583,45 @@ def _mismatch_with_axes(rec: Dict[str, Any], axes: Dict[str, float], lang: str) 
     return False
 
 # ========= Label normalization / similarity =========
+
+# ⬅️ أضِف هذولين قبل _label_is_generic لتفادي NameError
+_GENERIC_LABELS = {
+    # EN
+    "impressive compact", "generic sport", "sport identity",
+    "movement flow", "basic flow", "simple flow", "body flow",
+    # AR
+    "رياضة عامة", "هوية رياضية", "تدفق بسيط", "تدفق جسدي", "هوية حركة"
+}
+
+# ريجيكس مرن لأي عبارات عامة بالعربي/الإنجليزي
+_GENERIC_LABEL_RE = re.compile(
+    r"(generic|basic|simple|identity|flow|movement|sport)"
+    r"|(?:عام(?:ة)?)|(?:بسيط(?:ة)?)|(?:هوية)|(?:تدفق)|(?:حركة)",
+    re.IGNORECASE
+)
+
 def _canonical_label(label: str) -> str:
-    if not label: return ""
+    if not label:
+        return ""
     lab = re.sub(r"\s+", " ", label).strip(" -—:،").lower()
     lab = _normalize_ar(lab)
     return lab
 
 def _label_is_generic(label: str) -> bool:
-    # نتحقق من النسخة الـcanonical ومن أي تطابق مع الريجيكس المرن
+    """يكشف الأسماء الجنرك/المشبوهة ويمنعها من المرور."""
     if not label:
         return True
     lab = _canonical_label(label)
-    if (lab in _GENERIC_LABELS) or (len(lab) <= 3):
+    # نستخدم globals().get لنتجنّب NameError لو تغيّر الترتيب
+    generic_set = globals().get("_GENERIC_LABELS", set())
+    if (lab in generic_set) or (len(lab) <= 3):
         return True
-    return bool(_GENERIC_LABEL_RE.search(label))
+    regex = globals().get("_GENERIC_LABEL_RE")
+    return bool(regex.search(label)) if regex else False
 
 def _tokenize(text: str) -> List[str]:
-    if not text: return []
+    if not text:
+        return []
     t = _normalize_ar(text.lower())
     toks = re.split(r"[^a-zA-Z0-9\u0600-\u06FF]+", t)
     return [w for w in toks if w and len(w) > 2]
@@ -607,11 +629,12 @@ def _tokenize(text: str) -> List[str]:
 def _sig_for_rec(r: Dict[str, Any]) -> set:
     core = r.get("core_skills") or []
     core_txt = " ".join(core) if isinstance(core, list) else str(core)
-    toks = set(_tokenize(r.get("sport_label","")) + _tokenize(core_txt))
+    toks = set(_tokenize(r.get("sport_label", "")) + _tokenize(core_txt))
     return toks
 
 def _jaccard(a: set, b: set) -> float:
-    if not a and not b: return 1.0
+    if not a and not b:
+        return 1.0
     inter = len(a & b)
     union = len(a | b) or 1
     return inter / union
