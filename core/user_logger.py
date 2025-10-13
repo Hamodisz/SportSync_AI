@@ -3,9 +3,9 @@
 core/user_logger.py
 -------------------
 تسجيل بسيط لأحداث المستخدمين في JSONL (سطر لكل حدث) داخل data/logs/.
-- خفيف، بدون تبعيات.
-- آمن ضد الأعطال (try/except).
-- يشتغل حتى لو ما فيه DataPipe.
+- خفيف ومرن مع الوسائط (يقبل **kwargs).
+- متوافق مع الدوال القديمة: log_recommendation_result / log_rating / log_chat_message
+- يضيف الدوال التي يستخدمها app.py: log_quiz_submission / log_event
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ LOG_PATH = LOG_DIR / "events.jsonl"
 
 # محاولة ربط DataPipe (اختياري)
 try:
-    from core.data_pipe import get_pipe
+    from core.data_pipe import get_pipe  # إن وُجد
     _PIPE = get_pipe()
 except Exception:
     _PIPE = None
@@ -35,7 +35,6 @@ def _safe(obj: Any) -> Any:
         json.dumps(obj, ensure_ascii=False)
         return obj
     except Exception:
-        # آخر حل: تحويل إلى string
         return str(obj)
 
 def _append_jsonl(row: Dict[str, Any]) -> None:
@@ -43,37 +42,92 @@ def _append_jsonl(row: Dict[str, Any]) -> None:
         with LOG_PATH.open("a", encoding="utf-8") as f:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
     except Exception:
-        # كحل أخير: اطبع للكونسول
         print("[USER_LOGGER][WARN] failed to write log row")
+
+def _emit_pipe(event_type: str, payload: Dict[str, Any], user_id: str, lang: Optional[str], model: Optional[str]) -> None:
+    if not _PIPE:
+        return
+    try:
+        _PIPE.send(event_type=event_type, payload=payload, user_id=user_id, lang=lang, model=model)
+    except Exception:
+        pass
 
 def log_user_insight(
     user_id: str,
     content: Dict[str, Any],
     event_type: str = "generic",
+    *,
+    session_id: Optional[str] = None,
     app_version: Optional[str] = None,
     model: Optional[str] = None,
-    lang: Optional[str] = None
+    lang: Optional[str] = None,
+    meta: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """تسجيل حدث عام."""
+    """الأساس: يكتب سطر JSONL واحد."""
     row = {
         "ts": _now_iso(),
         "event": event_type,
         "user_id": user_id or "anon",
+        "session_id": session_id,
         "lang": lang,
         "model": model,
         "app_ver": app_version,
         "content": _safe(content),
+        "meta": _safe(meta or {}),
     }
     _append_jsonl(row)
+    _emit_pipe(event_type, row, user_id, lang, model)
 
-    # إرسال اختياري لقناة خارجية (لو مفعّل DataPipe)
-    if _PIPE:
-        try:
-            _PIPE.send(event_type=event_type, payload=row, user_id=user_id, lang=lang, model=model)
-        except Exception:
-            pass
+# --------- دوال يستخدمها app.py ---------
 
-# ــــــــــــــــــــــ دوال مساعدة سريعة ــــــــــــــــــــــ
+def log_quiz_submission(
+    *,
+    user_id: str,
+    answers: Dict[str, Any],
+    lang: str,
+    session_id: Optional[str],
+    meta: Optional[Dict[str, Any]] = None,
+    app_version: Optional[str] = None,
+    model: Optional[str] = None,
+    **_
+) -> None:
+    """تسجيل إرسال الإجابات من واجهة الكويز."""
+    content = {"answers": _safe(answers)}
+    log_user_insight(
+        user_id=user_id,
+        content=content,
+        event_type="quiz_submission",
+        session_id=session_id,
+        app_version=app_version,
+        model=model,
+        lang=lang,
+        meta=meta,
+    )
+
+def log_event(
+    *,
+    user_id: str,
+    session_id: Optional[str],
+    name: str,
+    payload: Optional[Dict[str, Any]] = None,
+    lang: Optional[str] = None,
+    app_version: Optional[str] = None,
+    model: Optional[str] = None,
+    **_
+) -> None:
+    """تسجيل أي حدث عام (فتح/إغلاق محادثة… إلخ)."""
+    content = {"name": name, "payload": _safe(payload or {})}
+    log_user_insight(
+        user_id=user_id,
+        content=content,
+        event_type="event",
+        session_id=session_id,
+        app_version=app_version,
+        model=model,
+        lang=lang,
+    )
+
+# --------- توافُق مع الدوال القديمة + المستخدمة في backend_gpt ---------
 
 def log_recommendation_result(
     user_id: str,
@@ -82,9 +136,10 @@ def log_recommendation_result(
     timings: Optional[Dict[str, float]] = None,
     lang: str = "العربية",
     model: Optional[str] = None,
-    app_version: Optional[str] = None
+    app_version: Optional[str] = None,
+    session_id: Optional[str] = None,
+    **_
 ) -> None:
-    """تسجيل نتيجة توصيات (النصوص + تايمرز إن وُجدت)."""
     content = {
         "answers": _safe(answers),
         "recommendations": [str(x) for x in (recs_text or [])],
@@ -94,51 +149,64 @@ def log_recommendation_result(
         user_id=user_id,
         content=content,
         event_type="recommendation_result",
+        session_id=session_id,
         app_version=app_version,
         model=model,
-        lang=lang
+        lang=lang,
     )
 
 def log_rating(
     user_id: str,
-    ratings: list[int],
+    rating: int,
+    *,
+    session_id: Optional[str] = None,
+    index: Optional[int] = None,
     rec_ids: Optional[list[str]] = None,
     lang: str = "العربية",
-    app_version: Optional[str] = None
+    app_version: Optional[str] = None,
+    model: Optional[str] = None,
+    **_
 ) -> None:
-    """تسجيل تقييمات المستخدم للتوصيات."""
     content = {
-        "ratings": [int(x) for x in (ratings or [])],
-        "rec_ids": rec_ids or []
+        "rating": int(rating),
+        "index": index,
+        "rec_ids": rec_ids or [],
     }
     log_user_insight(
         user_id=user_id,
         content=content,
         event_type="rating",
+        session_id=session_id,
         app_version=app_version,
-        lang=lang
+        model=model,
+        lang=lang,
     )
 
 def log_chat_message(
     user_id: str,
-    user_message: str,
-    ai_reply: str,
+    *,
+    session_id: Optional[str],
+    role: str,
+    content: str,
     lang: str = "العربية",
     model: Optional[str] = None,
     app_version: Optional[str] = None,
-    streaming: bool = False
+    streaming: bool = False,
+    extra: Optional[Dict[str, Any]] = None,
+    **_
 ) -> None:
-    """تسجيل تفاعل محادثة (رسالة المستخدم + رد الذكاء الاصطناعي)."""
-    content = {
-        "user_message": str(user_message or ""),
-        "ai_reply": str(ai_reply or ""),
-        "streaming": bool(streaming)
+    payload = {
+        "role": role,
+        "text": str(content or ""),
+        "streaming": bool(streaming),
+        "extra": _safe(extra or {}),
     }
     log_user_insight(
         user_id=user_id,
-        content=content,
+        content=payload,
         event_type="chat_interaction",
+        session_id=session_id,
         app_version=app_version,
         model=model,
-        lang=lang
+        lang=lang,
     )
