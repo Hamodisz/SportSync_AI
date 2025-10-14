@@ -5,10 +5,12 @@ analysis/layer_z_engine.py
 - z_drivers_from_scores(z_scores): يحوّل محاور [-1..+1] إلى جُمل محركات Layer-Z أنيقة.
 - analyze_silent_drivers_combined(answers, lang="العربية", encoded=None):
   يستخدم encoded["z_scores"] إن توفّر؛ وإلا يستنتج سريعًا من النص.
+- analyze_user_from_answers(...): غلاف متوافق مع الاستدعاءات القديمة،
+  يقبل user_id و **kwargs ويُرجع dict فيه z_drivers + profile.
 """
 
 from __future__ import annotations
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 import re
 
 _AR_RE = re.compile(r"[\u0600-\u06FF]")
@@ -61,17 +63,29 @@ def z_drivers_from_scores(z_scores: Dict[str, float], lang: str = "العربي�
 
     return out
 
+def _flatten_answers_texts(answers: Dict[str, Any]) -> List[str]:
+    """يسحب نصوص/قوائم الإجابات لأي بنية {'answer': ...} أو قيمة مباشرة."""
+    out: List[str] = []
+    for k, v in (answers or {}).items():
+        if k == "_session_id":
+            continue
+        try:
+            if isinstance(v, dict):
+                a = v.get("answer", "")
+                if isinstance(a, (list, tuple, set)):
+                    out.extend([str(i) for i in a])
+                else:
+                    out.append(str(a))
+            else:
+                out.append(str(v))
+        except Exception:
+            pass
+    return [s for s in (str(x).strip() for x in out) if s]
+
 def _quick_fallback_from_text(answers: Dict[str, Any], lang: str) -> List[str]:
     # استنتاجات بدائية لو ما توفر encoded
-    joined = []
-    for k, v in (answers or {}).items():
-        if isinstance(v, dict):
-            a = v.get("answer", "")
-            if isinstance(a, list): joined.extend([str(i) for i in a])
-            else: joined.append(str(a))
-        else:
-            joined.append(str(v))
-    text = "\n".join(str(x) for x in joined).lower()
+    joined = _flatten_answers_texts(answers)
+    text = "\n".join(joined).lower()
     ar = (lang == "العربية")
 
     out: List[str] = []
@@ -92,7 +106,8 @@ def _quick_fallback_from_text(answers: Dict[str, Any], lang: str) -> List[str]:
 def analyze_silent_drivers_combined(
     answers: Dict[str, Any],
     lang: str = "العربية",
-    encoded: Dict[str, Any] | None = None
+    encoded: Optional[Dict[str, Any]] = None,
+    **kwargs,  # قبول أي حقول إضافية بدون كسر
 ) -> List[str]:
     """
     يعيد قائمة محركات Layer-Z النصية (مرتبة ومختصرة).
@@ -109,3 +124,28 @@ def analyze_silent_drivers_combined(
 
     # قص القائمة إلى 6 لئلا تثقل البرومبت
     return items[:6]
+
+# ========= غلاف متوافق مع الاستدعاءات القديمة =========
+def analyze_user_from_answers(
+    answers: Dict[str, Any],
+    lang: str = "العربية",
+    user_id: Optional[str] = None,
+    encoded: Optional[Dict[str, Any]] = None,
+    **kwargs,
+) -> Dict[str, Any]:
+    """
+    غلاف متسامح:
+    - يقبل user_id و **kwargs (لن يكسر لو تغيّر التوقيع).
+    - يُرجع dict فيه z_drivers + profile بسيط.
+    - يعتمد على analyze_silent_drivers_combined داخليًا.
+    """
+    z = analyze_silent_drivers_combined(answers=answers, lang=lang, encoded=encoded)
+    texts = _flatten_answers_texts(answers)
+    profile = {
+        "user_id": user_id,
+        "language": lang,
+        "mentions_count": len(texts),
+        "sample": texts[:5],
+        "has_encoded": bool(encoded),
+    }
+    return {"z_drivers": z, "profile": profile}
