@@ -4,6 +4,13 @@ from pathlib import Path
 import streamlit as st
 
 # =========================
+# ضبط صفحة ستريملت (أول استدعاء وبمرة وحدة)
+# =========================
+if "page_configured" not in st.session_state:
+    st.set_page_config(page_title="SportSync — Quiz", page_icon="🎯", layout="centered")
+    st.session_state["page_configured"] = True
+
+# =========================
 # مسارات مرنة (محلي + Render)
 # =========================
 try:
@@ -108,7 +115,6 @@ except Exception:
 # =========================
 # إعدادات واجهة + لغة
 # =========================
-st.set_page_config(page_title="SportSync — Quiz", page_icon="🎯", layout="centered")
 lang = st.sidebar.radio("🌐 اختر اللغة / Choose Language", ["العربية", "English"], index=0)
 is_ar = (lang == "العربية")
 T = (lambda ar, en: ar if is_ar else en)
