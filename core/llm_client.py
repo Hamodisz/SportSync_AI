@@ -12,18 +12,17 @@ from typing import List, Dict, Optional, Any, Tuple
 from pathlib import Path
 
 # =========================
-# Bootstrap للبيئة (env / .env / st.secrets)
+# Utilities
 # =========================
 def _log(msg: str) -> None:
     print(f"[LLM_CLIENT] {msg}")
 
 def _bootstrap_env() -> None:
     """حمّل المفاتيح من .env و st.secrets بدون ما تكسّر أي قيم موجودة في env."""
-    # 1) .env (محلي/كودسبيس)
+    # 1) .env (محلي/كودسبيس/ريندر)
     try:
         from dotenv import load_dotenv  # type: ignore
         ROOT = Path(__file__).resolve().parent.parent
-        # جرّب .env في الجذر ثم في cwd
         for env_path in (ROOT / ".env", Path.cwd() / ".env"):
             if env_path.exists():
                 load_dotenv(env_path, override=False)
@@ -32,7 +31,7 @@ def _bootstrap_env() -> None:
     except Exception:
         pass
 
-    # 2) st.secrets (ستريmlit) — لا نكتب فوق env إن كان موجود
+    # 2) st.secrets (Streamlit) — لا نكتب فوق env إن كان موجود
     try:
         import streamlit as st  # type: ignore
         secrets = dict(getattr(st, "secrets", {})) or {}
@@ -63,6 +62,20 @@ except Exception as e:
     raise RuntimeError("ثبّت الحزمة: openai>=1.6.1,<2") from e
 
 
+# --- خرائط النماذج (حلّ تلقائي لإيقافات/أسماء قديمة) ---
+_MODEL_REMAP: Dict[str, str] = {
+    # Groq: إيقافات قديمة -> بدائل جديدة
+    "llama3-70b-8192": "llama-3.1-70b-versatile",
+    "llama3-8b-8192":  "llama-3.1-8b-instant",
+    # سماح بهجائن شائعة
+    "llama3-70b":      "llama-3.1-70b-versatile",
+    "llama3-8b":       "llama-3.1-8b-instant",
+}
+
+def _remap_model(name: str) -> str:
+    return _MODEL_REMAP.get(name, name)
+
+
 def make_llm_client() -> Optional[OpenAI]:
     """
     يبني عميل OpenAI-compatible.
@@ -89,7 +102,7 @@ def make_llm_client() -> Optional[OpenAI]:
     base = (
         os.getenv("OPENAI_BASE_URL")
         or os.getenv("OPENROUTER_BASE_URL")
-        or ""
+        or ""  # ترك الافتراضي لعميل OpenAI
     )
 
     is_groq = bool(os.getenv("GROQ_API_KEY")) or base.startswith("https://api.groq.com")
@@ -149,14 +162,15 @@ def pick_models() -> Tuple[str, str]:
         or str(os.getenv("OPENAI_BASE_URL", "")).startswith("https://api.groq.com")
     )
     if using_groq:
-        main_default = "llama3-70b-8192"
-        fb_default   = "llama3-8b-8192"
+        # ✅ نماذج Groq الحالية
+        main_default = "llama-3.1-70b-versatile"
+        fb_default   = "llama-3.1-8b-instant"
     else:
         main_default = "gpt-4o"
         fb_default   = "gpt-4o-mini"
 
-    main = os.getenv("CHAT_MODEL", main_default)
-    fb   = os.getenv("CHAT_MODEL_FALLBACK", fb_default)
+    main = _remap_model(os.getenv("CHAT_MODEL", main_default).strip())
+    fb   = _remap_model(os.getenv("CHAT_MODEL_FALLBACK", fb_default).strip())
     _log(f"MODELS -> main={main}, fb={fb}")
     return (main, fb)
 
@@ -174,11 +188,13 @@ def chat_once(
     timeout_s: float = 20.0,
     retries: int = 2,
     seed: Optional[int] = None,
+    fallback_model: Optional[str] = None,   # ✅ يدعم بديل تلقائي
 ) -> str:
     """
     مكالمة دردشة واحدة.
     - يعيد المحاولة تلقائيًا لو حصل خطأ مؤقت.
     - يحاول إزالة بعض الباراميترات إذا رفضها مزوّد الـcompat (400 Bad Request).
+    - يعالج إيقاف النماذج (model_decommissioned) عبر remap ثم عبر fallback_model إن وُجد.
     """
     if client is None:
         raise RuntimeError("لا يوجد عميل LLM (المفتاح غير مضبوط أو فشل التهيئة)")
@@ -191,12 +207,20 @@ def chat_once(
             except Exception:
                 seed = None
 
+    # طبّق remap من البداية
+    model = _remap_model(model)
+    if fallback_model:
+        fallback_model = _remap_model(fallback_model)
+
     last_err: Optional[Exception] = None
+    tried_remap_once = False
+    used_model = model
+
     for attempt in range(retries + 1):
         try:
             client_t = client.with_options(timeout=timeout_s)
             kwargs: Dict[str, Any] = dict(
-                model=model,
+                model=used_model,
                 messages=messages,
                 temperature=temperature,
                 top_p=top_p,
@@ -210,19 +234,52 @@ def chat_once(
             try:
                 resp = client_t.chat.completions.create(**kwargs)
             except Exception as inner_e:
-                # أحيانًا مزوّدات الـcompat ترفض penalties/top_p
                 msg = str(inner_e)
-                if ("400" in msg) or ("bad request" in msg.lower()) or ("invalid" in msg.lower()):
+
+                # إذا المزود رفض penalties/top_p
+                if ("400" in msg) and (
+                    "bad request" in msg.lower() or "invalid" in msg.lower()
+                ) and not any(k in msg.lower() for k in ["model_decommissioned", "model not found"]):
                     _log("retrying without penalties/top_p due to provider param rejection…")
                     kwargs.pop("presence_penalty", None)
                     kwargs.pop("frequency_penalty", None)
                     kwargs["top_p"] = 1.0
                     resp = client_t.chat.completions.create(**kwargs)
                 else:
-                    raise
+                    # معالجة إيقاف/عدم وجود الموديل
+                    if ("model_decommissioned" in msg) or ("model not found" in msg.lower()):
+                        # جرّب remap مرة واحدة لو لسه ما جرّبناه
+                        if not tried_remap_once:
+                            tried_remap_once = True
+                            new_used = _remap_model(used_model)
+                            if new_used != used_model:
+                                _log(f"model '{used_model}' remapped -> '{new_used}', retrying…")
+                                used_model = new_used
+                                # أعد المحاولة فورًا بنفس attempt (بدون penalties)
+                                kwargs["model"] = used_model
+                                kwargs.pop("presence_penalty", None)
+                                kwargs.pop("frequency_penalty", None)
+                                kwargs["top_p"] = 1.0
+                                resp = client_t.chat.completions.create(**kwargs)
+                            else:
+                                raise
+                        # لو remap ما نفع، جرّب fallback_model إن متاح ولم نجربه
+                        elif fallback_model and used_model != fallback_model:
+                            _log(f"switching to fallback model '{fallback_model}' due to model issue, retrying…")
+                            used_model = fallback_model
+                            kwargs["model"] = used_model
+                            kwargs.pop("presence_penalty", None)
+                            kwargs.pop("frequency_penalty", None)
+                            kwargs["top_p"] = 1.0
+                            resp = client_t.chat.completions.create(**kwargs)
+                        else:
+                            raise
+                    else:
+                        raise
 
             content = (resp.choices[0].message.content if resp and getattr(resp, "choices", None) else "") or ""
             return content.strip()
+
         except Exception as e:
             last_err = e
             _log(f"chat attempt#{attempt} failed: {e!r}")
