@@ -4,7 +4,7 @@
 - يقرأ المفاتيح من env ثم .env ثم st.secrets (إن وُجدت)
 - يضبط base_url تلقائيًا (Groq/OpenRouter) إذا لم يُمرَّر OPENAI_BASE_URL
 - يوفّر: make_llm_client, pick_models, chat_once
-- يدعم سلسلة موديلات (comma-separated) مع دوران تلقائي + remap للأسماء القديمة.
+- يدعم سلسلة موديلات (comma/newline/semicolon) مع دوران تلقائي + remap للأسماء القديمة/المتوقفة.
 """
 
 from __future__ import annotations
@@ -34,7 +34,6 @@ def _bootstrap_env() -> None:
 
     # 2) st.secrets (Streamlit) — لا نكتب فوق env إن كان موجود
     try:
-        # تجنّب رسالة "No secrets files found" ليس ضروريًا، لكنها غير مؤذية
         import streamlit as st  # type: ignore
         secrets = dict(getattr(st, "secrets", {})) or {}
         def _pull(k: str):
@@ -65,24 +64,36 @@ except Exception as e:
 
 # --- خرائط النماذج (حلّ تلقائي لإيقافات/أسماء قديمة) ---
 _MODEL_REMAP: Dict[str, str] = {
-    # Groq: إيقافات قديمة -> بدائل جديدة
-    "llama3-70b-8192": "llama-3.1-70b-versatile",
-    "llama3-8b-8192":  "llama-3.1-8b-instant",
-    "llama3-70b":      "llama-3.1-70b-versatile",
-    "llama3-8b":       "llama-3.1-8b-instant",
+    # Groq: أسماء قديمة -> بدائل حيّة
+    "llama3-70b-8192":            "llama-3.1-70b",
+    "llama3-8b-8192":             "llama-3.1-8b-instant",
+    "llama3-70b":                 "llama-3.1-70b",
+    "llama3-8b":                  "llama-3.1-8b-instant",
+    "llama-3.2-90b-text-preview": "llama-3.1-70b",
+    "llama-3.1-70b-versatile":    "llama-3.1-70b",   # تم إيقاف versatile
 }
 
 def _remap_model(name: str) -> str:
+    name = (name or "").strip()
     return _MODEL_REMAP.get(name, name)
 
 def _split_models_csv(s: str) -> List[str]:
-    """يفصل سلسلة موديلات مفصولة بفواصل، ويشيل الفراغات والتكرار ويحافظ على الترتيب."""
+    """
+    يفصل سلسلة موديلات (comma/newline/semicolon) ويشيل:
+    - الفراغات
+    - التكرارات (يحافظ على الترتيب)
+    - أي بادئة على شكل key=value (نأخذ ما بعد '=')
+    """
     seen, out = set(), []
-    for part in re.split(r"[,\n]+", s or ""):
-        mid = part.strip()
-        if mid and mid not in seen:
-            out.append(mid)
-            seen.add(mid)
+    for part in re.split(r"[,\n;]+", s or ""):
+        tok = part.strip()
+        if not tok:
+            continue
+        if "=" in tok:  # يصلّح أخطاء مثل: CHAT_MODEL=llama-3.1-70b
+            tok = tok.split("=", 1)[-1].strip()
+        if tok and tok not in seen:
+            out.append(tok)
+            seen.add(tok)
     return out
 
 def make_llm_client() -> Optional[OpenAI]:
@@ -111,10 +122,10 @@ def make_llm_client() -> Optional[OpenAI]:
     # ترويسات OpenRouter
     default_headers: Dict[str, str] = {}
     if is_openrouter:
-        if os.getenv("OPENROUTER_REFERRER"):
-            default_headers["HTTP-Referer"] = os.getenv("OPENROUTER_REFERRER")  # type: ignore
-        if os.getenv("OPENROUTER_APP_TITLE"):
-            default_headers["X-Title"] = os.getenv("OPENROUTER_APP_TITLE")  # type: ignore
+        ref = os.getenv("OPENROUTER_REFERRER")
+        title = os.getenv("OPENROUTER_APP_TITLE")
+        if ref:   default_headers["HTTP-Referer"] = ref  # type: ignore
+        if title: default_headers["X-Title"] = title     # type: ignore
 
     kw: Dict[str, Any] = {"api_key": key}
     if base: kw["base_url"] = base
@@ -134,37 +145,38 @@ def make_llm_client() -> Optional[OpenAI]:
 def pick_models() -> Tuple[str, str]:
     """
     يحدد موديلات المحادثة الافتراضية حسب المزود.
-    ملاحظة: تقدر تحط أكثر من موديل في CHAT_MODEL مفصولة بفواصل.
+    ملاحظة: تقدر تحط أكثر من موديل في CHAT_MODEL مفصولة بفواصل/أسطر/فواصل منقوطة.
     """
     using_groq = bool(
         os.getenv("GROQ_API_KEY")
         or str(os.getenv("OPENAI_BASE_URL", "")).startswith("https://api.groq.com")
     )
+
     if using_groq:
+        # **تجنّب النماذج الـ preview أو المتوقفة افتراضياً**
         chain_default = ",".join([
-            "llama-3.2-90b-text-preview",   # قد تُوقف لاحقاً
-            "llama-3.1-70b-versatile",
+            "llama-3.1-70b",
             "llama-3.1-8b-instant",
             "mixtral-8x7b-32768",
             "gemma2-9b-it",
         ])
-        main_default = chain_default
-        fb_default   = "llama-3.1-8b-instant"
+        fb_default = "llama-3.1-8b-instant"
     else:
-        main_default = "gpt-4o,gpt-4o-mini,gpt-4.1-mini"
-        fb_default   = "gpt-4o-mini"
+        chain_default = ",".join(["gpt-4o", "gpt-4o-mini", "gpt-4.1-mini"])
+        fb_default = "gpt-4o-mini"
 
-    main = os.getenv("CHAT_MODEL", main_default).strip()
-    fb   = os.getenv("CHAT_MODEL_FALLBACK", fb_default).strip()
+    raw_main = (os.getenv("CHAT_MODEL", chain_default) or "").strip()
+    raw_fb   = (os.getenv("CHAT_MODEL_FALLBACK", fb_default) or "").strip()
 
-    # remap لكل عنصر في السلسلة
-    chain = [_remap_model(x) for x in _split_models_csv(main)]
-    if fb:
-        fb = _remap_model(fb)
-        if fb not in chain:
-            chain.append(fb)
-    main_chain = ",".join(chain)
+    # نظّف السلاسل ثم remap لكل عنصر
+    chain = [_remap_model(x) for x in _split_models_csv(raw_main)]
+    fb    = _remap_model((_split_models_csv(raw_fb)[:1] or [fb_default])[0])
 
+    # ضمّن fallback ضمن السلسلة لو مش موجود
+    if fb and fb not in chain:
+        chain.append(fb)
+
+    main_chain = ",".join(chain) if chain else fb
     _log(f"MODELS -> main={main_chain}, fb={fb}")
     return (main_chain, fb)
 
@@ -183,13 +195,14 @@ def chat_once(
     seed: Optional[int] = None,
 ) -> str:
     """
-    مكالمة دردشة واحدة مع دوران تلقائي على سلسلة موديلات (لو تم تمريرها بفواصل).
-    - عند 400 model_decommissioned/invalid/404 → نجرب الموديل التالي مباشرةً.
+    مكالمة دردشة واحدة مع دوران تلقائي على سلسلة موديلات (لو تم تمريرها).
+    - عند 400/404 بسبب model_decommissioned/model not found/unknown → نجرب الموديل التالي فورًا.
     - عند 400 رفض باراميترات (top_p/penalties) نحذفها ثم نعيد المحاولة لنفس الموديل.
     """
     if client is None:
         raise RuntimeError("لا يوجد عميل LLM (المفتاح غير مضبوط أو فشل التهيئة)")
 
+    # ابنِ قائمة المرشحين
     candidate_models = [_remap_model(x) for x in _split_models_csv(model)]
     if not candidate_models:
         raise RuntimeError("لم يتم توفير أي موديل صالح في 'model'.")
@@ -224,9 +237,11 @@ def chat_once(
                     resp = client_t.chat.completions.create(**kwargs)
                 except Exception as inner_e:
                     msg = str(inner_e)
+                    low = msg.lower()
+
                     # رفض باراميترات — جرّب نفس الموديل بدون penalties وبـ top_p=1
-                    if ("400" in msg) and (("bad request" in msg.lower()) or ("invalid" in msg.lower())) and not any(
-                        k in msg.lower() for k in ["model_decommissioned", "no such model", "model not found"]
+                    if ("400" in msg) and (("bad request" in low) or ("invalid" in low)) and not any(
+                        k in low for k in ["model_decommissioned", "no such model", "model not found", "unknown model", "does not exist", "404"]
                     ):
                         _log("retrying without penalties/top_p due to provider param rejection…")
                         kwargs.pop("presence_penalty", None)
@@ -244,10 +259,13 @@ def chat_once(
                 emsg = str(e).lower()
                 _log(f"chat attempt#{attempt} failed on {model_id}: {e!r}")
 
-                # إذا الموديل متوقف/غير موجود → اطلع من حلقة المحاولات وجرب اللي بعده
-                if any(k in emsg for k in ["model_decommissioned", "no such model", "model not found", "unknown model", "does not exist", "404"]):
+                # الموديل متوقف/غير موجود → انتقل للمرشح التالي فورًا
+                if any(k in emsg for k in [
+                    "model_decommissioned", "no such model", "model not found", "unknown model",
+                    "does not exist", "404"
+                ]):
                     _log(f"model looks unavailable: {model_id} → trying next candidate (if any)…")
-                    break  # انتقل للموديل التالي مباشرةً
+                    break  # إلى الموديل التالي
 
                 # وإلا → إعادة محاولة لنفس الموديل (exponential backoff)
                 if attempt < retries:
