@@ -514,8 +514,11 @@ _SENSORY = [
     "تعرّق","شدّ","مرونة","هدوء","تركيز","تدفّق","انسجام","ثِقل","خِفّة",
     "إحساس","امتداد","حرق لطيف","صفاء","تماسك"
 ]
+# ⬅️ ريجيكس موحّد لكشف الأسماء/العبارات الجنرك بالعربي/الإنجليزي
 _GENERIC_LABEL_RE = re.compile(
-    r"(impress\w*\s+compact|generic\s+(sport|identity)|basic\s+flow|simple\s+flow|body\s+flow)",
+    r"(impress\w*\s+compact|generic\s+(sport|identity)|basic\s+flow|simple\s+flow|body\s+flow)"
+    r"|(?:\bgeneric\b|\bbasic\b|\bsimple\b|\bidentity\b|\bflow\b|\bmovement\b|\bsport\b)"
+    r"|(?:عام(?:ة)?)|(?:بسيط(?:ة)?)|(?:هوية)|(?:تدفق)|(?:حركة)",
     re.IGNORECASE
 )
 
