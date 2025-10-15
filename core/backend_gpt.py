@@ -59,6 +59,11 @@ except Exception as e:
 LLM_CLIENT = make_llm_client()
 
 # اختَر سلسلة الموديلات + موديل fallback (مع Fallback واضح لو تعثّر pick_models)
+if not CHAT_MODEL:
+    CHAT_MODEL = CHAT_MODEL_FALLBACK
+if not CHAT_MODEL:
+    _err("No chat model configured")
+    return []
 CHAT_MODEL = None
 CHAT_MODEL_FALLBACK = None
 try:
