@@ -58,27 +58,44 @@ except Exception as e:
 # ابنِ العميل مرّة واحدة (OpenRouter/Groq/OpenAI حسب المتغيرات البيئية)
 LLM_CLIENT = make_llm_client()
 
-# اختَر سلسلة الموديلات + موديل fallback (مع Fallback واضح لو تعثّر pick_models)
-if not CHAT_MODEL:
-    CHAT_MODEL = CHAT_MODEL_FALLBACK
-if not CHAT_MODEL:
-    _err("No chat model configured")
-    return []
-CHAT_MODEL = None
-CHAT_MODEL_FALLBACK = None
-try:
-    _main_chain, _fallback = pick_models()   # يرجّع Tuple[str,str]
-    CHAT_MODEL, CHAT_MODEL_FALLBACK = _main_chain, _fallback
-except Exception as e:
-    print(f"[WARN] pick_models failed: {e!r} — using env/defaults")
-    CHAT_MODEL = os.getenv(
-        "CHAT_MODEL",
-        "meta-llama/llama-3.3-70b-instruct:free,mistralai/mixtral-8x7b:free"
-    )
-    CHAT_MODEL_FALLBACK = os.getenv(
-        "CHAT_MODEL_FALLBACK",
-        "mistralai/mixtral-8x7b:free"
-    )
+# ========= اختيار الموديلات (مع Fallback سليم) =========
+CHAT_MODEL: Optional[str] = None
+CHAT_MODEL_FALLBACK: Optional[str] = None
+
+def _init_models() -> Tuple[str, str]:
+    """
+    يحاول أخذ السلسلة الأساسية + موديلFallback من pick_models(). 
+    وإن فشل، يرجع لقيم المتغيرات البيئية مع افتراضات آمنة.
+    يضمن عدم رجوع سلاسل فارغة ويلغي أي `return` على مستوى الموديول.
+    """
+    main: str = ""
+    fb: str = ""
+
+    # 1) حاول من pick_models()
+    try:
+        main, fb = pick_models()  # متوقَّع: Tuple[str, str]
+    except Exception as e:
+        print(f"[WARN] pick_models failed: {e!r} — using env/defaults")
+        main = os.getenv(
+            "CHAT_MODEL",
+            "meta-llama/llama-3.3-70b-instruct:free,mistralai/mixtral-8x7b:free",
+        ) or ""
+        fb = os.getenv("CHAT_MODEL_FALLBACK", "") or ""
+
+    # 2) ضمانات نهائية
+    if not main:
+        # لو ما توفر main بأي شكل، نرفع خطأ واضح
+        raise RuntimeError(
+            "No chat model configured. Set CHAT_MODEL env var or implement pick_models()."
+        )
+    if not fb:
+        # fallback إلى main لو ما توفر Fallback منفصل
+        fb = main
+
+    return main, fb
+
+# فعليًا نهيّئ القيم هنا
+CHAT_MODEL, CHAT_MODEL_FALLBACK = _init_models()
 
 print(f"[BOOT] LLM READY? {'YES' if LLM_CLIENT else 'NO'} | main={CHAT_MODEL} fb={CHAT_MODEL_FALLBACK}")
 
