@@ -1329,10 +1329,13 @@ def _format_card(c: Dict[str, Any], lang: str) -> str:
 def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العربية") -> List[str]:
     """
     واجهة موحّدة لـ app.py: ترجع 3 بطاقات نصّية (List[str]).
-    - Evidence Gate → followups إن لزم
-    - KB-first
-    - LLM fallback (إن توفر مفتاح)
-    - Sanitize + dedupe + blacklist global uniqueness
+    المسار بعد التحديث:
+      - Evidence Gate → followups إن لزم
+      - Analysis (encoded + silent + intents)
+      - KB-first
+      - Hybrid (لو ناقص) → تحويل مرشّحات الهجين إلى بطاقات كاملة
+      - LLM fallback (لو ما اكتفى)
+      - Sanitize + dedupe + global-uniqueness + render
     """
     t0 = time.perf_counter()
     timings: Dict[str, int] = {}
@@ -1368,32 +1371,155 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     timings["kb_ms"] = int((time.perf_counter() - kb_t0) * 1000)
     _dbg(f"kb_candidates: {len(cards_struct)}")
 
-    # 2) Fallback LLM لو ناقص
+    # 1.1) Hybrid (لو ناقص) — يحوّل المرشّحين إلى بطاقات كاملة ومطابقة للسياسات
+    def _traits_for_hybrid(analysis: Dict[str, Any], answers: Dict[str, Any]) -> Dict[str, float]:
+        axes = ((analysis or {}).get("encoded_profile") or {}).get("axes", {}) or {}
+        # خرائط 0..1 بسيطة من محاور Layer-Z
+        def clamp01(x: float) -> float:
+            try: 
+                return 0.0 if x is None else max(0.0, min(1.0, float(x)))
+            except Exception:
+                return 0.0
+        # calm_adrenaline: +1 = أدرينالين ⇒ risk أعلى
+        risk = clamp01((float(axes.get("calm_adrenaline", 0.0)) + 1.0) / 2.0)
+        # solo_group: +1 = اجتماعي ⇒ social أعلى
+        social = clamp01((float(axes.get("solo_group", 0.0)) + 1.0) / 2.0)
+        # tech_intuition: - = تقنية/دقّة ⇒ نرفع focus
+        ti = float(axes.get("tech_intuition", axes.get("technical_intuitive", 0.0)) or 0.0)
+        focus_base = 0.55 + (0.25 if ti <= -0.35 else 0.0)
+        # repeat_variety: +1 = يِرتاح للتكرار → novelty أقل
+        rv = float(axes.get("repeat_variety", 0.0) or 0.0)
+        novelty = clamp01(1.0 - ((rv + 1.0) / 2.0))
+        # stamina تقدير مبدئي ثابت (يُحسّن لاحقًا مع encoder/answers)
+        stamina = 0.6
+        return {
+            "focus": clamp01(focus_base),
+            "risk": risk,
+            "social": social,
+            "novelty": novelty,
+            "stamina": stamina,
+        }
+
+    def _hybrid_cards_to_full(hy: List[Dict[str, Any]], lang: str, traits_num: Dict[str, float]) -> List[Dict[str, Any]]:
+        """يبني بطاقات كاملة من مخرجات الهجين {id,name,why,slot} مع نصوص آمنة وغنية تكفي فلاتر الجودة."""
+        out: List[Dict[str, Any]] = []
+        solo_mode = "Solo" if traits_num.get("social", 0) < 0.4 else "Solo/Team"
+        # قوالب قصيرة (AR/EN)
+        def t_ar(name: str, why: str) -> Dict[str, Any]:
+            looks = (
+                f"مسار قصير واضح يعكس شخصية {name}: قراءة زوايا، تبديل إيقاع محسوب، قرار خاطف عندما يهدأ الإيقاع. "
+                f"الهدف أن تحسّ بتحكّم هادئ مع يقظة ذهنية، بدون ذكر وقت/تكلفة/مكان."
+            )
+            inner = "ثبات نفس، تركيز نظرة، هدوء عصبي مع لمعة تنافس لذيذة عند اتخاذ القرار."
+            first = "ثبّت الإيقاع الشخصي ثم جرّب ظهور/انسحاب قصير، وراقب النفس قبل القرار."
+            prog = ["قرارات أوضح تحت ضغط", "نعومة تبديل السرعات", "ثبات نظرة وتوازن"]
+            skills = ["قراءة زاوية", "تبديل إيقاع", "قرار سريع", "توازن", "تنفّس هادئ"]
+            return {
+                "sport_label": name,
+                "what_it_looks_like": looks,
+                "inner_sensation": inner,
+                "why_you": _scrub_forbidden(why) or "محفَّز بتركيب ذهني يناسب شخصيتك.",
+                "first_week": first,
+                "progress_markers": prog,
+                "win_condition": "إنجاز مهمة واضحة دون انكشاف أو أخطاء متتالية.",
+                "core_skills": skills,
+                "mode": "فردي" if solo_mode == "Solo" else "فردي/جماعي",
+                "variant_vr": "نسخة VR اختيارية تركز على تتبّع الزاوية والمؤشرات البصرية.",
+                "variant_no_vr": "نسخة بلا VR مع عوائق خفيفة ومسارات ظلّ آمنة.",
+                "difficulty": 2 if traits_num.get("risk", 0) < 0.3 else 3,
+            }
+        def t_en(name: str, why: str) -> Dict[str, Any]:
+            looks = (
+                f"A short, clear circuit reflecting {name}: read angles, controlled tempo shifts, "
+                f"and snap decisions when the rhythm settles — with no time/cost/location mentions."
+            )
+            inner = "Steady breath, locked gaze, calm nervous system with a pleasant competitive spark."
+            first = "Set a personal rhythm, rehearse brief appear/retreat, anchor breath before decisions."
+            prog = ["Clearer choices under stress", "Smoother tempo changes", "Gaze stability and balance"]
+            skills = ["angle reading", "tempo switch", "fast decision", "balance", "quiet breath"]
+            return {
+                "sport_label": name,
+                "what_it_looks_like": looks,
+                "inner_sensation": inner,
+                "why_you": _scrub_forbidden(why) or "Motivated by a mental structure that fits you.",
+                "first_week": first,
+                "progress_markers": prog,
+                "win_condition": "Complete a clear mission without exposure or consecutive mistakes.",
+                "core_skills": skills,
+                "mode": "Solo" if solo_mode == "Solo" else "Solo/Team",
+                "variant_vr": "Optional VR variant focusing on angle tracking and visual cues.",
+                "variant_no_vr": "No-VR variant with light obstacles and shadow lanes.",
+                "difficulty": 2 if traits_num.get("risk", 0) < 0.3 else 3,
+            }
+        for h in hy[:3]:
+            name = str(h.get("name") or h.get("id") or "Sport Identity").strip()
+            why  = str(h.get("why") or "").strip()
+            card = t_ar(name, why) if lang == "العربية" else t_en(name, why)
+            out.append(_sanitize_record(card))
+        return out
+
     if len(cards_struct) < 3:
-        _dbg(f"fallback: kb_candidates={len(cards_struct)} (<3) → calling LLM")
+        try:
+            traits_num = _traits_for_hybrid(analysis, answers)
+        except Exception:
+            traits_num = {"focus": 0.6, "risk": 0.3, "social": 0.4, "novelty": 0.4, "stamina": 0.6}
+
+        # نجهّز z_signals مختصرة للهجين
+        z_signals = {
+            "silent_drivers": list(analysis.get("silent_drivers") or []),
+            "axes": ((analysis.get("encoded_profile") or {}).get("axes") or {}),
+            "intents": list(analysis.get("z_intent") or []),
+        }
+
+        # استدعِ الهجين إن كان معرّفًا
+        hy_cards_struct: List[Dict[str, Any]] = []
+        try:
+            _hybrid_fn = globals().get("hybrid_recommend", None)
+            if callable(_hybrid_fn):
+                # لاحظ: لغة الهجين "ar"/"en" قصيرة
+                _lang_short = "ar" if lang == "العربية" else "en"
+                hy = _hybrid_fn(
+                    answers=answers,
+                    traits=traits_num,
+                    z_signals=z_signals,
+                    user_id=user_id,
+                    lang=_lang_short,
+                    client=LLM_CLIENT,                 # لو None يكمّل fallback داخليًا
+                    model=CHAT_MODEL_FALLBACK or CHAT_MODEL
+                ) or []
+                if hy:
+                    hy_cards_struct = _hybrid_cards_to_full(hy, lang, traits_num)
+                    _dbg(f"hybrid: produced {len(hy_cards_struct)} cards")
+        except Exception as e:
+            _warn(f"hybrid step failed: {e}")
+
+        if hy_cards_struct:
+            cards_struct += hy_cards_struct
+
+    # 2) LLM fallback لو ما اكتفى حتى بعد الهجين
+    if len(cards_struct) < 3:
+        _dbg(f"fallback: after KB+Hybrid got {len(cards_struct)} (<3) → calling LLM")
         llm_t0 = time.perf_counter()
         extra = _llm_fallback(user_id, analysis, answers, lang)
         timings["llm_ms"] = int((time.perf_counter() - llm_t0) * 1000)
         _dbg(f"fallback: llm_returned={len(extra)} cards")
         cards_struct += extra
     else:
-        timings["llm_ms"] = 0
+        timings["llm_ms"] = timings.get("llm_ms", 0)
 
     if not cards_struct:
-        _dbg("no_candidates_after_kb_llm → using static fallbacks")
+        _dbg("no_candidates_after_kb_hybrid_llm → using static fallbacks")
         cards_struct = [_fallback_identity(i, lang) for i in range(3)]
 
-    # 3) جوده + fill + dedupe
+    # 3) جودة + fill + dedupe
     post_t0 = time.perf_counter()
     cards_struct = _fill_defaults_batch(cards_struct, lang)
     _dbg(f"quality_filter: input_cards={len(cards_struct)}")
     before_q = len(cards_struct)
-    cards_struct = _quality_filter(cards_struct)   # تطبع أسباب الرفض بطاقة بطاقة عند REC_DEBUG=1 (لو استبدلت الدالة كما أرسلتها لك)
+    cards_struct = _quality_filter(cards_struct)
     _dbg(f"quality_filter: kept={len(cards_struct)} removed={before_q - len(cards_struct)}")
 
     cards_struct = _hard_dedupe_and_fill(cards_struct, lang)
-
-    # ملاحظة: _hard_dedupe_and_fill يضمن 3 بطاقات حتى لو قلّ العدد بعد الفلترة
     timings["post_ms"] = int((time.perf_counter() - post_t0) * 1000)
 
     # 4) Global uniqueness via blacklist
@@ -1414,7 +1540,7 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     ]
     timings["scrub_ms"] = int((time.perf_counter() - scrub_t0) * 1000)
 
-    # 6) Render → List[str] (force-safe strings)
+    # 6) Render → List[str]
     render_t0 = time.perf_counter()
     rendered = [_format_card(c, lang) for c in cards_struct[:3]]
     rendered = [str(x) for x in rendered]
@@ -1444,11 +1570,10 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         )
     )
 
-        # 7) تسجيل اختياري للنتيجة
+    # 7) تسجيل اختياري
     try:
         from core.user_logger import log_recommendation_result
-        # (اختياري) مرّر eg/intents لو تبي
-        eg_info = eg  # من مرحلة Evidence Gate أعلى الدالة
+        eg_info = eg
         log_recommendation_result(
             user_id=user_id,
             answers=answers,
