@@ -77,6 +77,15 @@ except Exception as e:
 
 print(f"[BOOT] LLM READY? {'YES' if LLM_CLIENT else 'NO'} | main={CHAT_MODEL} fb={CHAT_MODEL_FALLBACK}")
 
+# ========= Hybrid import (optional) =========
+try:
+    from core.hybrid import hybrid_recommend  # type: ignore
+except Exception:
+    try:
+        from logic.hybrid import hybrid_recommend  # type: ignore
+    except Exception:
+        hybrid_recommend = None  # type: ignore
+        
 # ========= App Config =========
 try:
     from core.app_config import get_config
