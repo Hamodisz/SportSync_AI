@@ -1,0 +1,103 @@
+{
+  "version": "1.0.0",
+  "updated_at": "2025-10-15T00:00:00Z",
+  "items": [
+    {
+      "id": "tactical_immersive_combat",
+      "label": "Tactical Immersive Combat",
+      "aliases": ["قتال تكتيكي اندماجي", "تكتيكي VR"],
+      "prior": 0.55,
+      "risk_level": "high",
+      "trait_weights": {
+        "tactical_mindset": 0.55,
+        "precision": 0.35,
+        "sensation_seeking": 0.40,
+        "prefers_team": 0.15,
+        "prefers_solo": 0.15,
+        "vr_inclination": 0.35,
+        "low_repetition_tolerance": 0.20,
+        "needs_quick_wins": 0.15
+      },
+      "intent_boosts": {
+        "vr": 0.25,
+        "قتالي": 0.20,
+        "combat": 0.20
+      }
+    },
+    {
+      "id": "stealth_flow_missions",
+      "label": "Stealth-Flow Missions",
+      "aliases": ["مهام تدفق خفي", "تخفّي انسيابي"],
+      "prior": 0.60,
+      "risk_level": "medium",
+      "trait_weights": {
+        "tactical_mindset": 0.45,
+        "calm_regulation": 0.40,
+        "sustained_attention": 0.25,
+        "prefers_solo": 0.30,
+        "precision": 0.15,
+        "likes_puzzles": 0.20,
+        "low_repetition_tolerance": 0.10
+      },
+      "intent_boosts": {
+        "stealth": 0.25,
+        "تخفّي": 0.25
+      }
+    },
+    {
+      "id": "mind_trap_puzzles",
+      "label": "Mind-Trap Puzzles in Motion",
+      "aliases": ["ألغاز حركة ذكية", "خداع بصري حركي"],
+      "prior": 0.52,
+      "risk_level": "low",
+      "trait_weights": {
+        "likes_puzzles": 0.55,
+        "sustained_attention": 0.35,
+        "calm_regulation": 0.20,
+        "precision": 0.15,
+        "prefers_solo": 0.25,
+        "needs_quick_wins": 0.10
+      },
+      "intent_boosts": {
+        "ألغاز/خداع": 0.25,
+        "puzzles": 0.25
+      }
+    },
+    {
+      "id": "range_precision_circuit",
+      "label": "Range Precision Circuit",
+      "aliases": ["دقة مسار هادئ", "حلقة تصويب دقيقة"],
+      "prior": 0.50,
+      "risk_level": "low",
+      "trait_weights": {
+        "precision": 0.60,
+        "calm_regulation": 0.35,
+        "sustained_attention": 0.20,
+        "prefers_solo": 0.25,
+        "needs_quick_wins": 0.10
+      },
+      "intent_boosts": {
+        "دقة/تصويب": 0.25,
+        "precision": 0.25
+      }
+    },
+    {
+      "id": "grip_balance_ascent",
+      "label": "Grip & Balance Ascent",
+      "aliases": ["صعود قبضة وتوازن"],
+      "prior": 0.48,
+      "risk_level": "medium",
+      "trait_weights": {
+        "sustained_attention": 0.30,
+        "precision": 0.25,
+        "calm_regulation": 0.30,
+        "prefers_solo": 0.20,
+        "needs_quick_wins": 0.10,
+        "low_repetition_tolerance": 0.10
+      },
+      "intent_boosts": {
+        "تحدّي تقني": 0.15
+      }
+    }
+  ]
+}
