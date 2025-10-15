@@ -55,13 +55,25 @@ try:
 except Exception as e:
     raise RuntimeError("ملف core/llm_client.py مفقود أو فيه خطأ. تأكد من إضافته.") from e
 
+# ابنِ العميل مرّة واحدة (OpenRouter/Groq/OpenAI حسب المتغيرات البيئية)
 LLM_CLIENT = make_llm_client()
+
+# اختَر سلسلة الموديلات + موديل fallback (مع Fallback واضح لو تعثّر pick_models)
+CHAT_MODEL = None
+CHAT_MODEL_FALLBACK = None
 try:
-    CHAT_MODEL, CHAT_MODEL_FALLBACK = pick_models()  # يرجّع Tuple
-except Exception:
-    _models = pick_models()
-    CHAT_MODEL = getattr(_models, "get", lambda *_: None)("main")
-    CHAT_MODEL_FALLBACK = getattr(_models, "get", lambda *_: None)("fallback")
+    _main_chain, _fallback = pick_models()   # يرجّع Tuple[str,str]
+    CHAT_MODEL, CHAT_MODEL_FALLBACK = _main_chain, _fallback
+except Exception as e:
+    print(f"[WARN] pick_models failed: {e!r} — using env/defaults")
+    CHAT_MODEL = os.getenv(
+        "CHAT_MODEL",
+        "meta-llama/llama-3.3-70b-instruct:free,mistralai/mixtral-8x7b:free"
+    )
+    CHAT_MODEL_FALLBACK = os.getenv(
+        "CHAT_MODEL_FALLBACK",
+        "mistralai/mixtral-8x7b:free"
+    )
 
 print(f"[BOOT] LLM READY? {'YES' if LLM_CLIENT else 'NO'} | main={CHAT_MODEL} fb={CHAT_MODEL_FALLBACK}")
 
