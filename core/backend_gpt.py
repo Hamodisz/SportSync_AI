@@ -65,9 +65,9 @@ CHAT_MODEL_FALLBACK: Optional[str] = None
 
 def _init_models() -> Tuple[str, str]:
     """
-    يحاول أخذ السلسلة الأساسية + موديلFallback من pick_models(). 
+    يحاول أخذ السلسلة الأساسية + موديل fallback من pick_models().
     وإن فشل، يرجع لقيم المتغيرات البيئية مع افتراضات آمنة.
-    يضمن عدم رجوع سلاسل فارغة ويلغي أي `return` على مستوى الموديول.
+    يضمن عدم رجوع سلاسل فارغة.
     """
     main: str = ""
     fb: str = ""
@@ -85,13 +85,9 @@ def _init_models() -> Tuple[str, str]:
 
     # 2) ضمانات نهائية
     if not main:
-        # لو ما توفر main بأي شكل، نرفع خطأ واضح
-        raise RuntimeError(
-            "No chat model configured. Set CHAT_MODEL env var or implement pick_models()."
-        )
+        raise RuntimeError("No chat model configured. اضبط CHAT_MODEL أو فعّل pick_models().")
     if not fb:
-        # fallback إلى main لو ما توفر Fallback منفصل
-        fb = main
+        fb = main  # استخدم نفس السلسلة كـ fallback عند اللزوم
 
     return main, fb
 
