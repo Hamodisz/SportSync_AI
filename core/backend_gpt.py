@@ -23,6 +23,7 @@ import os, json, re, hashlib, importlib, time, random
 from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
 from datetime import datetime
+from logic.retrieval.candidate_selector import select_top as _select_candidates
 
 # ========= Job Manager (اختياري) =========
 try:
@@ -1399,11 +1400,30 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     except Exception:
         pass
 
-    # 1) KB candidates
+        # 0.2) Catalog-based ranking (candidate_selector)
+    try:
+        traits_num_for_rank = _derive_binary_traits(analysis, answers, lang)
+        _ranked = _select_candidates(
+            traits=traits_num_for_rank,
+            intents=analysis.get("z_intent", []),
+            k=5,
+            guards={"avoid_high_risk_for_anxiety": True}
+        )
+        _prelabels = [r["id"] for r in _ranked[:3] if r.get("id")]
+    except Exception:
+        _prelabels = []
+        
+        # 1) KB candidates
     kb_t0 = time.perf_counter()
     cards_struct = _kb_candidates(analysis, answers, lang)
     timings["kb_ms"] = int((time.perf_counter() - kb_t0) * 1000)
-    _dbg(f"kb_candidates: {len(cards_struct)}")
+
+    # اكتمال بواسطة قوالب الكتالوج لو ناقص
+    if len(cards_struct) < 3 and _prelabels:
+        for lid in _prelabels:
+            t = _template_for_label(lid, lang)
+            if t:
+                cards_struct.append(t)
 
     # 1.1) Hybrid (لو ناقص) — يحوّل المرشّحين إلى بطاقات كاملة ومطابقة للسياسات
     def _traits_for_hybrid(analysis: Dict[str, Any], answers: Dict[str, Any]) -> Dict[str, float]:
