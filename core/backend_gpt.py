@@ -995,18 +995,26 @@ def _is_forbidden_generic(label: str) -> bool:
     base = _normalize_ar((label or "")).lower()
     return any(g in base for g in _FORBIDDEN_GENERIC)
 
-def _template_for_label(label: str, lang: str) -> Optional[Dict[str, Any]]:
-    L = _canon_label(label)
-    KB_PRESETS = {
+def _template_for_label(label_or_id: str, lang: str) -> Optional[Dict[str, Any]]:
+    if not label_or_id:
+        return None
+    key_raw = str(label_or_id).strip().lower()
+    key_norm = _canon_label(label_or_id)  # يحوّل underscores لمسافات
+
+    KB_PRESETS_BY_ID = {
         "tactical_immersive_combat": _fallback_identity(0, lang),
         "stealth_flow_missions": _fallback_identity(1, lang),
         "mind_trap_puzzles": _fallback_identity(2, lang),
         "range_precision_circuit": _fallback_identity(3, lang),
         "grip_balance_ascent": _fallback_identity(4, lang),
     }
-    if L in KB_PRESETS:
-        return _sanitize_record(_fill_defaults(KB_PRESETS[L], lang))
-    return None
+    # نفس القوالب لكن بمفاتيح مُطَبَّعة (بدون underscores)
+    KB_PRESETS_BY_NORM = {
+        _canon_label(k): v for k, v in KB_PRESETS_BY_ID.items()
+    }
+
+    rec = KB_PRESETS_BY_ID.get(key_raw) or KB_PRESETS_BY_NORM.get(key_norm)
+    return _sanitize_record(_fill_defaults(rec, lang)) if rec else None
 
 # ====== Blacklist (persistent, JSON) =========================================
 def _load_blacklist() -> dict:
