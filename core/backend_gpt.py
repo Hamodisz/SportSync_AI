@@ -23,8 +23,15 @@ import os, json, re, hashlib, importlib, time, random
 from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
 from datetime import datetime
-from logic.retrieval.candidate_selector import select_top as _select_candidates
 
+# ===== Retrieval: candidate selector (آمن) =====
+try:
+    from logic.retrieval.candidate_selector import select_top as _select_candidates
+except Exception:
+    def _select_candidates(**kwargs):
+        # لو الموديول غير متوفر، رجّع قائمة فاضية ولا تكسر البايبلاين
+        return []
+        
 # ========= Job Manager (اختياري) =========
 try:
     from core.job_manager import create_job, read_job, update as job_update, run_in_thread
