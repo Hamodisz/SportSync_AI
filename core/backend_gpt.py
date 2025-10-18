@@ -1654,4 +1654,33 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     except Exception:
         pass
 
+    # === Debug snapshot to disk (no Render logs needed) ===
+try:
+    debug_payload = {
+        "ts": datetime.utcnow().isoformat()+"Z",
+        "egate": eg,
+        "analysis": {
+            "silent_drivers": list(analysis.get("silent_drivers") or []),
+            "intents": list(analysis.get("z_intent") or []),
+            "axes": ((analysis.get("encoded_profile") or {}).get("axes") or {}),
+        },
+        "timings_ms": timings,
+        "models": {
+            "main": CHAT_MODEL,
+            "fallback": CHAT_MODEL_FALLBACK,
+        },
+        "cards": [
+            {
+                "label": str(c.get("sport_label","")),
+                "source": str(c.get("source","?")),
+                "mode": str(c.get("mode","")),
+                "difficulty": int(c.get("difficulty", 0)),
+            }
+            for c in cards_struct[:3]
+        ],
+    }
+    _save_json_atomic(DATA_DIR / "last_run.json", debug_payload)
+except Exception as e:
+    _warn(f"debug snapshot failed: {e}")
+    
     return rendered
