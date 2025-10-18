@@ -58,11 +58,159 @@ def _job_note(job_id: str,
         print(f"[JOB_NOTE][WARN] {e}")
 
 # ========= LLM Client (OpenAI-compatible عبر طبقة مفصولة) =========
-try:
-    from core.llm_client import make_llm_client, pick_models, chat_once
-except Exception as e:
-    raise RuntimeError("ملف core/llm_client.py مفقود أو فيه خطأ. تأكد من إضافته.") from e
+def hybrid_recommend(
+    *,
+    answers: dict,
+    traits: dict,
+    z_signals: dict,
+    user_id: str = "web_user",
+    lang: str = "العربية",
+    client=None,                 # LLM client (اختياري)
+    model: str | None = None,    # model name (اختياري)
+    k: int = 5,
+) -> list[dict]:
+    """
+    تُرجع عناصر بسيطة بالشكل:
+      { "id": "<catalog_id>", "name": "<label>", "why": "<one line>", "source": "HYBRID" }
+    """
+    import os, json, re, time
+    from pathlib import Path
 
+    # --------- ثوابت/مساعدات محلّية داخل الدالّة ----------
+    CATALOG_PATH = os.getenv("SPORTS_CATALOG_PATH", "data/sports_catalog.json")
+    _AR_DIAC_RE = re.compile(r"[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u0640]")
+    _AR_MAP = str.maketrans({"أ":"ا","إ":"ا","آ":"ا","ؤ":"و","ئ":"ي","ة":"ه","ى":"ي"})
+    def _normalize_ar(t: str) -> str:
+        if not isinstance(t, str): t = str(t or "")
+        t = _AR_DIAC_RE.sub("", t).translate(_AR_MAP)
+        return re.sub(r"\s+", " ", t).strip()
+
+    def _short_lang(_l: str) -> str:
+        return "ar" if (_l or "").startswith("الع") else "en"
+
+    def _load_catalog() -> dict:
+        p = Path(CATALOG_PATH)
+        if not p.exists(): return {"items": []}
+        try:
+            return json.loads(p.read_text("utf-8"))
+        except Exception:
+            return {"items": []}
+
+    def _id_to_label_map() -> dict:
+        data = _load_catalog()
+        out = {}
+        for it in data.get("items", []):
+            cid = str(it.get("id") or "").strip()
+            lbl = str(it.get("label") or cid).strip() or cid
+            if cid: out[cid] = lbl
+        return out
+
+    def _mk_local_why(catalog_id: str, _traits: dict, _lang: str) -> str:
+        prec = _traits.get("precision", 0) >= 0.6
+        solo = _traits.get("prefers_solo", 0) >= 0.7
+        tac  = _traits.get("tactical_mindset", 0) >= 0.7
+        calm = _traits.get("calm_regulation", 0) >= 0.6
+        vr   = _traits.get("vr_inclination", 0) >= 0.5
+        puzz = _traits.get("likes_puzzles", 0) >= 0.6
+        if _lang == "العربية":
+            bits = []
+            if tac:  bits.append("تفكير تكتيكي")
+            if prec: bits.append("ميل للدقة")
+            if calm: bits.append("تنظيم نفس هادئ")
+            if puzz: bits.append("تستمتع بالألغاز/الخداع")
+            if solo: bits.append("تركيز فردي يناسبك")
+            if vr:   bits.append("قابلية لخيارات VR")
+            return "، ".join(bits) or "متوافقة مع نمطك الحركي والمعرفي."
+        else:
+            bits = []
+            if tac:  bits.append("tactical thinking")
+            if prec: bits.append("accuracy bias")
+            if calm: bits.append("calm regulation")
+            if puzz: bits.append("likes puzzles/feints")
+            if solo: bits.append("solo focus fits you")
+            if vr:   bits.append("VR-inclined")
+            return ", ".join(bits) or "Matches your motor–cognitive style."
+
+    def _llm_one_liner(_client, _model, label: str, _z: dict, _lang: str, budget_s: float = 6.0) -> str | None:
+        if not _client or not _model: return None
+        sys_ar = "اكتب سطرًا واحدًا يشرح لماذا تناسب هذه الهوية المستخدم. بدون ذكر وقت/تكلفة/مكان/معدات."
+        sys_en = "Write one short line explaining why this sport-identity fits this user. No time/cost/location/equipment."
+        system = sys_ar if _lang == "العربية" else sys_en
+        payload = {
+            "lang": _short_lang(_lang),
+            "label": label,
+            "signals": {
+                "silent_drivers": _z.get("silent_drivers"),
+                "axes": _z.get("axes"),
+                "intents": _z.get("intents"),
+            },
+        }
+        try:
+            # نستعمل نفس طبقة العميل الموجودة عندك
+            from core.llm_client import chat_once
+            txt = chat_once(
+                client=_client,
+                model=_model,
+                messages=[{"role":"system","content":system},
+                          {"role":"user","content":json.dumps(payload, ensure_ascii=False)}],
+                temperature=0.35,
+                timeout_s=max(3.0, min(10.0, float(budget_s))),
+            )
+            if not txt: return None
+            line = re.sub(r"^[\"'\-•\s]+", "", txt.strip())
+            line = re.sub(r"\s+", " ", line).strip()
+            return (line[:217] + "…") if len(line) > 220 else (line or None)
+        except Exception:
+            return None
+
+    # --------- ترشيح من الكتالوج ----------
+    try:
+        # نستدعي select_top من ملفك logic/retrieval/candidate_selector.py
+        from logic.retrieval.candidate_selector import select_top as _select_top
+    except Exception:
+        _select_top = None
+
+    if not callable(_select_top):
+        return []  # نخلي بقية البايبلاين يكمل (KB/LLM fallback خارج هذه الدالة)
+
+    intents = list(z_signals.get("intents") or [])
+    guards = {"avoid_high_risk_for_anxiety": True}
+
+    try:
+        ranked = _select_top(traits=traits or {}, intents=intents, k=max(3, int(k)), guards=guards, path=os.getenv("SPORTS_CATALOG_PATH", "data/sports_catalog.json"))
+    except Exception:
+        ranked = []
+
+    if not ranked:
+        return []
+
+    id2label = _id_to_label_map()
+
+    # --------- نبني الخرج النهائي ----------
+    out: list[dict] = []
+    for it in ranked[:3]:
+        cid = str(it.get("id") or "").strip()
+        name = id2label.get(cid, str(it.get("label") or cid).strip() or cid)
+
+        why = None
+        t0 = time.perf_counter()
+        if client and model:
+            why = _llm_one_liner(client, model, name, z_signals, lang, budget_s=6.0)
+        if not why:
+            why = _mk_local_why(cid, traits or {}, lang)
+
+        out.append({
+            "id": cid or name,
+            "name": name or cid or "Sport Identity",
+            "why": why,
+            "source": "HYBRID",
+        })
+
+        if (time.perf_counter() - t0) > 1.2 and client:
+            # لو أول محاولة طولت، نكمّل الباقي بدون LLM عشان السرعة
+            client = None
+
+    return out
 # ابنِ العميل مرّة واحدة (OpenRouter/Groq/OpenAI حسب المتغيرات البيئية)
 LLM_CLIENT = make_llm_client()
 
