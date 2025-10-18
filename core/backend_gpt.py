@@ -1193,49 +1193,99 @@ def _compact_analysis_for_prompt(analysis: Dict[str, Any], profile: Optional[Dic
 
 # ========= Core: KB-first then LLM fallback =========
 def _kb_candidates(analysis: Dict[str, Any], answers: Dict[str, Any], lang: str) -> List[Dict[str, Any]]:
+    """
+    يرشّح بطاقات من قاعدة المعرفة (KB) بناءً على محاذاة محاور Layer-Z + إشارات النص،
+    ويُعيد حتى 3 عناصر مع وسم مصدرها.
+    """
     profile = (analysis or {}).get("encoded_profile") or {}
     axes = (profile or {}).get("axes") or {}
     signals = _extract_signals(answers, lang)
     ids = KB.get("identities") or []
-    ranked_from_kb: List[Dict[str, Any]] = []
-    if ids:
-        exp = _axes_expectations(axes or {}, lang)
-        scored: List[Tuple[int, Dict[str, Any]]] = []
-        for rec in ids:
-            r = _sanitize_record(rec)
-            blob = " ".join([_norm_text(r.get("what_it_looks_like","")),
-                             _norm_text(r.get("why_you","")),
-                             _norm_text(r.get("first_week",""))]).lower()
-            hit = 0
-            for words in exp.values():
-                if words and any(w.lower() in blob for w in words): hit += 1
-            if signals.get("precision") and ("precision" in blob or "دقه" in blob): hit += 1
-            if signals.get("stealth") and ("stealth" in blob or "تخفي" in blob): hit += 1
-            scored.append((hit, r))
-        scored.sort(key=lambda x: x[0], reverse=True)
-        ranked_from_kb = [s[1] for s in scored[:3]]
-        for r in ranked_from_kb:
-    r["source"] = "KB"
+    if not ids:
+        return []
+
+    exp = _axes_expectations(axes or {}, lang)  # {"calm_adrenaline":[..], "solo_group":[..], ...}
+    scored: List[Tuple[int, Dict[str, Any]]] = []
+
+    for rec in ids:
+        r = _sanitize_record(rec)
+        # نجمع أهم الحقول ككتلة نصية
+        blob = " ".join([
+            _norm_text(r.get("what_it_looks_like", "")),
+            _norm_text(r.get("why_you", "")),
+            _norm_text(r.get("first_week", "")),
+        ])
+        blob_l = (blob or "").lower()
+        blob_n = _normalize_ar(blob_l)
+
+        hit = 0
+        # 1) محاذاة كلمات متوقعة من المحاور
+        for words in (exp or {}).values():
+            if words and any((w.lower() in blob_l) or (_normalize_ar(w).lower() in blob_n) for w in words):
+                hit += 1
+
+        # 2) إشارات صريحة إضافية (عربي/إنجليزي)
+        if signals.get("precision") and (
+            "precision" in blob_l or "دقه" in blob_n or "تصويب" in blob_n or "دقة" in blob
+        ):
+            hit += 1
+
+        if signals.get("stealth") and (
+            "stealth" in blob_l or "تخفي" in blob_n or "تخفّي" in blob or "خفّي" in blob
+        ):
+            hit += 1
+
+        scored.append((hit, r))
+
+    # ترتيب: hit تنازلي → اسم قانوني (لتثبيت الترتيب) → طول الوصف (أطول أفضل)
+    def _canon_name(x: Dict[str, Any]) -> str:
+        return _canonical_label(x.get("sport_label", ""))
+
+    scored.sort(
+        key=lambda t: (
+            -t[0],
+            _canon_name(t[1]),
+            -len(_normalize_ar(
+                " ".join([_norm_text(t[1].get("what_it_looks_like","")),
+                          _norm_text(t[1].get("why_you","")),
+                          _norm_text(t[1].get("first_week",""))])
+            ))
+        )
+    )
+
+    ranked_from_kb = [s[1] for s in scored[:3]]
+    for r in ranked_from_kb:
+        r["source"] = "KB"
     return ranked_from_kb
 
+
 def _llm_fallback(user_id: str, analysis: Dict[str, Any], answers: Dict[str, Any], lang: str) -> List[Dict[str, Any]]:
+    """
+    نادِ الـ LLM لبناء بطاقات كاملة عند نقص مرشّحات الـKB/Hybrid.
+    يرجع <=3 بطاقات مع وسم source="LLM". يحاول إصلاح JSON عند اللزوم.
+    """
     if not LLM_CLIENT:
         return []
+
     profile = analysis.get("encoded_profile") or {}
     bullets = _answers_to_bullets(answers)
     compact = _compact_analysis_for_prompt(analysis, profile)
 
     sys_ar = (
-        "أنت نظام توصيات رياضية. أعد JSON فقط بدون أي نص خارج JSON. امنع ذكر الوقت/التكلفة/المكان/العدات."
-        " يجب أن تُرجع 3 عناصر تحت المفتاح 'cards'، كل عنصر يحوي: "
-        "sport_label, what_it_looks_like, inner_sensation, why_you, first_week, progress_markers, win_condition, core_skills (list<=6), mode, variant_vr, variant_no_vr, difficulty(1-5)."
+        "أنت نظام توصيات رياضية. أعد JSON فقط بدون أي نص خارج JSON. امنع ذكر الوقت/التكلفة/المكان/العدات. "
+        "أرجِع بالضبط 3 عناصر تحت المفتاح 'cards'، كل عنصر يحوي المفاتيح التالية: "
+        "sport_label, what_it_looks_like, inner_sensation, why_you, first_week, progress_markers, "
+        "win_condition, core_skills (list<=6), mode, variant_vr, variant_no_vr, difficulty (1-5)."
     )
     sys_en = (
-        "You are a sport-identity recommender. Return JSON ONLY, no prose. Forbid time/cost/location/equipment mentions."
-        " Return exactly 3 items under 'cards' with keys: "
-        "sport_label, what_it_looks_like, inner_sensation, why_you, first_week, progress_markers, win_condition, core_skills (list<=6), mode, variant_vr, variant_no_vr, difficulty(1-5)."
+        "You are a sport-identity recommender. Return JSON ONLY with no prose outside JSON. "
+        "Forbid any mention of time/cost/location/equipment/sets/reps. "
+        "Return exactly 3 items under 'cards' with keys: "
+        "sport_label, what_it_looks_like, inner_sensation, why_you, first_week, progress_markers, "
+        "win_condition, core_skills (list<=6), mode, variant_vr, variant_no_vr, difficulty (1-5)."
     )
-    system = sys_ar if lang=="العربية" else sys_en
+    system = sys_ar if lang == "العربية" else sys_en
+
     user_blob = {
         "lang": lang,
         "answers_bullets": bullets,
@@ -1249,11 +1299,12 @@ def _llm_fallback(user_id: str, analysis: Dict[str, Any], answers: Dict[str, Any
     }
 
     msgs = [
-        {"role":"system","content":system},
-        {"role":"user","content":json.dumps(user_blob, ensure_ascii=False)}
+        {"role": "system", "content": system},
+        {"role": "user", "content": json.dumps(user_blob, ensure_ascii=False)},
     ]
+
     temp_primary = 0.6 if not REC_FAST_MODE else 0.5
-    temp_repair  = 0.35
+    temp_repair = 0.35
 
     t0 = time.perf_counter()
     out_txt = ""
@@ -1280,20 +1331,24 @@ def _llm_fallback(user_id: str, analysis: Dict[str, Any], answers: Dict[str, Any
             return []
 
     data = _parse_llm_json(out_txt or "")
+
+    # محاولة إصلاح صارمة إن فشل التحليل
     if not data and REC_REPAIR_ENABLED:
         _dbg("repair: forcing JSON only")
-        msgs2 = [
-            {"role":"system","content":system},
-            {"role":"user","content":"أعد نفس الإجابة بصيغة JSON فقط بدون أي نص خارج JSON." if lang=="العربية"
-             else "Return the same answer as pure JSON only, with no prose outside JSON."}
+        msgs2 = msgs + [
+            {"role": "user", "content": (
+                "أعد نفس الإجابة بصيغة JSON فقط بدون أي نص خارج JSON."
+                if lang == "العربية"
+                else "Return the same answer as pure JSON only, with no prose outside JSON."
+            )},
         ]
         try:
             out_txt2 = chat_once(
                 client=LLM_CLIENT,
                 model=CHAT_MODEL_FALLBACK or CHAT_MODEL,
-                messages=msgs + msgs2,
+                messages=msgs2,
                 temperature=temp_repair,
-                timeout_s=max(4.0, min(REC_BUDGET_S - (time.perf_counter()-t0), 8.0)),
+                timeout_s=max(4.0, min(REC_BUDGET_S - (time.perf_counter() - t0), 8.0)),
             )
             data = _parse_llm_json(out_txt2 or "")
         except Exception as e:
@@ -1304,9 +1359,12 @@ def _llm_fallback(user_id: str, analysis: Dict[str, Any], answers: Dict[str, Any
     if isinstance(data, dict) and isinstance(data.get("cards"), list):
         for item in data["cards"][:3]:
             if isinstance(item, dict):
-                cards.append(_sanitize_record(item))
-    return cards
+                c = _sanitize_record(item)
+                c["source"] = "LLM"
+                cards.append(c)
 
+    return cards
+    
 # ========= Global ensure / rendering =========
 def _fill_defaults_batch(cards: List[Dict[str, Any]], lang: str) -> List[Dict[str, Any]]:
     return [_fill_defaults(c, lang) for c in cards]
