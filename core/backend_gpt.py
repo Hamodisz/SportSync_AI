@@ -1214,6 +1214,8 @@ def _kb_candidates(analysis: Dict[str, Any], answers: Dict[str, Any], lang: str)
             scored.append((hit, r))
         scored.sort(key=lambda x: x[0], reverse=True)
         ranked_from_kb = [s[1] for s in scored[:3]]
+        for r in ranked_from_kb:
+    r["source"] = "KB"
     return ranked_from_kb
 
 def _llm_fallback(user_id: str, analysis: Dict[str, Any], answers: Dict[str, Any], lang: str) -> List[Dict[str, Any]]:
