@@ -1,9 +1,9 @@
 # content_studio/ai_images/generate_images.py
-# توليد صور: يجرّب OpenAI (اختياري) -> صور ستوك مجانية -> Placeholder محلي
+# توليد صور: RunPod/Flux (أفضل) -> OpenAI (اختياري) -> صور ستوك -> Placeholder
 
-import os, io, textwrap, random, time
+import os, io, textwrap, random, time, base64
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 import requests
 from PIL import Image, ImageDraw, ImageFont
 
@@ -60,7 +60,7 @@ STOCK_SOURCES = [
     "https://source.unsplash.com/1024x1024/?{query}",
 ]
 
-def _try_stock(query: str) -> bytes | None:
+def _try_stock(query: str) -> Optional[bytes]:
     for url in STOCK_SOURCES:
         u = url.format(query=query, seed=random.randint(1,999999))
         try:
@@ -71,7 +71,85 @@ def _try_stock(query: str) -> bytes | None:
             pass
     return None
 
-def generate_images(script: str, lang: str, use_stock: bool = True, use_openai: bool = False) -> List[str]:
+def _try_runpod(prompt: str, width: int = 1024, height: int = 1024) -> Optional[bytes]:
+    """
+    توليد صورة عبر RunPod/Flux
+
+    Args:
+        prompt: النص الوصفي
+        width: العرض
+        height: الارتفاع
+
+    Returns:
+        bytes أو None
+    """
+    # تحقق من التفعيل
+    if os.getenv("USE_RUNPOD_IMAGES", "0") != "1":
+        return None
+
+    try:
+        from core.runpod_flux_client import RunPodFluxClient, enhance_prompt_for_sport
+
+        # إنشاء العميل
+        client = RunPodFluxClient()
+
+        # تحسين الـ prompt
+        enhanced_prompt = enhance_prompt_for_sport(prompt, lang="en")
+
+        # توليد الصورة
+        result = client.generate_image(
+            prompt=enhanced_prompt,
+            width=width,
+            height=height,
+            steps=20,  # سريع نسبياً
+            cfg_scale=7.5
+        )
+
+        if result.get("success"):
+            # فك تشفير base64
+            img_b64 = result["image_b64"]
+            return base64.b64decode(img_b64)
+        else:
+            print(f"⚠️ RunPod failed: {result.get('error', 'Unknown')}")
+            return None
+
+    except Exception as e:
+        print(f"⚠️ RunPod exception: {e}")
+        return None
+
+def generate_images(
+    script: str,
+    lang: str,
+    use_runpod: bool = True,
+    use_stock: bool = True,
+    use_openai: bool = False,
+    aspect: str = "square"
+) -> List[str]:
+    """
+    توليد صور من سكربت
+
+    الأولوية:
+    1. RunPod/Flux (أفضل جودة)
+    2. OpenAI DALL-E (إن كان مفعل)
+    3. Stock images (مجاني)
+    4. Placeholder (محلي)
+
+    Args:
+        script: السكربت الكامل
+        lang: اللغة
+        use_runpod: استخدام RunPod
+        use_stock: استخدام صور ستوك
+        use_openai: استخدام OpenAI
+        aspect: نسبة الأبعاد (square/portrait/landscape)
+    """
+    # تحديد الأبعاد حسب aspect
+    if aspect == "portrait":
+        width, height = 1024, 1920
+    elif aspect == "landscape":
+        width, height = 1920, 1080
+    else:  # square
+        width, height = 1024, 1024
+
     # تنظيف قديم
     for f in OUT_DIR.glob("*"):
         try: f.unlink()
@@ -80,24 +158,47 @@ def generate_images(script: str, lang: str, use_stock: bool = True, use_openai: 
     scenes = _split_scenes(script) or ["Start…", "Keep moving…", "Results…", "Outro…"]
     outs: List[str] = []
 
+    print(f"\n🎨 Generating {len(scenes)} images ({width}x{height})...")
+
     for i, sc in enumerate(scenes):
+        print(f"  [{i+1}/{len(scenes)}] {sc[:50]}...")
+
         img_bytes = None
-        if use_openai:
+
+        # 1) جرّب RunPod أولاً (الأفضل)
+        if use_runpod and img_bytes is None:
+            img_bytes = _try_runpod(sc, width=width, height=height)
+            if img_bytes:
+                print(f"    ✅ RunPod")
+
+        # 2) OpenAI (إن كان مفعل)
+        if use_openai and img_bytes is None:
             img_bytes = _try_openai(sc)
-        if img_bytes is None and use_stock:
+            if img_bytes:
+                print(f"    ✅ OpenAI")
+
+        # 3) Stock images
+        if use_stock and img_bytes is None:
             q = "running track" if "run" in sc.lower() else "sport fitness"
             img_bytes = _try_stock(q)
+            if img_bytes:
+                print(f"    ✅ Stock")
 
+        # حفظ الصورة إن وُجدت
         if img_bytes:
             try:
                 out = OUT_DIR / f"scene_{i+1}.png"
                 Image.open(io.BytesIO(img_bytes)).convert("RGB").save(out, "PNG")
-                outs.append(str(out)); continue
-            except Exception:
-                pass
+                outs.append(str(out))
+                continue
+            except Exception as e:
+                print(f"    ⚠️ Save failed: {e}")
 
-        # Placeholder كحل أخير
-        out = _placeholder(sc, i); outs.append(str(out))
+        # 4) Placeholder كحل أخير
+        print(f"    ⚠️ Using placeholder")
+        out = _placeholder(sc, i, size=(width, height))
+        outs.append(str(out))
         time.sleep(0.05)
 
+    print(f"✅ Generated {len(outs)} images\n")
     return outs

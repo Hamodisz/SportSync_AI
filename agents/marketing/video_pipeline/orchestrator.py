@@ -21,6 +21,9 @@ import shlex
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
+# استخدام نفس Python interpreter الحالي (أكثر أماناً من "python" العام)
+PYTHON_CMD = sys.executable
+
 # Paths in your repo (use exactly the structure you provided)
 ROOT = Path(__file__).resolve().parents[4]  # go from agents/... up to repo root
 INSIGHTS_PATH = ROOT / "data" / "insights_log.json"
@@ -31,16 +34,43 @@ VIDEO_COMPOSER_MODULE = "content_studio.ai_video.video_composer"
 FINAL_VIDEO_OUT = ROOT / "content_studio" / "ai_video" / "final_video.mp4"
 TMP_DIR = ROOT / "tmp"
 
-# helper: run external command and stream logs
-def run_cmd(cmd, cwd=None, env=None):
-    logging.info("Running: %s", cmd)
-    proc = subprocess.Popen(cmd, shell=True, cwd=cwd, env=env,
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+# helper: run external command and stream logs (FIXED: no shell=True)
+def run_cmd(cmd_list, cwd=None, env=None):
+    """
+    تشغيل أمر خارجي بشكل آمن
+
+    Args:
+        cmd_list: قائمة الأمر والمعاملات (List[str]) - آمن من Command Injection
+                  مثال: ["python", "script.py", "--arg", "value"]
+        cwd: مجلد العمل (اختياري)
+        env: متغيرات البيئة (اختياري)
+
+    ⚠️ SECURITY FIX: تم إزالة shell=True لمنع Command Injection
+    """
+    if isinstance(cmd_list, str):
+        # للتوافق الخلفي: حوّل string إلى list بشكل آمن
+        cmd_list = shlex.split(cmd_list)
+
+    cmd_display = ' '.join(shlex.quote(str(x)) for x in cmd_list)
+    logging.info("Running: %s", cmd_display)
+
+    proc = subprocess.Popen(
+        cmd_list,  # list بدون shell=True - آمن!
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True
+    )
+
     for line in proc.stdout:
         print(line, end="")
+
     proc.wait()
+
     if proc.returncode != 0:
-        raise RuntimeError(f"Command failed ({proc.returncode}): {cmd}")
+        raise RuntimeError(f"Command failed ({proc.returncode}): {cmd_display}")
+
     return proc.returncode
 
 def load_insight(index=0):
@@ -118,8 +148,8 @@ def produce_voice(script_text, out_path: Path):
     # 2) try CLI script
     if VOICE_SCRIPT.exists():
         logging.info("Calling voice script via CLI: %s", VOICE_SCRIPT)
-        cmd = f"python {shlex.quote(str(VOICE_SCRIPT))} --text {shlex.quote(script_text)} --out {shlex.quote(str(out_path))}"
-        run_cmd(cmd, cwd=str(ROOT))
+        cmd_list = [PYTHON_CMD, str(VOICE_SCRIPT), "--text", script_text, "--out", str(out_path)]
+        run_cmd(cmd_list, cwd=str(ROOT))
         return out_path
 
     # 3) fallback to local pyttsx3
@@ -178,8 +208,8 @@ def render_video_with_repo_tools(meta_path):
 
     # 2) try CLI script
     if VIDEO_COMPOSER_SCRIPT.exists():
-        cmd = f"python {shlex.quote(str(VIDEO_COMPOSER_SCRIPT))} --meta {shlex.quote(str(meta_path))} --out {shlex.quote(str(FINAL_VIDEO_OUT))}"
-        run_cmd(cmd, cwd=str(ROOT))
+        cmd_list = [PYTHON_CMD, str(VIDEO_COMPOSER_SCRIPT), "--meta", str(meta_path), "--out", str(FINAL_VIDEO_OUT)]
+        run_cmd(cmd_list, cwd=str(ROOT))
         return FINAL_VIDEO_OUT
 
     # 3) fallback: try advanced_video_pipeline if present

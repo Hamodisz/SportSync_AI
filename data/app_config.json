@@ -7,7 +7,12 @@
     "min_core_skills": 3
   },
   "analysis": {
-    "egate": { "min_answered": 3, "min_total_chars": 120, "required_keys": [] }
+    "egate": {
+      "enabled": true,
+      "min_answered": 3,
+      "min_total_chars": 120,
+      "required_keys": []
+    }
   },
   "security": { "scrub_urls": true, "allowed_domains": ["sportsync.ai"] },
   "sinks": {

@@ -184,8 +184,11 @@ def evaluate(answers: Dict[str, Any], lang: str = "العربية", cfg: Optiona
     else:
         status = "pass" if score >= PASS_SCORE else "borderline" if score >= BORDERLINE_SCORE else "fail"
 
-    # ---- FIX: خلي البوابة تسمح دائمًا بالتوصيات ----
-    status = "pass"
+    # إصلاح: التحكم في التفعيل عبر config flag
+    gate_enabled = bool(eg_cfg.get("enabled", True))
+    if not gate_enabled:
+        # وضع bypass للاختبار (يمكن تعطيله من app_config.json)
+        status = "pass"
 
     # المفقود
     missing = [t for t in TOPICS.keys() if t not in topics_hit][:8]
