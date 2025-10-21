@@ -11,3 +11,19 @@ gTTS==2.5.1
 python-dotenv>=1.0.0
 arabic-reshaper>=3.0.0
 python-bidi>=0.4.2
+
+# ========================================
+# Added: Comprehensive System Fixes
+# Date: 2025-01-21
+# ========================================
+
+# Security & Performance
+filelock>=3.12.0
+slowapi>=0.1.9
+python-multipart>=0.0.6
+
+# RunPod Integration
+runpod>=1.5.0
+
+# Type Safety
+pydantic>=2.5.0
