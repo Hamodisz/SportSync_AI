@@ -1,7 +1,14 @@
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+venv/
 .env
-env/.env
-
-# build artifacts
-content_studio/ai_video/final_video.mp4
-content_studio/ai_video/final_videos/
-*.mp4
+.streamlit/secrets.toml
+node_modules/
+.vscode/
+outputs/
+reports/
+.cache/
+dist/
+build/
