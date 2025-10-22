@@ -1,38 +1,79 @@
 # -*- coding: utf-8 -*-
 """
+LLM Client (Unified, Singleton, Rotating Models)
+================================================
 موحِّد الاتصال بنماذج OpenAI/Groq/OpenRouter (واجهة OpenAI المتوافقة).
-- يقرأ المفاتيح من env ثم .env ثم st.secrets (إن وُجدت)
-- يضبط base_url تلقائيًا (Groq/OpenRouter) إذا لم يُمرَّر OPENAI_BASE_URL
-- يوفّر: make_llm_client, pick_models, chat_once
-- يدعم سلسلة موديلات (comma/newline/semicolon) مع دوران تلقائي + remap للأسماء القديمة/المتوقفة.
+
+المزايا:
+- تحميل آمن لمفاتيح البيئة: .env ثم st.secrets (بدون الكتابة فوق env الموجود)
+- ضبط base_url تلقائيًا (Groq/OpenRouter) + ترويسات OpenRouter
+- اختيار موديلات بسلسلة (comma/newline/semicolon) مع تدوير تلقائي + remap للأسماء القديمة
+- chat_once مع إعادة محاولات ذكية وإزالة penalties عند أخطاء 400
+- Singleton + Lock لتفادي تكرار التهيئة (مع كاش اختياري لـ Streamlit)
+- لوج نظيف يُطبع مرة واحدة عند تفعيل LLM_INIT_LOG=1
+
+دوال التصدير الأساسية:
+- make_llm_client()                    ← يبني عميل (مرة واحدة داخليًا عبر Singleton)
+- make_llm_client_singleton()          ← يرجع عميل الـ Singleton مباشرة
+- pick_models()                        ← يعيد (main_chain, fallback)
+- get_models_cached()                  ← يعيد نفس (main_chain, fallback) مع كاش
+- chat_once(client, messages, model, …)← مكالمة دردشة مع تدوير موديلات
+- get_client_and_models()              ← (client, main_chain, fallback)
+- get_streamlit_client()               ← عميل مع كاش Streamlit (إن وُجدت مكتبة streamlit)
+
+ملاحظات:
+- إن لم يوجد مفتاح API فالدوال التي تحتاج العميل سترفع RuntimeError، لكن بإمكان
+  بقية النظام العمل على وضع KB-only بعد أن تتأكد من إرجاع None عند التهيئة اليدوية.
 """
 
 from __future__ import annotations
-import os, time, random, re
+
+import os
+import re
+import time
+import random
+import threading
 from typing import List, Dict, Optional, Any, Tuple
 from pathlib import Path
 
 # =========================
-# Utilities
+# Utilities & Logging
 # =========================
+
 def _log(msg: str) -> None:
+    # لوج دائم للاستخدام الداخلي عند الحاجة
     print(f"[LLM_CLIENT] {msg}")
+
+def _maybe_log_once(msg: str) -> None:
+    # لوج اختياري (مرّة واحدة عادةً) بتفعيل LLM_INIT_LOG=1
+    if os.getenv("LLM_INIT_LOG", "0") == "1":
+        print(msg)
+
+# =========================
+# Bootstrap Environment
+# =========================
 
 def _bootstrap_env() -> None:
     """حمّل المفاتيح من .env و st.secrets بدون ما تكسّر أي قيم موجودة في env."""
     # 1) .env (محلي/كودسبيس/Render)
     try:
         from dotenv import load_dotenv  # type: ignore
-        ROOT = Path(__file__).resolve().parent.parent
-        for env_path in (ROOT / ".env", Path.cwd() / ".env"):
+        # جرّب جذور محتملة
+        roots = [Path.cwd(), Path(__file__).resolve().parent.parent, Path(__file__).resolve().parent]
+        tried = set()
+        for root in roots:
+            env_path = (root / ".env").resolve()
+            if env_path in tried:
+                continue
+            tried.add(env_path)
             if env_path.exists():
                 load_dotenv(env_path, override=False)
-                _log(f"dotenv loaded: {env_path}")
+                _maybe_log_once(f"[dotenv] loaded: {env_path}")
                 break
     except Exception:
         pass
 
-    # 2) st.secrets (Streamlit) — لا نكتب فوق env إن كان موجود
+    # 2) st.secrets (Streamlit) — merge non-overriding
     try:
         import streamlit as st  # type: ignore
         secrets = dict(getattr(st, "secrets", {})) or {}
@@ -45,10 +86,11 @@ def _bootstrap_env() -> None:
             "OPENAI_BASE_URL", "OPENROUTER_BASE_URL", "OPENAI_ORG",
             "OPENROUTER_REFERRER", "OPENROUTER_APP_TITLE",
             "CHAT_MODEL", "CHAT_MODEL_FALLBACK",
+            "LLM_SEED",
         ):
             _pull(k)
         if secrets:
-            _log("streamlit secrets merged into env (non-overriding).")
+            _maybe_log_once("[secrets] streamlit.secrets merged into env (non-overriding).")
     except Exception:
         pass
 
@@ -58,19 +100,26 @@ _bootstrap_env()
 # OpenAI-compatible client
 # =========================
 try:
-    from openai import OpenAI  # openai >= 1.6,<2
+    # openai>=1.6,<2 المعيار الجديد (OpenAI class)
+    from openai import OpenAI  # type: ignore
 except Exception as e:
     raise RuntimeError("ثبّت الحزمة: openai>=1.6.1,<2") from e
 
-# --- خرائط النماذج (حلّ تلقائي لإيقافات/أسماء قديمة) ---
+# =========================
+# Model Name Remapping
+# =========================
+
 _MODEL_REMAP: Dict[str, str] = {
-    # Groq: أسماء قديمة -> بدائل حيّة
+    # أمثلة Groq قديمة → بدائل حيّة
     "llama3-70b-8192":            "llama-3.1-70b",
     "llama3-8b-8192":             "llama-3.1-8b-instant",
     "llama3-70b":                 "llama-3.1-70b",
     "llama3-8b":                  "llama-3.1-8b-instant",
     "llama-3.2-90b-text-preview": "llama-3.1-70b",
-    "llama-3.1-70b-versatile":    "llama-3.1-70b",   # تم إيقاف versatile
+    "llama-3.1-70b-versatile":    "llama-3.1-70b",  # versatile تم إيقافه
+    # شائعة في OpenRouter:
+    "meta-llama/llama-3.1-70b-instruct:free": "meta-llama/llama-3.1-70b-instruct",
+    "mistralai/mixtral-8x7b:free":            "mistralai/mixtral-8x7b",
 }
 
 def _remap_model(name: str) -> str:
@@ -96,22 +145,33 @@ def _split_models_csv(s: str) -> List[str]:
             seen.add(tok)
     return out
 
-def make_llm_client() -> Optional[OpenAI]:
+# =========================
+# Singleton State
+# =========================
+
+__LLM_CLIENT_SINGLETON: Optional[OpenAI] = None
+__LLM_CLIENT_LOCK = threading.Lock()
+__MODELS_CACHE: Optional[Tuple[str, str]] = None
+
+# =========================
+# Client Builder (single source)
+# =========================
+
+def _build_client() -> Optional[OpenAI]:
     """
     يبني عميل OpenAI-compatible.
-    يرجّع None لو ما فيه مفتاح — عشان يكمل النظام بالـKB فقط.
+    يرجّع None لو ما فيه مفتاح — عشان تتعامل الطبقة العليا مع KB-only.
     """
-    key_src = "NONE"
     key = os.getenv("GROQ_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("OPENROUTER_API_KEY")
     if not key:
-        _log("NO API KEY found (tried GROQ_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY). Running in KB-only mode.")
+        _maybe_log_once("NO API KEY (GROQ_API_KEY/OPENAI_API_KEY/OPENROUTER_API_KEY). KB-only mode.")
         return None
 
     base = os.getenv("OPENAI_BASE_URL") or os.getenv("OPENROUTER_BASE_URL") or ""
     is_groq = bool(os.getenv("GROQ_API_KEY")) or base.startswith("https://api.groq.com")
     is_openrouter = bool(os.getenv("OPENROUTER_API_KEY")) or base.startswith("https://openrouter.ai")
 
-    # ضبط base للـcompat providers
+    # ضبط base للـ compat providers
     if not base and is_groq:
         base = "https://api.groq.com/openai/v1"
     if not base and is_openrouter:
@@ -135,12 +195,49 @@ def make_llm_client() -> Optional[OpenAI]:
     try:
         client = OpenAI(**kw)
         provider = "Groq" if is_groq else ("OpenRouter" if is_openrouter else "OpenAI")
-        _log(f"INIT OK | base_url={base or 'default'} | org={bool(org)} | provider={provider}")
+        _maybe_log_once(f"INIT OK | base_url={base or 'default'} | org={bool(org)} | provider={provider}")
         return client
     except Exception as e:
-        _log(f"INIT FAILED: {e!r}")
-        _log(f"   -> base_url: {base or '(none)'}")
+        _maybe_log_once(f"INIT FAILED: {e!r} (base_url={base or '(none)'})")
         return None
+
+def make_llm_client() -> Optional[OpenAI]:
+    """واجهة متوافقة مع كودك السابق — تبني العميل (لكن فعليًا سنعيد Singleton)."""
+    return make_llm_client_singleton()
+
+def make_llm_client_singleton() -> Optional[OpenAI]:
+    """يعيد عميل Singleton (يبني مرة واحدة فقط)."""
+    global __LLM_CLIENT_SINGLETON, __MODELS_CACHE
+    if __LLM_CLIENT_SINGLETON is not None:
+        return __LLM_CLIENT_SINGLETON
+    with __LLM_CLIENT_LOCK:
+        if __LLM_CLIENT_SINGLETON is None:
+            __LLM_CLIENT_SINGLETON = _build_client()
+            __MODELS_CACHE = pick_models()
+            if __LLM_CLIENT_SINGLETON is not None:
+                _maybe_log_once("[LLM_CLIENT] INIT OK (singleton)")
+                _maybe_log_once(f"[LLM_CLIENT] MODELS -> main={__MODELS_CACHE[0]}, fb={__MODELS_CACHE[1]}")
+    return __LLM_CLIENT_SINGLETON
+
+def get_models_cached() -> Tuple[str, str]:
+    """يعيد (main_chain, fallback) مع كاش داخلي."""
+    global __MODELS_CACHE
+    if __MODELS_CACHE is None:
+        _ = make_llm_client_singleton()
+    # ضمانات
+    if not __MODELS_CACHE:
+        __MODELS_CACHE = pick_models()
+    return __MODELS_CACHE
+
+def get_client_and_models() -> Tuple[Optional[OpenAI], str, str]:
+    """راحة: يرجّع (client, main_chain, fallback)."""
+    c = make_llm_client_singleton()
+    main, fb = get_models_cached()
+    return c, main, fb
+
+# =========================
+# Model Picking
+# =========================
 
 def pick_models() -> Tuple[str, str]:
     """
@@ -151,9 +248,12 @@ def pick_models() -> Tuple[str, str]:
         os.getenv("GROQ_API_KEY")
         or str(os.getenv("OPENAI_BASE_URL", "")).startswith("https://api.groq.com")
     )
+    using_openrouter = bool(
+        os.getenv("OPENROUTER_API_KEY")
+        or str(os.getenv("OPENROUTER_BASE_URL", "")).startswith("https://openrouter.ai")
+    )
 
     if using_groq:
-        # **تجنّب النماذج الـ preview أو المتوقفة افتراضياً**
         chain_default = ",".join([
             "llama-3.1-70b",
             "llama-3.1-8b-instant",
@@ -161,6 +261,13 @@ def pick_models() -> Tuple[str, str]:
             "gemma2-9b-it",
         ])
         fb_default = "llama-3.1-8b-instant"
+    elif using_openrouter:
+        # أمثلة شائعة في OpenRouter (استخدم ما لديك فعليًا)
+        chain_default = ",".join([
+            "meta-llama/llama-3.3-70b-instruct:free",
+            "mistralai/mixtral-8x7b:free",
+        ])
+        fb_default = "mistralai/mixtral-8x7b:free"
     else:
         chain_default = ",".join(["gpt-4o", "gpt-4o-mini", "gpt-4.1-mini"])
         fb_default = "gpt-4o-mini"
@@ -170,15 +277,19 @@ def pick_models() -> Tuple[str, str]:
 
     # نظّف السلاسل ثم remap لكل عنصر
     chain = [_remap_model(x) for x in _split_models_csv(raw_main)]
-    fb    = _remap_model((_split_models_csv(raw_fb)[:1] or [fb_default])[0])
+    fb = _remap_model((_split_models_csv(raw_fb)[:1] or [fb_default])[0])
 
     # ضمّن fallback ضمن السلسلة لو مش موجود
     if fb and fb not in chain:
         chain.append(fb)
 
     main_chain = ",".join(chain) if chain else fb
-    _log(f"MODELS -> main={main_chain}, fb={fb}")
+    _maybe_log_once(f"MODELS -> main={main_chain}, fb={fb}")
     return (main_chain, fb)
+
+# =========================
+# Chat (with rotation)
+# =========================
 
 def chat_once(
     client: Optional[OpenAI],
@@ -196,8 +307,8 @@ def chat_once(
 ) -> str:
     """
     مكالمة دردشة واحدة مع دوران تلقائي على سلسلة موديلات (لو تم تمريرها).
-    - عند 400/404 بسبب model_decommissioned/model not found/unknown → نجرب الموديل التالي فورًا.
-    - عند 400 رفض باراميترات (top_p/penalties) نحذفها ثم نعيد المحاولة لنفس الموديل.
+    - عند 400/رفض باراميترات: نحاول نفس الموديل بإزالة penalties وضبط top_p=1
+    - عند "model not found"/"decommissioned"/404: ننتقل للمرشح التالي
     """
     if client is None:
         raise RuntimeError("لا يوجد عميل LLM (المفتاح غير مضبوط أو فشل التهيئة)")
@@ -217,7 +328,7 @@ def chat_once(
 
     last_err: Optional[Exception] = None
     for midx, model_id in enumerate(candidate_models):
-        _log(f"trying model[{midx}]: {model_id}")
+        _maybe_log_once(f"trying model[{midx}]: {model_id}")
         for attempt in range(retries + 1):
             try:
                 client_t = client.with_options(timeout=timeout_s)
@@ -231,8 +342,9 @@ def chat_once(
                     max_tokens=max_tokens,
                 )
                 if seed is not None:
-                    kwargs["seed"] = seed  # قد يُتجاهل عند بعض المزودين
+                    kwargs["seed"] = seed  # قد يُتجاهل لدى بعض المزودين
 
+                # المحاولة الأولى
                 try:
                     resp = client_t.chat.completions.create(**kwargs)
                 except Exception as inner_e:
@@ -240,10 +352,13 @@ def chat_once(
                     low = msg.lower()
 
                     # رفض باراميترات — جرّب نفس الموديل بدون penalties وبـ top_p=1
-                    if ("400" in msg) and (("bad request" in low) or ("invalid" in low)) and not any(
-                        k in low for k in ["model_decommissioned", "no such model", "model not found", "unknown model", "does not exist", "404"]
-                    ):
-                        _log("retrying without penalties/top_p due to provider param rejection…")
+                    bad_params = ("400" in msg) and (("bad request" in low) or ("invalid" in low))
+                    not_model_issue = not any(k in low for k in [
+                        "model_decommissioned", "no such model", "model not found",
+                        "unknown model", "does not exist", "404"
+                    ])
+                    if bad_params and not_model_issue:
+                        _maybe_log_once("retrying without penalties/top_p due to provider param rejection…")
                         kwargs.pop("presence_penalty", None)
                         kwargs.pop("frequency_penalty", None)
                         kwargs["top_p"] = 1.0
@@ -257,14 +372,14 @@ def chat_once(
             except Exception as e:
                 last_err = e
                 emsg = str(e).lower()
-                _log(f"chat attempt#{attempt} failed on {model_id}: {e!r}")
+                _maybe_log_once(f"chat attempt#{attempt} failed on {model_id}: {e!r}")
 
                 # الموديل متوقف/غير موجود → انتقل للمرشح التالي فورًا
                 if any(k in emsg for k in [
                     "model_decommissioned", "no such model", "model not found", "unknown model",
                     "does not exist", "404"
                 ]):
-                    _log(f"model looks unavailable: {model_id} → trying next candidate (if any)…")
+                    _maybe_log_once(f"model unavailable: {model_id} → try next candidate")
                     break  # إلى الموديل التالي
 
                 # وإلا → إعادة محاولة لنفس الموديل (exponential backoff)
@@ -274,3 +389,38 @@ def chat_once(
                     break  # خلصت محاولات هذا الموديل
 
     raise RuntimeError(f"فشل chat_once بعد تدوير كل الموديلات: {last_err}")
+
+# =========================
+# Optional: Streamlit Cache
+# =========================
+
+def get_streamlit_client() -> Optional[OpenAI]:
+    """
+    إن كنت تستخدم Streamlit، هذه الدالة تعيد عميلًا بكاش resource.
+    تعمل حتى لو لم تتوفر streamlit (ترجع Singleton عادي).
+    """
+    try:
+        import streamlit as st  # type: ignore
+
+        @st.cache_resource(show_spinner=False)
+        def _client_cached():
+            return make_llm_client_singleton()
+
+        return _client_cached()
+    except Exception:
+        # fallback: Singleton العادي
+        return make_llm_client_singleton()
+
+# =========================
+# __all__
+# =========================
+
+__all__ = [
+    "make_llm_client",
+    "make_llm_client_singleton",
+    "pick_models",
+    "get_models_cached",
+    "chat_once",
+    "get_client_and_models",
+    "get_streamlit_client",
+]
