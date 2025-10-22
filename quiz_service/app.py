@@ -1,10 +1,10 @@
-# -- coding: utf-8 --
+# -*- coding: utf-8 -*-
 import os, sys, json, time, uuid
 from pathlib import Path
 import streamlit as st
 
 # =========================
-# ضبط صفحة ستريملت (أول استدعاء وبمرة وحدة)
+# ضبط صفحة ستريملت (مرّة وحدة)
 # =========================
 if "page_configured" not in st.session_state:
     st.set_page_config(page_title="SportSync — Quiz", page_icon="🎯", layout="centered")
@@ -25,7 +25,7 @@ for p in (ROOT, ROOT / "core", ROOT / "analysis"):
         sys.path.insert(0, sp)
 
 # =========================
-# استيرادات مع بدائل آمنة
+# Helpers
 # =========================
 def _safe_str(x) -> str:
     """يحوّل أي نوع نص/قائمة/ديكت إلى نص قابل للعرض."""
@@ -44,7 +44,10 @@ def _safe_str(x) -> str:
                         flat.append(item[k].strip())
                         break
                 else:
-                    flat.append(json.dumps(item, ensure_ascii=False))
+                    try:
+                        flat.append(json.dumps(item, ensure_ascii=False))
+                    except Exception:
+                        flat.append(str(item))
             else:
                 flat.append(str(item))
         return "، ".join([s for s in (str(i).strip() for i in flat) if s])
@@ -58,6 +61,16 @@ def _safe_str(x) -> str:
             return str(x)
     return str(x)
 
+def _is_followup_cards(recs_list):
+    """نحدد هل اللي ظهر هو بطاقة متابعة (Evidence Gate)."""
+    if not isinstance(recs_list, (list, tuple)) or not recs_list:
+        return False
+    head = _safe_str(recs_list[0]).strip().lower()
+    return ("🧭" in _safe_str(recs_list[0])) or ("need a few quick answers" in head) or ("نحتاج إجابات" in head) or (len(recs_list) >= 2 and _safe_str(recs_list[1]).strip() == "—")
+
+# =========================
+# استيرادات مع بدائل آمنة
+# =========================
 try:
     from core.backend_gpt import generate_sport_recommendation
 except Exception:
@@ -75,8 +88,8 @@ except Exception:
         user_msg = kwargs.get("user_message", "")
         return f"فهمت: {_safe_str(user_msg)}\nسنعدّل الخطة تدريجيًا ونراعي تفضيلاتك خطوة بخطوة."
 
-# (اختياري) ستريم حقيقي إن وفّرته لاحقًا
 try:
+    # ستريم حقيقي إن وفّرته لاحقًا
     from core.dynamic_chat import start_dynamic_chat_stream  # generator
 except Exception:
     start_dynamic_chat_stream = None
@@ -91,22 +104,21 @@ except Exception:
         def analyze_silent_drivers(answers, lang="العربية"):
             return ["تحفيز قصير المدى", "إنجازات سريعة", "تفضيل تدريبات فردية"]
 
-# (تشخيص) معرفة حالة LLM اختيارياً
+# (تشخيص) معرفة حالة LLM — باستخدام عميلك الموحّد
 try:
-    from core.llm_client import make_llm_client, pick_models
-    _LLM_CLIENT_FOR_DIAG = make_llm_client()
-    _MODELS_FOR_DIAG = pick_models() if callable(pick_models) else ("gpt-4o", "gpt-4o-mini")
+    from core.llm_client import get_client_and_models, get_models_cached
+    _LLM_CLIENT_FOR_DIAG, _MAIN_CHAIN, _FB_MODEL = get_client_and_models()
 except Exception:
     _LLM_CLIENT_FOR_DIAG = None
-    _MODELS_FOR_DIAG = {"main": os.getenv("CHAT_MODEL", "gpt-4o"), "fallback": os.getenv("CHAT_MODEL_FALLBACK", "gpt-4o-mini")}
+    _MAIN_CHAIN = os.getenv("CHAT_MODEL", "gpt-4o")
+    _FB_MODEL = os.getenv("CHAT_MODEL_FALLBACK", "gpt-4o-mini")
 
-# ✅ User Logger
+# ✅ User Logger (صامت عند غيابه)
 try:
     from core.user_logger import (
         log_quiz_submission, log_rating, log_chat_message, log_event
     )
 except Exception:
-    # نسخ صامتة لا تكسر الخدمة
     def log_quiz_submission(**kw): return kw.get("session_id") or "nosession"
     def log_rating(**kw): pass
     def log_chat_message(**kw): pass
@@ -125,13 +137,14 @@ with st.sidebar.expander(T("⚙ إعدادات العرض", "⚙ Display Setting
     SHOW_THINKING = st.checkbox(T("إظهار مراحل التفكير", "Show thinking stages"), value=True)
     TYPE_SPEED_MS = st.slider(T("سرعة الكتابة (ملّي ثانية/حرف)", "Typing speed (ms/char)"), 1, 30, value=6)
 
-# 🧪 Diagnostics (اختياري يظهر في الشريط الجانبي)
+# 🧪 Diagnostics (اختياري)
 with st.sidebar.expander("🧪 Diagnostics", expanded=False):
-    st.write("Model (main):", _MODELS_FOR_DIAG["main"] if isinstance(_MODELS_FOR_DIAG, dict) else _MODELS_FOR_DIAG)
-    st.write("Model (fallback):", (_MODELS_FOR_DIAG.get("fallback") if isinstance(_MODELS_FOR_DIAG, dict) else ""))
+    st.write("Model chain (main):", _MAIN_CHAIN)
+    st.write("Model (fallback):", _FB_MODEL)
     st.write("LLM ready:", bool(_LLM_CLIENT_FOR_DIAG))
     st.write("GROQ key set:", bool(os.getenv("GROQ_API_KEY")))
     st.write("OPENAI key set:", bool(os.getenv("OPENAI_API_KEY")))
+    st.write("OPENROUTER key set:", bool(os.getenv("OPENROUTER_API_KEY")))
     st.write(
         "Base URL:",
         os.getenv("OPENAI_BASE_URL")
@@ -193,7 +206,7 @@ def typewriter_chat(role: str, text: str, ms_per_char: int = 6):
         typewriter_write(ph, text, ms_per_char)
 
 def status_steps(enabled: bool):
-    """Context manager بسيط لمراحل التفكير (إصلاح __enter__/__exit__)."""
+    """Context manager بسيط لمراحل التفكير."""
     class _Dummy:
         def __enter__(self):
             return self
@@ -279,13 +292,6 @@ st.session_state.setdefault("chat_history", [])
 st.session_state.setdefault("z_drivers", [])
 st.session_state.setdefault("session_id", uuid.uuid4().hex)
 
-def _is_followup_cards(recs_list):
-    """نحدد هل اللي ظهر هو بطاقة متابعة (Evidence Gate)"""
-    if not isinstance(recs_list, (list, tuple)) or not recs_list:
-        return False
-    head = _safe_str(recs_list[0]).strip().lower()
-    return ("🧭" in _safe_str(recs_list[0])) or ("need a few quick answers" in head) or ("نحتاج إجابات" in head) or (len(recs_list) >= 2 and _safe_str(recs_list[1]).strip() == "—")
-
 # =========================
 # توليد التوصيات + Layer Z (مع مراحل تفكير)
 # =========================
@@ -359,7 +365,7 @@ if z:
     st.divider()
 
 # =========================
-# عرض التوصيات (ثلاثة) + التقييم (مع كتابة حيّة)
+# عرض التوصيات (ثلاثة) + التقييم
 # =========================
 recs = st.session_state.get("recs", [])
 if recs:
@@ -427,7 +433,7 @@ if recs:
         )
 
 # =========================
-# واجهة محادثة شبيهة بالشات (chat UI) + كتابة حيّة/ستريم
+# واجهة محادثة شبيهة بالشات (chat UI)
 # =========================
 if st.session_state.get("chat_open", False):
     # زر إغلاق سريع
