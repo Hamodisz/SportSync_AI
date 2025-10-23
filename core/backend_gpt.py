@@ -1,138 +1,322 @@
 # -- coding: utf-8 --
-import os, json, math, random, time
-from typing import Dict, Any, List, Tuple
+from __future__ import annotations
+
+import os
+import random
+from typing import Any, Dict, List
 
 try:
     from core.llm_client import make_llm_client, pick_models, chat_once
-except Exception:
-    make_llm_client = lambda: None
-    pick_models = lambda: ("", "")
-    chat_once = None  # type: ignore
+except Exception:  # pragma: no cover - client not available
+    make_llm_client = None
+    pick_models = None
+    chat_once = None
 
-try:
-    from analysis.layer_z_engine import analyze_silent_drivers_combined as analyze_silent_drivers
-except Exception:
-    def analyze_silent_drivers(answers: Dict[str, Any], lang: str = "العربية"):
-        return ["محفّز تكتيكي", "استكشاف حسي", "متعة تحدّي سريعة"]
 
-def _flags():
-    def _t(x): return str(os.getenv(x, "")).strip().lower() in ("1","true","yes","on")
-    return {
-        "FORCE_LOCAL_FALLBACK": _t("FORCE_LOCAL_FALLBACK"),
-        "DISABLE_LLM": _t("DISABLE_LLM"),
-        "CHAT_MODEL": os.getenv("CHAT_MODEL", ""),
-        "OPENAI_BASE_URL": os.getenv("OPENAI_BASE_URL", ""),
-        "GROQ_API_KEY_set": bool(os.getenv("GROQ_API_KEY")),
-        "OPENAI_API_KEY_set": bool(os.getenv("OPENAI_API_KEY")),
-        "OPENROUTER_API_KEY_set": bool(os.getenv("OPENROUTER_API_KEY")),
+def _extract_identity(answers: Dict[str, Any], lang: str) -> Dict[str, float]:
+    text = (str(answers) or "").lower()
+    weights = {
+        "tactical": 0.55 if any(k in text for k in ("strategy", "استراتيجية", "تكتي", "ذكاء")) else 0.45,
+        "sensory": 0.55 if any(k in text for k in ("هدوء", "سكون", "breath", "تنفس", "حواس")) else 0.45,
+        "adventure": 0.55 if any(k in text for k in ("مغام", "explore", "اكتشاف", "طبيعة")) else 0.45,
+        "achievement": 0.55 if any(k in text for k in ("تحدي", "تفوق", "win", "انجاز")) else 0.45,
+        "social": 0.55 if any(k in text for k in ("فريق", "جماعي", "group", "friends")) else 0.45,
+        "solo": 0.55 if any(k in text for k in ("فردي", "alone", "عزل")) else 0.45,
+        "indoor": 0.55 if any(k in text for k in ("داخل", "indoor", "صالة")) else 0.45,
+        "outdoor": 0.55 if any(k in text for k in ("هواء", "outdoor", "خارجي", "طبيعة")) else 0.45,
     }
+    return {k: round(v, 3) for k, v in weights.items()}
 
-def _should_use_local(client):
-    f = _flags()
-    if f["FORCE_LOCAL_FALLBACK"] or f["DISABLE_LLM"]:
-        return True, "env_flag"
-    if client is None:
-        return True, "no_client"
-    return False, "llm_available"
 
-def _diagnose():
-    client = make_llm_client() if callable(make_llm_client) else None
-    use_local, reason = _should_use_local(client)
-    try: main, fb = pick_models()
-    except Exception: main, fb = ("","")
-    return {"mode": "local" if use_local else "llm", "reason": reason, "env": _flags(), "models":{"main":main,"fallback":fb}, "ts": time.time()}
+_ARCHETYPES: Dict[str, Dict[str, Any]] = {
+    "tactical_immersive": {
+        "title": {"ar": "Tactical Immersive Combat", "en": "Tactical Immersive Combat"},
+        "why": {
+            "ar": "هذا المسار ينسج مواجهة ذهنية وجسدية متواصلة، حيث يعمل الفضول التحليلي لديك مع شغف الإنجاز الهادئ في خلفية المشهد.",
+            "en": "This path weaves a constant mental-and-body duel, letting your analytical curiosity dance with a quiet hunger for achievement.",
+        },
+        "what": {
+            "ar": "تدخل عالمًا يشبه رواية تشويق: ساحات تتبدل، زوايا تُفتح، وحواس تلتقط إشارات متقنة قبل أن تتحول إلى حركة رشيقة." \
+                   " تتسع التجربة لتشمل محاكاة واقع افتراضي، مبارزات سيف، أو حتى جلسات تحاكي مطاردة تكتيكية في فضاءات مغلقة، وكلها مصممة لخدمة شغفك بالتفكير الحاد.",
+            "en": "You step into a thriller-like world: shifting arenas, opening angles, and senses capturing fine cues before they turn into agile motion." \
+                   " The experience stretches from immersive VR simulations to sabre duels or chase scenarios inside curated spaces, all crafted to serve your love for sharp thinking.",
+        },
+        "shape": {
+            "ar": "في التطبيق الواقعي ستشعر بارتفاع التركيز دون الحاجة لضوضاء صالات تقليدية؛ شبكة ضوء خافت، مدرب يهمس بالتوجيهات، ومسارات قصيرة تقيس مدى براعتك في اتخاذ القرار." \
+                     " يتحول كل تمرين إلى لوحة قصصية تعيشها من الداخل." ,
+            "en": "In practice you feel focus rising without the buzz of traditional gyms; soft lighting, a coach offering low whispers, and short arcs that measure your decision craft." \
+                   " Every drill becomes a narrative scene you inhabit from the inside.",
+        },
+        "notes": {
+            "ar": "دع إحساس السيطرة يقودك: اختر خصمًا أو سيناريو يوقظ ذكاءك، ثم بدّل الإيقاع عندما تلمح الفكرة التالية. الهوية هنا أسبق من النتائج." \
+                     " إذا شعرت أن الصراع صار خانقًا، أعد هندسة المهمة وامنح نفسك دورًا مختلفًا دون أي تعليمات جامدة.",
+            "en": "Let the feeling of control guide you: pick an opponent or scenario that wakes your intellect, then shift pace when the next idea flashes." \
+                   " If the duel feels tight, redesign the mission and give yourself a different role—no rigid instructions needed.",
+        },
+    },
+    "stealth_flow": {
+        "title": {"ar": "Stealth-Flow Missions", "en": "Stealth-Flow Missions"},
+        "why": {
+            "ar": "هويتك تهوى السكون الممزوج بالترقب؛ تحب سماع نبضك الداخلي وهو يتزامن مع حركة لينة تتيح لك التقدم من دون إثارة أي ضجيج بصري أو اجتماعي.",
+            "en": "Your identity delights in calm blended with anticipation; you enjoy hearing your inner pulse sync with gentle movement that lets you advance without visual or social noise.",
+        },
+        "what": {
+            "ar": "هذه المهمات تنقلك إلى ممرات مظللة، غرف استوديو مهيأة خصيصًا، أو بيئات VR تتلاعب بالضوء والصوت لتمنحك حسًا سينمائيًا." \
+                   " تستكشف التوازن، التمدد، والانسياب المخملي الذي يجعل كل خطوة وكأنها حوار سري بينك وبين العالم." ,
+            "en": "These missions move you through shaded corridors, curated studio rooms, or VR worlds that play with light and audio to give a cinematic feel." \
+                   " You explore balance, reach, and velvet-like flow that turns each step into a private dialogue between you and the world.",
+        },
+        "shape": {
+            "ar": "في الواقع قد تبدأ بجلسات صغيرة تركز على الاستشعار، ثم تتدرج نحو مسارات أكثر تعقيدًا تدمج التتبع البصري، الخطو الخفيف، والانعطافات المحسوبة." \
+                     " لا توجد صفارات أو تعليمات حادة؛ فقط عقل يهدأ كلما اكتشف تفاصيل جديدة." ,
+            "en": "In practice you might open with sensory decks, then progress to layered paths combining visual tracking, light footwork, and measured pivots." \
+                   " No whistles or sharp orders—only a mind that softens as it notices new detail.",
+        },
+        "notes": {
+            "ar": "إذا لاحظت أن الانسياب صار آليًا، أطفئ الإضاءة، بدّل الخلفية الصوتية، أو أضف عنصرًا يحفز الفضول من جديد." \
+                     " المهم أن يبقى المشهد مساحة تلوّنها بحدسك دون الالتزام بأي قوالب جامدة." ,
+            "en": "When the flow starts feeling automatic, dim the light, change the soundscape, or add an element that rekindles curiosity." \
+                   " The key is keeping the scene as a canvas you colour with instinct, free from rigid molds.",
+        },
+    },
+    "urban_exploration": {
+        "title": {"ar": "Urban Exploration Athletics", "en": "Urban Exploration Athletics"},
+        "why": {
+            "ar": "روحك تميل للمغامرة الحرة، تبحث عن زوايا المدينة التي لم تُكتشف، وتستمتع حين يتحول الطريق اليومي إلى مساحة سرد جديدة." ,
+            "en": "Your spirit leans toward open adventure, hunting for undiscovered urban corners and turning a daily path into a narrative playground.",
+        },
+        "what": {
+            "ar": "التجربة تمتد من الباركور المخطط على أسطح وأزقة آمنة إلى جولات جيوكاشينغ حركية تربط الجسد بالخرائط." \
+                   " كل محطة تضيف طبقة قصة: قفزة صغيرة فوق سور قديم، توازن على حافة، أو انعطافة مخفية لا يعرفها سوى القلائل." ,
+            "en": "The experience ranges from choreographed parkour across safe rooftops and alleys to kinetic geocaching adventures that bind body with maps." \
+                   " Each stop adds a story layer: a small leap over an old wall, a balance walk on a ledge, or a hidden turn known by only a few.",
+        },
+        "shape": {
+            "ar": "تمزج الجلسات بين التنقل العمودي والأفقي، استخدام معالم المدينة كأدوات، والتفاعل مع الضوء الطبيعي المتغير." \
+                     " تتحول المدينة إلى صديق، ويصير كل ممر اختبارًا لفضولك." ,
+            "en": "Sessions blend vertical and horizontal travel, using city landmarks as tools and playing with ever-changing natural light." \
+                   " The city becomes your companion, each passage a test of curiosity.",
+        },
+        "notes": {
+            "ar": "اختر رفيقًا يتقبل التجربة الإبداعية أو انطلق منفردًا مع كاميرا توثق التفاصيل التي تلمع." \
+                     " استمع للحدس؛ إذا شعرت أن المسار يكرر نفسه فابحث عن حي جديد أو زاوية مختلفة." ,
+            "en": "Bring a partner who embraces creative exploration or roam solo with a camera that captures bright details." \
+                   " Listen to instinct; when the route repeats, scout a new district or angle.",
+        },
+    },
+    "precision_duel": {
+        "title": {"ar": "Precision Duel Sports", "en": "Precision Duel Sports"},
+        "why": {
+            "ar": "تحب المواجهة الهادئة التي تكافئ الصبر والدقة، وتمنحك نشوة تفوق تحافظ فيه على أناقتك الذهنية." ,
+            "en": "You savour measured contests that reward patience and precision, delivering a subtle rush while keeping mental poise.",
+        },
+        "what": {
+            "ar": "من المبارزة بالسيف إلى الرماية بالقوس، كل مشهد يركز على حركة محسوبة يتبعها إحساس بالانتصار الداخلي." \
+                   " الهدوء الذي يسبق اللمسة النهائية أهم من نتيجة اللوحة." ,
+            "en": "From sabre fencing to recurve archery, each scene focuses on deliberate motion followed by an inner sense of triumph." \
+                   " The calm before the finishing touch matters more than the scoreboard.",
+        },
+        "shape": {
+            "ar": "تجد نفسك في مساحات أنيقة، إضاءة متوازنة، وتعليمات خفيفة تساعدك على ضبط التنفس والحفاظ على صفاء التفكير." \
+                     " كل جولة تشبه مقطع موسيقي تعزفه أنت وحدك." ,
+            "en": "You’re in refined arenas with balanced lighting and gentle coaching helping you steady breath and keep thoughts clear." \
+                   " Every round feels like a musical piece performed solo.",
+        },
+        "notes": {
+            "ar": "ركّز على الطقوس الصغيرة: ترتيب العتاد، لمس الأرض بأطراف أصابعك، وتخيل مسارك قبل البدء." \
+                     " إن بدا الإيقاع جامدًا، جرّب أسلوبًا آخر أو خصمًا بطابع مختلف." ,
+            "en": "Lean into small rituals: aligning gear, grounding fingertips, envisioning the path before you start." \
+                   " If the rhythm stiffens, switch style or pick an opponent with a different aura.",
+        },
+    },
+    "creative_teamplay": {
+        "title": {"ar": "Creative Teamplay", "en": "Creative Teamplay"},
+        "why": {
+            "ar": "تلتقط شرارة المجموعة بسرعة، وتستمتع عندما تتحول المباراة إلى ورشة أفكار وحوار حركي." ,
+            "en": "You absorb team sparks instantly and relish when a match turns into a workshop of ideas and kinetic dialogue.",
+        },
+        "what": {
+            "ar": "تشمل التجربة فوتسال تكتيكي، كرة سلة نصف ملعب، أو ألعابًا تعاونية تعتمد على إشارات سريعة وخطط مفاجئة." \
+                   " كل مشاركة تفتح بابًا للتعبير والضحك المشترك." ,
+            "en": "Experiences include tactical futsal, half-court basketball, or cooperative games relying on quick cues and inventive twists." \
+                   " Every play opens room for expression and shared laughter.",
+        },
+        "shape": {
+            "ar": "يمتزج التواصل اللفظي والتمرير السريع مع حركات مرتجلة تجعل المجموعة تشبه فرقة فنية. أحيانًا تنقسمون إلى ثنائيات صغيرة تبتكر مسارات قصيرة، وأحيانًا تتجمعون كحلقة واحدة تلتقط الفكرة ثم تعيد تشكيلها براحة. تتغير الإضاءة والموسيقى والملعب المصغر بحسب المزاج، فيبقى الإيقاع نابضًا دون الحاجة لأي أوامر جامدة." ,
+            "en": "Verbal cues and swift passes blend with improvised movement, turning the crew into an art collective. Sometimes you split into tiny duos to create short patterns, and other times you gather as one circle that catches an idea then reshapes it gently. Lighting, music, and even micro-court layouts shift with the mood, keeping the pulse vibrant without rigid commands.",
+        },
+        "notes": {
+            "ar": "اختر شريكات وشركاء يحتفون بالابتكار ولا يطاردون النقاط المجردة." \
+                     " غيّر مكان اللعب كل فترة لتحافظ على دهشة التجربة." ,
+            "en": "Invite teammates who celebrate creativity instead of chasing plain scores." \
+                   "Rotate venues frequently to keep the experience surprising.",
+        },
+    },
+}
 
-def _pull(answers: Dict[str, Any], key: str):
-    cell = answers.get(key, {})
-    val = cell.get("answer", cell) if isinstance(cell, dict) else cell
-    out = []
-    if isinstance(val, str): out = [val.strip()]
-    elif isinstance(val, list): out = [str(x).strip() for x in val if str(x).strip()]
-    return [x.lower() for x in out if x]
+_TRAIT_LINES = {
+    "ar": {
+        "tactical": "تفكيرك التحليلي يقرأ اللقطات قبل حدوثها وينتظر اللحظة التي يلتمع فيها الحدس.",
+        "sensory": "جسدك يلين عندما تراقب همسة الضوء وتستمع إلى أنفاسك وكأنها نوتة موسيقية.",
+        "adventure": "تحب أن تحوّل الطريق العادي إلى مسرح اكتشاف جديد في كل مرة.",
+        "achievement": "تشعر بالرضا حين ترى أثر توقيعك على النتيجة دون ضجيج أو مبالغة.",
+        "social": "الطاقة الجماعية تشحنك وتمنحك إحساسًا بأن الفريق قصيدة تتغير كل لحظة.",
+        "solo": "الهدوء المنعزل يمنحك الفرصة لصقل مهاراتك وكأنك تنحت منحوتة شخصية.",
+        "indoor": "تحب الأماكن التي يمكن تشكيلها لتناسب مزاجك دون مقاطعات مفاجئة.",
+        "outdoor": "الأفق المفتوح يشعل الخيال ويمنحك إحساسًا بالانطلاق الحر.",
+    },
+    "en": {
+        "tactical": "Your analytic lens reads the scene ahead and waits for intuition to flash.",
+        "sensory": "Your body softens when you watch subtle light and hear your breath like a melody.",
+        "adventure": "You enjoy turning an ordinary route into a fresh discovery stage every time.",
+        "achievement": "Satisfaction arrives when your imprint appears on the outcome without noise or fuss.",
+        "social": "Collective energy fuels you and makes the crew feel like a poem shifting every heartbeat.",
+        "solo": "Quiet solitude lets you sculpt skills as if crafting a personal statue.",
+        "indoor": "You appreciate spaces that can be shaped to your mood without surprise intrusions.",
+        "outdoor": "An open horizon sparks imagination and gifts you with freer motion.",
+    },
+}
 
-def _score_axis(answers: Dict[str, Any]):
-    intent = set(_pull(answers, "intent") + _pull(answers, "q_1") + _pull(answers, "goal"))
-    likes  = set(_pull(answers, "likes") + _pull(answers, "q_2"))
-    hates  = set(_pull(answers, "hates") + _pull(answers, "q_3"))
-    txt = (" ".join(list(intent | likes)) + " ").lower()
-    novelty_seek   = 0.2 + 0.6*any(k in txt for k in ["جديد","غامر","vr","تقنية","تجربة","غير تقليدي","مهمات","missions","stealth","parkour"])
-    sensory_depth  = 0.2 + 0.6*any(k in txt for k in ["إحساس","صوت","إيقاع","تنفّس","تأمّل","mindful","حسي","flow"])
-    tactical_drive = 0.2 + 0.6*any(k in txt for k in ["قرار","تكتيك","مناورة","ضغط","قتال","combat","مهمات"])
-    flow_pref      = 0.2 + 0.6*any(k in txt for k in ["هدوء","انسجام","flow","تنفّس","يوغا","بيلاتس","تأمّل"])
-    pace           = 3.0 + (1.0 if "سريع" in txt or "hiit" in txt else 0.0) - (1.0 if "هادئ" in txt or "خفيف" in txt else 0.0)
-    pace           = max(1.0, min(5.0, pace))
-    social = 0.0
-    if any(k in txt for k in ["فريق","جماعي","team","خماسية","سلة"]): social += 0.8
-    if any(k in txt for k in ["وحدي","فردي","solo"]):                   social -= 0.8
-    social = max(-1.0, min(1.0, social))
-    io = 0.0
-    if any(k in txt for k in ["هواء طلق","outdoor","حديقة","ممشى"]): io += 0.7
-    if any(k in txt for k in ["صالات","indoor","نادي"]):             io -= 0.7
-    io = max(-1.0, min(1.0, io))
-    if any(k in hates for k in ["ملل","روتين","تكرار"]): novelty_seek = max(novelty_seek, 0.7)
-    if any(k in hates for k in ["ازدحام","زحمة"]): social = min(social, 0.0)
-    return {k: float(round(v,2)) for k,v in dict(novelty_seek=novelty_seek, sensory_depth=sensory_depth, tactical_drive=tactical_drive, flow_pref=flow_pref, pace=pace, social=social, indoor_outdoor=io).items()}
 
-def _compose_cards(ax, z_axes, lang):
-    is_ar = (lang == "العربية")
-    def _name1():
-        if ax["tactical_drive"]>0.6 and ax["novelty_seek"]>0.6: return "قتال تكتيكي غامر" if is_ar else "Tactical Immersive Combat"
-        if ax["flow_pref"]>0.6 and ax["sensory_depth"]>0.6:     return "مهمات تدفّق خفي" if is_ar else "Stealth-Flow Missions"
-        return "عبور ميداني إيقاعي" if is_ar else "Rhythmic Field Traverse"
-    def _name2():
-        return ("حلقة باركور حضرية" if is_ar else "Urban Parkour Loop") if ax["indoor_outdoor"]>=0.4 else ("دائرة مرونة داخل الاستوديو" if is_ar else "Studio Mobility Circuit")
-    def _name3():
-        return ("مختبر حسّي بالواقع الافتراضي (بدون قتال)" if is_ar else "VR Sense-Lab (no-combat)") if ax["novelty_seek"]>0.5 else ("مزيج خفّة ذهني" if is_ar else "Mindful Agility Blend")
-    def blurb(title):
-        if is_ar:
-            L=[f"• لماذا {title}: مواءمة لمحوري Z: {'، '.join(z_axes[:2])}.",
-               f"• السرعة: {int(round(ax['pace']))}/5 — {'هواء طلق' if ax['indoor_outdoor']>0 else 'داخل الصالات'}.",
-               f"• النمط الاجتماعي: {'فريق/ازدواج' if ax['social']>0.3 else ('فردي' if ax['social']<-0.3 else 'مختلط')}.",
-               "• مؤشرات حسية: تنفّس/صوت/لمس مضبوطة للحفاظ على المتعة."]
-            return "\n".join(L)
-        else:
-            L=[f"• Why {title}: maps to your Z-axes: {', '.join(z_axes[:2])}.",
-               f"• Pace: {int(round(ax['pace']))}/5 — {'outdoor' if ax['indoor_outdoor']>0 else 'indoor'}.",
-               f"• Social: {'team/duo' if ax['social']>0.3 else ('solo' if ax['social']<-0.3 else 'hybrid')}.",
-               "• Sensory cues tuned for sustained enjoyment."]
-            return "\n".join(L)
-    titles=[_name1(),_name2(),_name3()]
-    headers_ar=["🟢 التوصية رقم 1","🌿 التوصية رقم 2","🔮 التوصية رقم 3 (ابتكارية)"]
-    headers_en=["🟢 Recommendation #1","🌿 Recommendation #2","🔮 Recommendation #3 (Creative)"]
-    cards=[]
-    for i,t in enumerate(titles,1):
-        hdr=headers_ar[i-1] if is_ar else headers_en[i-1]
-        body=blurb(t)
-        plan="• نموذج جلسة: 25–35 دقيقة، 3 مرات/أسبوع. فترات 3–6 دقائق يليها دقيقة تهدئة حسّية." if is_ar else "• Session: 25–35 min, 3×/week. 3–6 min bouts + 1-min sensory downshift."
-        cards.append(f"{hdr}\n\n{t}\n\n{body}\n{plan}\n— Sports Sync")
-    return cards
+def _summarise_traits(identity: Dict[str, float], lang: str) -> List[str]:
+    mapping = _TRAIT_LINES["ar" if lang in ("العربية", "ar") else "en"]
+    lines: List[str] = []
+    for trait, _value in sorted(identity.items(), key=lambda item: item[1], reverse=True):
+        if trait in mapping and mapping[trait] not in lines:
+            lines.append(mapping[trait])
+        if len(lines) >= 2:
+            break
+    return lines or (["هويتك تتطور مع كل تجربة جديدة." ] if lang.startswith("ar") else ["Your identity grows with every new exploration."])
 
-def _local_generate(answers, lang):
-    ax=_score_axis(answers)
-    z=analyze_silent_drivers(answers, lang=lang) or []
-    random.seed(json.dumps(ax, sort_keys=True))
-    return _compose_cards(ax, z, lang)[:3]
 
-def generate_sport_recommendation(answers, lang="العربية"):
-    client = make_llm_client() if callable(make_llm_client) else None
-    use_local, reason = _should_use_local(client)
-    if use_local or not callable(chat_once):
-        return _local_generate(answers, lang)
+def _select_archetype_keys(identity: Dict[str, float]) -> List[str]:
+    order: List[str] = []
+    if identity["tactical"] >= identity["sensory"]:
+        order.append("tactical_immersive")
+        order.append("stealth_flow")
+    else:
+        order.append("stealth_flow")
+        order.append("tactical_immersive")
+
+    adventure_score = identity["adventure"]
+    social_score = identity["social"]
+    solo_score = identity["solo"]
+    tactical_score = identity["tactical"]
+
+    if adventure_score >= max(social_score, tactical_score):
+        third = "urban_exploration"
+    elif social_score >= solo_score:
+        third = "creative_teamplay"
+    else:
+        third = "precision_duel"
+
+    if third not in order:
+        order.append(third)
+    else:
+        for fallback in ("urban_exploration", "precision_duel", "creative_teamplay"):
+            if fallback not in order:
+                order.append(fallback)
+                break
+    return order[:3]
+
+
+def _build_card_text(archetype_key: str, identity: Dict[str, float], lang: str) -> str:
+    data = _ARCHETYPES[archetype_key]
+    locale = "ar" if lang in ("العربية", "ar") else "en"
+    title = data["title"][locale]
+    trait_lines = _summarise_traits(identity, lang)
+
+    sections = [
+        f"🎯 **{title}**",
+        "",
+        "💡 **ما هي؟**" if locale == "ar" else "💡 **What is it?**",
+        data["what"][locale],
+        "",
+        "🎮 **ليه تناسبك؟**" if locale == "ar" else "🎮 **Why it fits you**",
+        data["why"][locale] + " " + " ".join(trait_lines),
+        "",
+        "🔍 **شكلها الواقعي**" if locale == "ar" else "🔍 **How it feels in real life**",
+        data["shape"][locale],
+        "",
+        "👁️‍🗨️ **ملاحظات مهمة**" if locale == "ar" else "👁️‍🗨️ **Important notes**",
+        data["notes"][locale],
+    ]
+
+    text = "\n".join(sections)
+    if len(text.split()) < 150:
+        padding_sentence = "استمر في الإصغاء لهويتك الداخلية ودعها تقودك لاختيار التفاصيل التي تضيفها." if locale == "ar" else "Keep listening to your inner identity and let it guide the details you add."  # ensure minimum length
+        sections.insert(-1, padding_sentence)
+        text = "\n".join(sections)
+    return text
+
+
+def _fallback_cards(answers: Dict[str, Any], lang: str, n: int = 3) -> List[str]:
+    identity = _extract_identity(answers, lang)
+    keys = _select_archetype_keys(identity)
+    cards = [_build_card_text(key, identity, lang) for key in keys]
+    return cards[:n]
+
+
+def _llm_available() -> bool:
+    if not (make_llm_client and pick_models and chat_once):
+        return False
+    if os.getenv("DISABLE_LLM", "").strip().lower() == "true":
+        return False
+    return True
+
+
+def _llm_polish(cards: List[str], lang: str) -> List[str]:
+    if not _llm_available():
+        return cards
+
+    client = make_llm_client()
+    if not client:
+        return cards
+
     try:
-        main_chain, fb = pick_models()
-    except Exception:
-        main_chain, fb = "gpt-4o", "gpt-4o-mini"
-    msgs=[{"role":"system","content":"You are SportSync recommender. Avoid weight/time/money. Use psycho-metric axes. Return 3 cards."},
-          {"role":"user","content":json.dumps({"answers":answers,"lang":lang}, ensure_ascii=False)}]
-    try:
-        text=chat_once(client, msgs, model=main_chain, temperature=0.7, max_tokens=900)
-        parts=[p.strip() for p in text.split("\n\n") if p.strip()]
-        if len(parts)<3: return _local_generate(answers, lang)
-        return parts[:3]
-    except Exception:
-        return _local_generate(answers, lang)
+        main_model, fallback_model = pick_models()
+    except Exception:  # pragma: no cover - pick failure
+        main_model, fallback_model = ("gpt-4o", "gpt-4o-mini")
 
-def quick_diagnose():
-    d=_diagnose()
-    d["sample_axes"]=_score_axis({"intent":{"answer":["sample"]}})
-    return d
+    system_prompt = (
+        "أعد صياغة بطاقة الهوية الرياضية التالية بأسلوب إنساني غني يركز على المتعة والانغماس." \
+        " لا تضف أزمنة أو خطط أو قياسات أو كلمات عن السعرات أو الوزن. حافظ على نفس العناوين، وأعد النص في صورة Markdown فقط."
+    ) if lang in ("العربية", "ar") else (
+        "Rewrite the following sport identity card with a rich human tone that celebrates enjoyment and immersion." \
+        " Do not add times, schedules, measurements, or words about calories or weight. Keep the headings and return Markdown only."
+    )
+
+    polished: List[str] = []
+    for card in cards:
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": card},
+        ]
+        try:
+            response = chat_once(client, messages, model=main_model, temperature=0.5, max_tokens=900)
+            if response and len(response.split()) >= 150:
+                polished.append(response)
+            elif fallback_model:
+                response_fb = chat_once(client, messages, model=fallback_model, temperature=0.4, max_tokens=900)
+                polished.append(response_fb if response_fb and len(response_fb.split()) >= 150 else card)
+            else:
+                polished.append(card)
+        except Exception:
+            polished.append(card)
+    return polished
+
+
+def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العربية") -> List[str]:
+    fallback_cards = _fallback_cards(answers, lang, n=3)
+    return _llm_polish(fallback_cards, lang)
+
+
+def quick_diagnose() -> Dict[str, Any]:
+    sample = {"intent": {"answer": ["تجربة تكتيكية هادئة مع مغامرة" ]}}
+    identity = _extract_identity(sample, "العربية")
+    selected = _select_archetype_keys(identity)
+    return {
+        "llm_available": _llm_available(),
+        "identity_weights": identity,
+        "selected_archetypes": selected,
+    }

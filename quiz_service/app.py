@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os, sys, json, time, uuid
 from pathlib import Path
+from typing import List
 import streamlit as st
 
 # =========================
@@ -371,18 +372,21 @@ recs = st.session_state.get("recs", [])
 if recs:
     headers_ar = ["🟢 التوصية رقم 1", "🌿 التوصية رقم 2", "🔮 التوصية رقم 3 (ابتكارية)"]
     headers_en = ["🟢 Recommendation #1", "🌿 Recommendation #2", "🔮 Recommendation #3 (Creative)"]
-    rendered_text = []
 
-    for i, rec in enumerate(recs[:3]):
+    for i, rec_md in enumerate(recs[:3]):
         st.subheader(headers_ar[i] if is_ar else headers_en[i])
         ph = st.empty()
-        text_to_show = _safe_str(rec)
+        rec_md = _safe_str(rec_md)
 
-        # كتابة حيّة للتوصية
-        typewriter_write(ph, text_to_show, TYPE_SPEED_MS)
-        rendered_text.append(text_to_show)
+        if LIVE_TYPING:
+            buffer: List[str] = []
+            for line in rec_md.splitlines(True):
+                buffer.append(line)
+                ph.markdown("".join(buffer))
+                time.sleep(max(TYPE_SPEED_MS, 1) / 1000.0)
+        else:
+            ph.markdown(rec_md)
 
-        # ⭐ تسجيل التقييم عند التغيير
         old_val = st.session_state["ratings"][i]
         new_rating = st.slider(
             "⭐ " + T("قيّم هذه التوصية", "Rate this recommendation"),
