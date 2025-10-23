@@ -1,7 +1,7 @@
 # core/core_engine.py
 # -- coding: utf-8 --
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 import io, re, os, base64, logging, traceback
 
 # فيديو/صور/صوت
@@ -125,7 +125,7 @@ def generate_voice(script: str, lang: str = "en") -> Path:
         return Path("")
 
 # -------- Compose video --------
-def compose_video(image_paths: List[Path], voice_path: Path|None, seconds_per_image: int = 4) -> Path:
+def compose_video(image_paths: List[Path], voice_path: Optional[Path], seconds_per_image: int = 4) -> Path:
     if not image_paths:
         raise RuntimeError("لا توجد صور في الإخراج.")
     FINAL_DIR.mkdir(parents=True, exist_ok=True)
