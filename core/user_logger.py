@@ -1,31 +1,30 @@
 # -- coding: utf-8 --
-"""Lightweight logging helpers: JSONL append always, optional SQLite mirror."""
+"""Durable user logging: JSON snapshot + CSV index + JSONL event streams."""
 from __future__ import annotations
 
+import csv
 import json
-import os
-import sqlite3
 import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-_LOG_DIR = Path("outputs/logs")
-_LOG_DIR.mkdir(parents=True, exist_ok=True)
+_LOG_LOCK = threading.RLock()
 
-_FILES = {
-    "submissions": _LOG_DIR / "quiz_submissions.jsonl",
-    "ratings": _LOG_DIR / "ratings.jsonl",
-    "chat": _LOG_DIR / "chat.jsonl",
-    "events": _LOG_DIR / "events.jsonl",
+_QUIZ_DIR = Path("outputs/quiz_submissions")
+_QUIZ_DIR.mkdir(parents=True, exist_ok=True)
+_QUIZ_CSV = _QUIZ_DIR / "index.csv"
+
+_EVENTS_DIR = Path("outputs/events")
+_EVENTS_DIR.mkdir(parents=True, exist_ok=True)
+_EVENT_FILES = {
+    "ratings": _EVENTS_DIR / "ratings.jsonl",
+    "chat": _EVENTS_DIR / "chat.jsonl",
+    "events": _EVENTS_DIR / "events.jsonl",
 }
 
-_DB_PATH = Path("data/sportsync.db")
-_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-_SQLITE_AVAILABLE = sqlite3 is not None
-_DB_LOCK = threading.RLock()
+_BANNED_TERMS = ()  # kept for future processing hooks
 
 
 def _utc_now() -> str:
@@ -35,91 +34,42 @@ def _utc_now() -> str:
 def _append_jsonl(path: Path, payload: Dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     line = json.dumps(payload, ensure_ascii=False)
-    with path.open("a", encoding="utf-8") as f:
-        f.write(line + "\n")
-        f.flush()
-        os.fsync(f.fileno())
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(line + "\n")
+        fh.flush()
 
 
-def _ensure_sqlite() -> Optional[sqlite3.Connection]:
-    if not _SQLITE_AVAILABLE:
-        return None
-    try:
-        conn = sqlite3.connect(_DB_PATH)
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS quiz_submissions (
-                id TEXT PRIMARY KEY,
-                ts TEXT,
-                user_id TEXT,
-                session_id TEXT,
-                lang TEXT,
-                answers_json TEXT
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS ratings (
-                id TEXT PRIMARY KEY,
-                ts TEXT,
-                user_id TEXT,
-                session_id TEXT,
-                idx INTEGER,
-                rating INTEGER,
-                lang TEXT
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS chat (
-                id TEXT PRIMARY KEY,
-                ts TEXT,
-                user_id TEXT,
-                session_id TEXT,
-                role TEXT,
-                content TEXT,
-                lang TEXT,
-                extra_json TEXT
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS events (
-                id TEXT PRIMARY KEY,
-                ts TEXT,
-                user_id TEXT,
-                session_id TEXT,
-                name TEXT,
-                payload_json TEXT,
-                lang TEXT
-            )
-            """
-        )
-        conn.commit()
-        return conn
-    except Exception as exc:  # pragma: no cover
-        print("[LOGGER] sqlite init failed", exc)
-        return None
-
-
-_SQL_CONN = _ensure_sqlite()
-
-
-def _insert_sql(table: str, row: Dict[str, Any]) -> None:
-    if _SQL_CONN is None:
-        return
-    with _DB_LOCK:
+def _write_session_snapshot(session_id: str, payload: Dict[str, Any]) -> None:
+    session_file = _QUIZ_DIR / f"{session_id}.json"
+    entries = []
+    if session_file.exists():
         try:
-            columns = ",".join(row.keys())
-            placeholders = ":" + ",:".join(row.keys())
-            _SQL_CONN.execute(f"INSERT INTO {table} ({columns}) VALUES ({placeholders})", row)
-            _SQL_CONN.commit()
-        except Exception as exc:  # pragma: no cover
-            print("[LOGGER] sqlite insert failed", exc)
+            entries = json.loads(session_file.read_text(encoding="utf-8"))
+        except Exception:
+            entries = []
+    entries.append(payload)
+    tmp_path = session_file.with_suffix(session_file.suffix + ".tmp")
+    with tmp_path.open("w", encoding="utf-8") as fh:
+        json.dump(entries, fh, ensure_ascii=False, indent=2)
+    tmp_path.replace(session_file)
+
+
+def _append_csv_row(row: Dict[str, Any]) -> None:
+    _QUIZ_DIR.mkdir(parents=True, exist_ok=True)
+    file_exists = _QUIZ_CSV.exists()
+    with _QUIZ_CSV.open("a", encoding="utf-8", newline="") as fh:
+        writer = csv.writer(fh)
+        if not file_exists:
+            writer.writerow(["id", "ts", "user_id", "session_id", "lang", "answers_json", "meta_json"])
+        writer.writerow([
+            row["id"],
+            row["ts"],
+            row["user_id"],
+            row["session_id"],
+            row["lang"],
+            json.dumps(row["answers"], ensure_ascii=False),
+            json.dumps(row.get("meta", {}), ensure_ascii=False),
+        ])
 
 
 def log_quiz_submission(
@@ -139,21 +89,15 @@ def log_quiz_submission(
         "answers": answers,
         "meta": meta or {},
     }
-    try:
-        _append_jsonl(_FILES["submissions"], payload)
-    except Exception as exc:
-        print("[LOGGER] JSONL write failed (submissions)", exc)
-    _insert_sql(
-        "quiz_submissions",
-        {
-            "id": entry_id,
-            "ts": payload["ts"],
-            "user_id": user_id,
-            "session_id": session_id,
-            "lang": lang,
-            "answers_json": json.dumps(answers, ensure_ascii=False),
-        },
-    )
+    with _LOG_LOCK:
+        try:
+            _write_session_snapshot(session_id, payload)
+        except Exception as exc:
+            print("[LOGGER] failed to write session snapshot", exc)
+        try:
+            _append_csv_row(payload)
+        except Exception as exc:
+            print("[LOGGER] failed to append quiz CSV", exc)
     return entry_id
 
 
@@ -164,15 +108,14 @@ def log_rating(user_id: str, session_id: str, index: int, rating: int, lang: str
         "ts": _utc_now(),
         "user_id": user_id,
         "session_id": session_id,
-        "idx": index,
+        "index": index,
         "rating": rating,
         "lang": lang,
     }
     try:
-        _append_jsonl(_FILES["ratings"], payload)
+        _append_jsonl(_EVENT_FILES["ratings"], payload)
     except Exception as exc:
-        print("[LOGGER] JSONL write failed (ratings)", exc)
-    _insert_sql("ratings", payload)
+        print("[LOGGER] failed to append rating", exc)
 
 
 def log_chat_message(
@@ -195,22 +138,9 @@ def log_chat_message(
         "extra": extra or {},
     }
     try:
-        _append_jsonl(_FILES["chat"], payload)
+        _append_jsonl(_EVENT_FILES["chat"], payload)
     except Exception as exc:
-        print("[LOGGER] JSONL write failed (chat)", exc)
-    _insert_sql(
-        "chat",
-        {
-            "id": entry_id,
-            "ts": payload["ts"],
-            "user_id": user_id,
-            "session_id": session_id,
-            "role": role,
-            "content": content,
-            "lang": lang,
-            "extra_json": json.dumps(extra or {}, ensure_ascii=False),
-        },
-    )
+        print("[LOGGER] failed to append chat message", exc)
 
 
 def log_event(
@@ -221,7 +151,7 @@ def log_event(
     lang: str = "ar",
 ) -> None:
     entry_id = str(uuid.uuid4())
-    data = {
+    record = {
         "id": entry_id,
         "ts": _utc_now(),
         "user_id": user_id,
@@ -231,59 +161,44 @@ def log_event(
         "lang": lang,
     }
     try:
-        _append_jsonl(_FILES["events"], data)
+        _append_jsonl(_EVENT_FILES["events"], record)
     except Exception as exc:
-        print("[LOGGER] JSONL write failed (events)", exc)
-    _insert_sql(
-        "events",
-        {
-            "id": entry_id,
-            "ts": data["ts"],
-            "user_id": user_id,
-            "session_id": session_id,
-            "name": name,
-            "payload_json": json.dumps(payload or {}, ensure_ascii=False),
-            "lang": lang,
-        },
-    )
+        print("[LOGGER] failed to append event", exc)
 
 
-def _count_lines(path: Path) -> int:
+def _count_csv_rows(path: Path) -> int:
     if not path.exists():
         return 0
     try:
-        with path.open("r", encoding="utf-8") as f:
-            return sum(1 for _ in f)
+        with path.open("r", encoding="utf-8") as fh:
+            lines = sum(1 for _ in fh)
+        return max(0, lines - 1)  # subtract header
     except Exception as exc:
-        print("[LOGGER] count_lines failed", path, exc)
+        print("[LOGGER] failed to count csv rows", exc)
         return 0
 
 
-def _sqlite_counts() -> Dict[str, int]:
-    if _SQL_CONN is None:
-        return {}
-    counts: Dict[str, int] = {}
-    with _DB_LOCK:
-        try:
-            cur = _SQL_CONN.cursor()
-            for table in ("quiz_submissions", "ratings", "chat", "events"):
-                cur.execute(f"SELECT COUNT(*) FROM {table}")
-                counts[table] = cur.fetchone()[0]
-        except Exception as exc:
-            print("[LOGGER] sqlite count failed", exc)
-    return counts
+def _count_jsonl(path: Path) -> int:
+    if not path.exists():
+        return 0
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            return sum(1 for _ in fh)
+    except Exception as exc:
+        print("[LOGGER] failed to count jsonl", exc)
+        return 0
 
 
 def get_log_stats() -> Dict[str, Any]:
-    stats = {
+    submissions = _count_csv_rows(_QUIZ_CSV)
+    ratings = _count_jsonl(_EVENT_FILES["ratings"])
+    chat_msgs = _count_jsonl(_EVENT_FILES["chat"])
+    events = _count_jsonl(_EVENT_FILES["events"])
+    return {
         "files": {
-            "submissions": _count_lines(_FILES["submissions"]),
-            "ratings": _count_lines(_FILES["ratings"]),
-            "chat": _count_lines(_FILES["chat"]),
-            "events": _count_lines(_FILES["events"]),
+            "submissions": submissions,
+            "ratings": ratings,
+            "chat": chat_msgs,
+            "events": events,
         }
     }
-    sqlite_counts = _sqlite_counts()
-    if sqlite_counts:
-        stats["sqlite"] = sqlite_counts
-    return stats

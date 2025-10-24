@@ -376,16 +376,7 @@ if recs:
     for i, rec_md in enumerate(recs[:3]):
         st.subheader(headers_ar[i] if is_ar else headers_en[i])
         ph = st.empty()
-        rec_md = _safe_str(rec_md)
-
-        if LIVE_TYPING:
-            buffer: List[str] = []
-            for line in rec_md.splitlines(True):
-                buffer.append(line)
-                ph.markdown("".join(buffer))
-                time.sleep(max(TYPE_SPEED_MS, 1) / 1000.0)
-        else:
-            ph.markdown(rec_md)
+        ph.markdown(_safe_str(rec_md))
 
         old_val = st.session_state["ratings"][i]
         new_rating = st.slider(
@@ -408,7 +399,6 @@ if recs:
     st.divider()
     cA, cB = st.columns([1,1])
 
-    # 🔘 زر فتح المحادثة — يغيّر النص حسب الحالة
     open_label = T(
         "🙅‍♂ لم تعجبني — افتح محادثة" if not _is_followup_cards(recs) else "🧭 أكمل الإجابات — افتح محادثة",
         "🙅‍♂ Not satisfied — open chat" if not _is_followup_cards(recs) else "🧭 Complete quick answers — open chat"
@@ -426,12 +416,11 @@ if recs:
         except Exception:
             pass
 
-    # تنزيل التوصيات كنص
-    if dl and rendered_text:
-        all_text = "\n\n".join(_safe_str(x) for x in rendered_text)
+    if dl:
+        joined = "\n\n".join(_safe_str(x) for x in recs[:3])
         st.download_button(
             label=T("⬇ تنزيل كملف TXT", "⬇ Download as TXT"),
-            data=all_text.encode("utf-8"),
+            data=joined.encode("utf-8"),
             file_name="sportsync_recommendations.txt",
             mime="text/plain"
         )
