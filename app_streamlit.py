@@ -1,16 +1,31 @@
 # app_streamlit.py
 # -- coding: utf-8 --
 import time
+import uuid
 from typing import List
 import streamlit as st
 from pathlib import Path
 from core.core_engine import run_full_generation, quick_diagnose
-from core.backend_gpt import generate_sport_recommendation
+from core.backend_gpt import generate_sport_recommendation, get_last_rec_source
+from core.llm_client import make_llm_client, pick_models
 from core.user_logger import get_log_stats
 
 st.set_page_config(page_title="SportSync — Quick Video", layout="centered")
 
 st.title("SportSync — Video + Personalizer (V1.1)")
+
+st.session_state.setdefault("rec_source", "?")
+st.session_state.setdefault("force_fallback", False)
+st.session_state.setdefault("preview_session_id", uuid.uuid4().hex)
+
+with st.sidebar:
+    client = make_llm_client()
+    main_model, _fb_model = pick_models()
+    st.write("LLM ready:", bool(client))
+    st.write("Model (main):", main_model)
+    st.write("Rec engine source:", st.session_state.get("rec_source", "?"))
+    if st.button("Force fallback (debug)"):
+        st.session_state["force_fallback"] = True
 
 lang = st.selectbox("Language", ["en","ar"], index=0)
 
@@ -90,8 +105,15 @@ TYPE_SPEED_MS = st.slider("Typing speed (ms per line)", 1, 40, 8, key="cards_spe
 identity_text = st.text_area("Describe what kind of sport vibe you want", "", height=160)
 if st.button("Generate identity cards"):
     with st.spinner("Crafting your identity cards..."):
-        answers = {"persona": {"answer": [identity_text]}}
+        answers = {
+            "persona": {"answer": [identity_text]},
+            "_session_id": st.session_state.get("preview_session_id", uuid.uuid4().hex),
+        }
+        if st.session_state.get("force_fallback"):
+            answers["_force_fallback"] = True
         cards = generate_sport_recommendation(answers, lang)
+        st.session_state["rec_source"] = get_last_rec_source()
+        st.session_state["force_fallback"] = False
     headers_ar = ["🟢 التوصية رقم 1", "🌿 التوصية رقم 2", "🔮 التوصية رقم 3 (ابتكارية)"]
     headers_en = ["🟢 Recommendation #1", "🌿 Recommendation #2", "🔮 Recommendation #3 (Creative)"]
     for i, card_md in enumerate(cards[:3]):

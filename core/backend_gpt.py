@@ -2,24 +2,33 @@
 """Rich analytical fallback recommendations for SportSync."""
 from __future__ import annotations
 
+if __name__ == '__main__':  # allow running as script
+    import sys
+    from pathlib import Path as _Path
+    sys.path.append(str(_Path(__file__).resolve().parent.parent))
+
 import hashlib
 import json
+import os
 import random
 import re
 from datetime import datetime
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Sequence, Optional
 
 try:  # Optional LLM client; fallback works without it.
-    from core.llm_client import make_llm_client, pick_models, chat_once  # type: ignore
+    from core.llm_client import get_client_and_models, make_llm_client, pick_models, chat_once  # type: ignore
 except Exception:  # pragma: no cover - LLM unavailable
+    get_client_and_models = None
     make_llm_client = None
     pick_models = None
     chat_once = None
+from core.user_logger import log_event
 
 
 BANNED_TERMS = ["خسارة الوزن", "حرق الدهون", "سعرات", "وزن", "خطة أسبوعية", "دقيقة", "دقائق", "ساعة", "ساعات"]
 
 ARACHETYPE_DATA: Dict[str, Dict[str, Any]] = {}
+LAST_RECOMMENDER_SOURCE = "unset"
 
 
 def _tokenize(text: str) -> List[str]:
@@ -468,6 +477,173 @@ def _dedupe(cards: List[str], keys: List[str], identity: Dict[str, float], drive
     return cards
 
 
+
+def _clean_json_payload(text: str) -> str:
+    text = (text or '').strip()
+    if text.startswith('```'):
+        text = re.sub(r'^```(?:json)?', '', text, flags=re.IGNORECASE).strip()
+        if text.endswith('```'):
+            text = text[:text.rfind('```')].strip()
+    return text
+
+
+def _parse_llm_response(raw: str) -> Optional[List[Dict[str, str]]]:
+    if not raw:
+        return None
+    cleaned = _clean_json_payload(raw)
+    data: Any
+    try:
+        data = json.loads(cleaned)
+    except Exception:
+        match = re.search(r'(\{.*\}|\[.*\])', cleaned, flags=re.DOTALL)
+        if not match:
+            return None
+        try:
+            data = json.loads(match.group(1))
+        except Exception:
+            return None
+    if isinstance(data, dict):
+        cards = data.get('cards') or data.get('recommendations')
+    else:
+        cards = data
+    if not isinstance(cards, list):
+        return None
+    parsed: List[Dict[str, str]] = []
+    for item in cards:
+        if not isinstance(item, dict):
+            continue
+        lower = {str(k).lower(): str(v) for k, v in item.items()}
+        title = lower.get('title') or lower.get('heading') or ''
+        silent = lower.get('silent') or lower.get('silent_driver') or lower.get('identity') or ''
+        what = lower.get('what') or lower.get('description') or ''
+        why = lower.get('why') or lower.get('fit') or lower.get('reason') or ''
+        real = lower.get('real') or lower.get('realistic') or lower.get('experience') or ''
+        start = lower.get('start') or lower.get('start_here') or lower.get('launch') or ''
+        notes = lower.get('notes') or lower.get('tips') or lower.get('remarks') or ''
+        parts = [title, silent, what, why, real, start, notes]
+        if all(p.strip() for p in parts):
+            parsed.append({
+                'title': title.strip(),
+                'silent': silent.strip(),
+                'what': what.strip(),
+                'why': why.strip(),
+                'real': real.strip(),
+                'start': start.strip(),
+                'notes': notes.strip(),
+            })
+    return parsed if len(parsed) >= 3 else None
+
+
+def _format_llm_card(data: Dict[str, str], lang: str) -> str:
+    title = data['title']
+    silent = data['silent']
+    what = data['what']
+    why = data['why']
+    real = data['real']
+    start = data['start']
+    notes = data['notes']
+    sections = [
+        f"🎯 {title}",
+        '',
+        '💠 المحرك الصامت:',
+        silent,
+        '',
+        '💡 ما هي؟',
+        what,
+        '',
+        '🎮 ليه تناسبك؟',
+        why,
+        '',
+        '🔍 شكلها الواقعي',
+        real,
+        '',
+        '🔄 ابدأ من هنا',
+        start,
+        '',
+        '👁️‍🗨️ ملاحظات',
+        notes,
+    ]
+    return '\n'.join(sections)
+
+
+def _llm_cards(answers: Dict[str, Any], identity: Dict[str, float], drivers: List[str], lang: str) -> Optional[List[str]]:
+    if chat_once is None or get_client_and_models is None:
+        return None
+    try:
+        client, main_model, fallback_model = get_client_and_models()
+    except Exception:
+        client = None
+        main_model = ''
+        fallback_model = ''
+    if not client or not main_model:
+        return None
+
+    driver_sentence = _drivers_sentence(drivers, lang)
+    data = {
+        'language': 'arabic' if lang in ('العربية', 'ar') else 'english',
+        'identity_weights': identity,
+        'drivers': drivers,
+        'drivers_sentence': driver_sentence,
+        'requirements': {
+            'sections': [
+                '🎯 العنوان', '💠 المحرك الصامت:', '💡 ما هي؟',
+                '🎮 ليه تناسبك؟', '🔍 شكلها الواقعي', '🔄 ابدأ من هنا', '👁️‍🗨️ ملاحظات'
+            ],
+            'min_words_per_card': 120,
+            'banned_terms': BANNED_TERMS,
+            'tone': 'identity-focused, joyful, no schedules or numeric time commitments'
+        }
+    }
+
+    system_prompt = (
+        "أنت مساعد SportSync. اكتب ثلاث بطاقات توصية رياضية عربية فصيحة بإحساس إنساني غني."
+        " احرص على استخدام الأقسام بالتسلسل التالي: 🎯 العنوان، 💠 المحرك الصامت:, 💡 ما هي؟, 🎮 ليه تناسبك؟, 🔍 شكلها الواقعي, 🔄 ابدأ من هنا, 👁️‍🗨️ ملاحظات."
+        " تجنب أي حديث عن الأوقات أو العدّ أو السعرات أو الوزن. أعد الاستجابة بصيغة JSON تحتوي على المفتاح cards وقيمته قائمة من ثلاثة كائنات تضم الحقول title, silent, what, why, real, start, notes."
+    ) if lang in ('العربية', 'ar') else (
+        "You are the SportSync assistant. Write three expressive sport-identity cards in English."
+        " Use exactly these sections in order: 🎯 العنوان, 💠 المحرك الصامت:, 💡 ما هي؟, 🎮 ليه تناسبك؟, 🔍 شكلها الواقعي, 🔄 ابدأ من هنا, 👁️‍🗨️ ملاحظات."
+        " Avoid mentioning explicit durations, repetition counts, calories, or weight loss. Respond as JSON with a 'cards' array containing objects with fields title, silent, what, why, real, start, notes."
+    )
+
+    user_prompt = json.dumps(data, ensure_ascii=False)
+
+    model_chain = main_model
+    try:
+        from core.llm_client import _split_models_csv as _split  # type: ignore
+    except Exception:
+        _split = None
+    if fallback_model and _split:
+        models_list = _split(main_model)
+        if fallback_model not in models_list:
+            model_chain = ",".join(models_list + [fallback_model]) if models_list else fallback_model
+    try:
+        raw = chat_once(
+            client,
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            model=model_chain or main_model,
+            temperature=0.65,
+            max_tokens=2200,
+            top_p=0.9,
+        )
+    except Exception:
+        return None
+
+    parsed = _parse_llm_response(raw)
+    if not parsed:
+        return None
+
+    cards: List[str] = []
+    for item in parsed[:3]:
+        card_text = _format_llm_card(item, lang)
+        card_text = _postprocess_text(card_text)
+        if len(card_text.split()) < 120:
+            return None
+        cards.append(card_text)
+    return cards
+
 def _generate_cards(answers: Dict[str, Any], lang: str) -> List[str]:
     session_id = _session_id_from_answers(answers)
     seed_base = session_id + _stable_json(answers) + datetime.utcnow().strftime("%Y-%m-%d")
@@ -513,8 +689,50 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     - تستخدم seed حتمي من (session_id + تجزئة الإجابات + تاريخ اليوم) للتنوع عبر الجلسات.
     - تتجنب كلمات “خسارة الوزن/حرق الدهون” وتستبدلها بهوية ومتعة.
     """
-    cards = _generate_cards(answers, lang)
+    global LAST_RECOMMENDER_SOURCE
+
+    answers_copy: Dict[str, Any] = dict(answers or {})
+    force_flag = bool(answers_copy.pop("_force_fallback", False))
+    env_force = os.getenv("FORCE_ANALYTICAL_FALLBACK", "").strip().lower() == "true"
+    disable_flag = os.getenv("DISABLE_LLM", "").strip().lower() == "true"
+    session_id = _session_id_from_answers(answers_copy)
+
+    identity = _extract_identity(answers_copy)
+    drivers = _drivers(identity, lang)
+
+    cards: Optional[List[str]] = None
+    source = "fallback"
+
+    if not (force_flag or env_force or disable_flag):
+        try:
+            cards = _llm_cards(answers_copy, identity, drivers, lang)
+            if cards:
+                source = "llm"
+        except Exception:
+            cards = None
+
+    if not cards:
+        cards = _generate_cards(answers_copy, lang)
+        source = "fallback"
+
+    LAST_RECOMMENDER_SOURCE = source
+
+    try:
+        log_event(
+            user_id=str(answers_copy.get("_user_id", "unknown")),
+            session_id=session_id,
+            name="generate_recommendation",
+            payload={"source": source},
+            lang=lang,
+        )
+    except Exception:
+        pass
+
     return cards
+
+
+def get_last_rec_source() -> str:
+    return LAST_RECOMMENDER_SOURCE
 
 
 if __name__ == "__main__":

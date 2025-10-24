@@ -102,8 +102,8 @@ _bootstrap_env()
 try:
     # openai>=1.6,<2 المعيار الجديد (OpenAI class)
     from openai import OpenAI  # type: ignore
-except Exception as e:
-    raise RuntimeError("ثبّت الحزمة: openai>=1.6.1,<2") from e
+except Exception:
+    OpenAI = None  # type: ignore
 
 # =========================
 # Model Name Remapping
@@ -191,6 +191,9 @@ def _build_client() -> Optional[OpenAI]:
     if base: kw["base_url"] = base
     if org:  kw["organization"] = org
     if default_headers: kw["default_headers"] = default_headers
+
+    if OpenAI is None:
+        return None
 
     try:
         client = OpenAI(**kw)
