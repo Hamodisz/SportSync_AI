@@ -2,12 +2,20 @@
 """Rich analytical fallback recommendations for SportSync."""
 from __future__ import annotations
 
+if __name__ == '__main__':  # allow running as script
+    import sys
+    from pathlib import Path as _Path
+    sys.path.append(str(_Path(__file__).resolve().parent.parent))
+
 import hashlib
 import json
+import os
 import random
 import re
+import time
 from datetime import datetime
-from typing import Any, Dict, List, Sequence
+from pathlib import Path
+from typing import Any, Dict, List, Sequence, Optional, Tuple
 
 try:  # Optional LLM client; fallback works without it.
     from core.llm_client import make_llm_client, pick_models, chat_once  # type: ignore
@@ -15,11 +23,34 @@ except Exception:  # pragma: no cover - LLM unavailable
     make_llm_client = None
     pick_models = None
     chat_once = None
+from core.user_logger import log_event, log_recommendation_result
 
+
+LLM_CLIENT: Optional[Any]
+CHAT_MODEL: str
+CHAT_MODEL_FALLBACK: str
+
+if make_llm_client is not None:
+    try:
+        LLM_CLIENT = make_llm_client()
+    except Exception:
+        LLM_CLIENT = None
+else:
+    LLM_CLIENT = None
+
+if pick_models is not None:
+    try:
+        CHAT_MODEL, CHAT_MODEL_FALLBACK = pick_models()
+    except Exception:
+        CHAT_MODEL, CHAT_MODEL_FALLBACK = ("", "")
+else:
+    CHAT_MODEL = ""
+    CHAT_MODEL_FALLBACK = ""
 
 BANNED_TERMS = ["خسارة الوزن", "حرق الدهون", "سعرات", "وزن", "خطة أسبوعية", "دقيقة", "دقائق", "ساعة", "ساعات"]
 
 ARACHETYPE_DATA: Dict[str, Dict[str, Any]] = {}
+LAST_RECOMMENDER_SOURCE = "unset"
 
 
 def _tokenize(text: str) -> List[str]:
@@ -102,6 +133,729 @@ def _drivers_sentence(drivers: List[str], lang: str) -> str:
     if len(drivers) == 2:
         return f"{drivers[0]} and {drivers[1]}"
     return ", ".join(drivers[:-1]) + ", and " + drivers[-1]
+
+
+CARD_SECTION_LIMIT = 3
+
+FORBIDDEN_REGEX_PATTERNS = [
+    r"\b\d+\s*(?:دقيقة|دقائق|ساعة|ساعات|minute|minutes|hour|hours|week|weeks|day|days)\b",
+    r"\b(?:تكلفة|سعر|budget|cost|price)\b",
+    r"\b(?:موقع|مكان|venue|stadium|field|court|club|arena|gym|studio)\b",
+    r"\b(?:معدات|أجهزة|gear|equipment|ball|weights|dumbbell)\b",
+]
+
+FORBIDDEN_TERMS_AR = [
+    "أجرة", "رسوم", "مصروف", "موعد", "جدول", "موقع", "مكان", "ملعب", "صالة", "استوديو", "معدات",
+]
+
+FORBIDDEN_TERMS_EN = [
+    "cost", "fee", "price", "schedule", "location", "venue", "equipment", "gear", "ball", "court",
+]
+
+TRAIT_KEYWORDS = {
+    "solo": ["solo", "منفرد", "فردي", "وحيد", "انعزال", "independent", "self"],
+    "team": ["team", "جماعي", "مجموعة", "شركاء", "ثنائي", "co-op", "cooperative", "collaborative"],
+    "calm": ["calm", "هدوء", "تنفس", "steady", "مستقر", "سكون", "مطمئن", "تناغم"],
+    "adrenaline": ["adrenaline", "إثارة", "اندفاع", "حماس", "سريع", "انفجار", "thrill", "حماسية"],
+    "precision": ["دقة", "محسوبة", "تصويب", "precision", "measured", "calibrated", "محكمة"],
+    "puzzles": ["لغز", "ألغاز", "puzzle", "تحليل", "متاهة", "معادلة", "brain", "ذكاء"],
+    "stealth": ["تخفي", "خفي", "ظل", "stealth", "silent", "صامت", "خفيف", "invisible"],
+    "vr": ["vr", "واقع افتراضي", "virtual", "immersive", "محاكاة", "simulated", "هولوغرام", "واقع رقمي"],
+}
+
+
+def _flatten_answers(answers: Dict[str, Any]) -> List[str]:
+    collected: List[str] = []
+
+    def _walk(value: Any) -> None:
+        if isinstance(value, dict):
+            for item in value.values():
+                _walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                _walk(item)
+        elif value is not None:
+            collected.append(str(value))
+
+    _walk(answers)
+    return collected
+
+
+def _derive_binary_traits(answers: Dict[str, Any]) -> Dict[str, float]:
+    base_score = 0.42
+    text = " ".join(_flatten_answers(answers)).lower()
+    traits = {name: base_score for name in TRAIT_KEYWORDS.keys()}
+    for trait, tokens in TRAIT_KEYWORDS.items():
+        hits = sum(1 for token in tokens if token in text)
+        if hits >= 2:
+            traits[trait] = 0.92
+        elif hits == 1:
+            traits[trait] = 0.78
+    if traits["vr"] < 0.7 and "محاكاة" in text:
+        traits["vr"] = 0.78
+    if traits["puzzles"] < 0.7 and ("تحليل" in text or "strategy" in text):
+        traits["puzzles"] = 0.74
+    if traits["calm"] < 0.7 and ("breath" in text or "تنفس" in text):
+        traits["calm"] = 0.76
+    if traits["adrenaline"] < 0.7 and ("سرعة" in text or "fast" in text):
+        traits["adrenaline"] = 0.7
+    if traits["solo"] > 0.7 and traits["team"] > 0.7:
+        traits["solo"] = traits["team"] = 0.62
+    return traits
+
+
+def _scrub_forbidden(text: str, lang: str) -> str:
+    if not text:
+        return ""
+    cleaned = text
+    for pattern in FORBIDDEN_REGEX_PATTERNS:
+        cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
+    for term in BANNED_TERMS:
+        if term in cleaned:
+            cleaned = cleaned.replace(term, "هوية ممتعة")
+    if lang in ("العربية", "ar"):
+        for term in FORBIDDEN_TERMS_AR:
+            cleaned = cleaned.replace(term, "")
+    else:
+        for term in FORBIDDEN_TERMS_EN:
+            cleaned = re.sub(term, "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    return cleaned.strip()
+
+
+def _mask_names(text: str) -> str:
+    if not text:
+        return ""
+
+    def _mask(match: re.Match[str]) -> str:
+        return "the persona"
+
+    masked = re.sub(r"\b(?:[A-Z][a-z]{2,}\s+){1,2}[A-Z][a-z]{2,}\b", _mask, text)
+    return masked
+
+
+def _normalize_sentences(value: Any) -> List[str]:
+    if isinstance(value, list):
+        parts = [str(item).strip() for item in value if str(item).strip()]
+    else:
+        raw = str(value).replace("•", "\n").replace("-", "\n")
+        parts = [seg.strip() for seg in re.split(r"[\n\.!؟]+", raw) if seg.strip()]
+    return parts
+
+
+def _to_bullets(value: Any, lang: str, *, minimum: int = 2, maximum: int = CARD_SECTION_LIMIT) -> str:
+    parts = _normalize_sentences(value)
+    cleaned: List[str] = []
+    for part in parts:
+        sanitized = _mask_names(_scrub_forbidden(part, lang))
+        if sanitized and sanitized not in cleaned:
+            cleaned.append(sanitized)
+        if len(cleaned) == maximum:
+            break
+    if not cleaned:
+        return ""
+    if len(cleaned) < minimum and parts:
+        idx = 0
+        while len(cleaned) < minimum and idx < len(parts):
+            candidate = _mask_names(_scrub_forbidden(parts[idx], lang))
+            if candidate and candidate not in cleaned:
+                cleaned.append(candidate)
+            idx += 1
+    if len(cleaned) == 1:
+        cleaned = cleaned * minimum
+    return "\n".join(f"- {item}" for item in cleaned[:maximum])
+
+
+def _fallback_blueprints() -> List[Dict[str, Any]]:
+    return [
+        {
+            "id": "shadow_maze",
+            "trait_weights": {"stealth": 0.6, "puzzles": 0.4, "precision": 0.2},
+            "identity_weights": {"tactical": 0.35, "sensory": 0.2},
+            "signature_terms": ["shadow", "maze", "logic"],
+            "labels": {
+                "ar": [
+                    "ممر التخفي الذكي",
+                    "مختبر الشيفرة الصامتة",
+                    "طيف الظلال التحليلية",
+                ],
+                "en": [
+                    "Shadow Cipher Lab",
+                    "Silent Tactic Corridor",
+                    "Veiled Logic Circuit",
+                ],
+            },
+            "what": {
+                "ar": [
+                    [
+                        "رحلة تدريبية تبني حكاية من الضوء والهمس حتى تشعر أن كل إشارة تومض كأنها سطر من رواية سرية.",
+                        "تتبع خطوطًا متعرجة وتعيد ترتيب زخمك ببطء كي تثبت أن التخطيط يمكن أن يتنفس من دون رفع الصوت.",
+                        "كل انتقال يطلب منك قراءة الرسالة قبل أن تتحرك قدماك، فتكتب مشهدًا تكتيكيًا بلمسات محسوبة.",
+                    ],
+                    [
+                        "مختبر ذهني يعلّمك كيف تجمع بين التحليل والحركة عبر مشاهد تتغير كلما التقطت همسة جديدة.",
+                        "تترك الخيال يرسم مسارات خفيفة ثم تختبرها بجسدك لتصنع جسرًا بين الحدس والعقل.",
+                        "النتيجة تجربة تضعك في دور الراوي الذي يوزع الإشارات دون أن يكشف اليد الأولى.",
+                    ],
+                ],
+                "en": [
+                    [
+                        "A training tale built from glimmers and whispering cues where every spark feels like a hidden line of code.",
+                        "You trace serpentine paths and adjust your tempo gently to prove strategy can breathe without any noise.",
+                        "Each transition asks you to read the message before you move, letting you author a tactical scene through measured touches.",
+                    ],
+                    [
+                        "An imagined lab that fuses analysis with motion as the scene reshapes whenever you notice a subtle hint.",
+                        "You allow imagination to sketch soft routes and then test them with your body, bridging instinct and intellect.",
+                        "The result crowns you as a narrator who distributes signals carefully without exposing the opening move.",
+                    ],
+                ],
+            },
+            "why": {
+                "ar": [
+                    "تستمتع عندما تتحول البصمة الذهنية إلى لعبة صامتة.",
+                    "تفضل بناء خطة متعددة الطبقات بدل الاندفاع العشوائي.",
+                    "تقرأ الإشارات الصغيرة وتحوّلها إلى قرار من دون توتر.",
+                    "تبحث عن مغامرة تستعير ذكاءك قبل قوتك.",
+                ],
+                "en": [
+                    "You enjoy turning mental fingerprints into a quiet game.",
+                    "You prefer layering plans instead of rushing with guesswork.",
+                    "You translate tiny cues into decisions without tension.",
+                    "You crave adventures that borrow your intellect before your power.",
+                ],
+            },
+            "real": {
+                "ar": [
+                    "تعدّل إيقاعك فور رؤية خيال جديد لتبقي الخطوة التالية لغزًا.",
+                    "تستخدم نظرة أو حركة أصابع كإشارة سرية لتغيير الاتجاه.",
+                    "تدوّن في ذهنك أثر كل انتقال لتستدعيه عندما يتغير المشهد.",
+                    "تسمح للخطوة بأن تتلاشى ثم تعود بإيماءة محسوبة تكسر التوقع.",
+                ],
+                "en": [
+                    "Shift your tempo the moment a new silhouette appears so the next move stays enigmatic.",
+                    "Use a glance or finger motion as a covert signal to redirect the sequence.",
+                    "Catalog the feeling of each transition so you can reuse it when the scene pivots.",
+                    "Let a step fade and return with a precise gesture that bends expectation.",
+                ],
+            },
+            "notes": {
+                "ar": [
+                    "ذكّر نفسك أن البطء المتعمد يمنح الخطة قوة إضافية.",
+                    "احفظ قاموسًا صغيرًا للإشارات كي لا تضيع التفاصيل.",
+                    "اسمح للخيال أن يسبق الحركة حتى لو بدا المشهد ساكنًا.",
+                    "إذا تكررت الفكرة، أعد صياغتها من زاوية جديدة بدل استنساخها.",
+                ],
+                "en": [
+                    "Remind yourself that deliberate slowness reinforces the plan.",
+                    "Keep a tiny glossary of cues so no detail is lost.",
+                    "Let imagination outrun motion even when the scene feels still.",
+                    "If an idea repeats, rewrite it from a new angle instead of cloning it.",
+                ],
+            },
+        },
+        {
+            "id": "precision_hush",
+            "trait_weights": {"calm": 0.55, "precision": 0.45, "solo": 0.25},
+            "identity_weights": {"sensory": 0.35, "tactical": 0.15},
+            "signature_terms": ["precision", "stillness", "hush"],
+            "labels": {
+                "ar": [
+                    "مختبر اللمسة الهادئة",
+                    "نواة الدقة الساكنة",
+                    "أفق التناغم المحسوب",
+                ],
+                "en": [
+                    "Quiet Precision Atelier",
+                    "Stillness Calibration Core",
+                    "Measured Harmony Deck",
+                ],
+            },
+            "what": {
+                "ar": [
+                    [
+                        "مجال تدريبي يدعوك لالتقاط أنفاس موزونة ثم تحويلها إلى خطوط حركة شفافة.",
+                        "تزن كل انتقال كما لو أنك تلمس لوحة دقيقة، فتمنع أي ضجيج من اختراق التجربة.",
+                        "التقدم يحدث حين تسمح للعقل أن يرسم المتتابعة، وللجسد أن ينفذها من دون أقواس زائدة.",
+                    ],
+                    [
+                        "مخطط هادئ يبني جسورًا بين الاسترخاء والحدة لتتعلم كيف تجاور النعومة والحسم.",
+                        "تراقب الاهتزازات الصغيرة في جسدك وتحوّلها إلى توقيع يضمن ثباتك.",
+                        "كل ما عليك هو ترك الإيقاع الداخلي يقودك إلى خطوة نقية التطويع كأنك تصيغ قطعة موسيقية تحترم كل نبضة صغيرة.",
+                    ],
+                ],
+                "en": [
+                    [
+                        "A learning field that invites you to balance each breath before converting it into translucent lines of motion.",
+                        "You weigh every transition as if touching a delicate canvas, keeping interference far from the experience.",
+                        "Progress appears when mind drafts the sequence and body executes it without extra flourishes.",
+                    ],
+                    [
+                        "A calm blueprint that bridges relaxation and sharpness so you can place softness beside decisiveness.",
+                        "You monitor micro-vibrations and convert them into a signature that keeps your posture steady.",
+                        "All you do is let your internal rhythm guide you toward a neatly tuned step.",
+                    ],
+                ],
+            },
+            "why": {
+                "ar": [
+                    "تحب الشعور بأن التفاصيل الدقيقة هي التي تقود القصة.",
+                    "تجد الراحة عندما يصبح التنفس جزءًا من الخطة.",
+                    "تبحث عن تجربة تمنحك تركيزًا مستمرًا من دون ضجيج.",
+                    "تحب سماع الرسائل الهادئة قبل أن تتحول إلى فعل.",
+                ],
+                "en": [
+                    "You love when delicate details are the ones steering the story.",
+                    "You relax once breathing becomes part of the plan.",
+                    "You want a practice that keeps your focus alive without spectacle.",
+                    "You enjoy hearing quiet messages before turning them into action.",
+                ],
+            },
+            "real": {
+                "ar": [
+                    "تضبط كتفيك مع كل زفير لتذكّر نفسك بأن الاستقرار قرار داخلي.",
+                    "تعدّل طول الخطوة كأنك تحرر مقطعًا موسيقيًا من أي حدة زائدة.",
+                    "تختبر تنويعًا بسيطًا في مسار العين لتضمن أن التركيز لم يتشوه.",
+                    "تجرب التوقف القصير ثم العودة السلسة لتؤكد أن العقل ما زال يقود.",
+                ],
+                "en": [
+                    "Align your shoulders with each exhale to remember stability is internal.",
+                    "Adjust the stride length as if editing a musical bar to remove excess tension.",
+                    "Test a slight shift in eye path to ensure attention stays unblurred.",
+                    "Experiment with a brief pause then a smooth return to prove mind remains in charge.",
+                ],
+            },
+            "notes": {
+                "ar": [
+                    "دوّن نبرة التنفس التي منحتك أكبر حالة صفاء.",
+                    "لا تسمح للتكرار أن يصبح آليًا؛ أدخل ملمسًا حسّيًا صغيرًا.",
+                    "تذكر أن الصمت المحيط حليف وليس فراغًا.",
+                    "إن شعرت بالسرعة، أبطئ الحكاية بدل مقاومة الجسد.",
+                ],
+                "en": [
+                    "Record the breath tone that produced your clearest state.",
+                    "Prevent repetition from going robotic by adding a tiny sensory cue.",
+                    "Remember surrounding silence is an ally, not a void.",
+                    "If speed creeps in, slow the story instead of wrestling your body.",
+                ],
+            },
+        },
+        {
+            "id": "signal_alliance",
+            "trait_weights": {"team": 0.6, "puzzles": 0.3, "adrenaline": 0.2},
+            "identity_weights": {"social": 0.4, "achievement": 0.2},
+            "signature_terms": ["signal", "alliance", "team"],
+            "labels": {
+                "ar": [
+                    "تحالف الإشارات الخفية",
+                    "جماعة الحيلة التفاعلية",
+                    "شبكة التناغم التشاركي",
+                ],
+                "en": [
+                    "Hidden Signal Collective",
+                    "Interactive Tactic Ensemble",
+                    "Collaborative Rhythm Grid",
+                ],
+            },
+            "what": {
+                "ar": [
+                    [
+                        "منصة تعاون تزرع داخل الفريق لغة حركية مشفرة تستيقظ كلما تبادلتم النظرات.",
+                        "تتعاقب الأدوار بسلاسة، فتغمر المجموعة طاقة تشعر أنها مشروع إبداعي لا مجرد تدريب.",
+                        "كل عضو يضيف خيطًا تكتيكيًا، ومعًا تنسجون مشهدًا يحافظ على عنصر المفاجأة.",
+                    ],
+                    [
+                        "تجربة لعب تشاركية تبني خريطة غير مرئية تسمح لكم بنقل القيادة دون إعلان.",
+                        "تظهر براعتكم عندما تترجمون الهتاف الداخلي إلى إشارات مختزلة.",
+                        "النهاية ليست فوزًا سريعًا بل قصة مشتركة ترفع سقف الثقة بينكم وتمنح كل فرد فرصة ليوقع بصمته الخاصة.",
+                    ],
+                ],
+                "en": [
+                    [
+                        "A collaborative stage that plants an encrypted motion language awakening whenever glances cross.",
+                        "Roles flow in calm succession so the group feels like a creative project rather than simple training.",
+                        "Each member adds a tactical thread and together you weave a scene that protects surprise.",
+                    ],
+                    [
+                        "A shared-play experience that sketches an invisible map letting you pass leadership without announcement.",
+                        "Your brilliance shows when inner cheering becomes condensed signals.",
+                        "The finish is not a quick win but a shared story that lifts everyone's trust.",
+                    ],
+                ],
+            },
+            "why": {
+                "ar": [
+                    "تتفوق عندما يتحدث الفريق بلغة مختصرة.",
+                    "تحفزك فكرة أن النجاح هنا يُكتب بأكثر من يد.",
+                    "تحب توليد شرارة مفاجأة تقرأها العيون قبل الكلمات.",
+                    "تبحث عن تحدٍ يحترم ذكاء التعاون.",
+                ],
+                "en": [
+                    "You thrive when the team speaks in condensed language.",
+                    "You feel driven knowing success here is co-written.",
+                    "You enjoy sparking surprises that eyes decode before words.",
+                    "You want a challenge that respects collaborative intelligence.",
+                ],
+            },
+            "real": {
+                "ar": [
+                    "تنقل القيادة عبر إشارة صغيرة بالكتف لتبدل الإيقاع من دون كلام.",
+                    "تعيد توزيع التشكيل خلال لحظات بفضل قاموس مشترك من الإيماءات.",
+                    "تختبر فكرة جديدة ثم تسلمها لزميل يكملها بطابعه الخاص.",
+                    "تستخدم صمتًا قصيرًا لتهيئة الفريق قبل الانعطاف المفاجئ.",
+                ],
+                "en": [
+                    "Hand leadership over with a subtle shoulder cue to switch tempo silently.",
+                    "Redistribute formation within seconds through a shared gesture lexicon.",
+                    "Prototype an idea then pass it to a teammate who stamps their own style.",
+                    "Use a short silence to prime the team before the sudden turn.",
+                ],
+            },
+            "notes": {
+                "ar": [
+                    "ثبّت طقوسًا صغيرة لافتتاح كل جلسة كي يتوحّد الإيقاع.",
+                    "شجّع تدوين اللمحات الملهمة حتى تتضاعف الأفكار.",
+                    "ذكّر المجموعة أن المفاجأة لا تعني فوضى بل دقة تشاركية.",
+                    "إن ارتفع الصوت، أعد ضبط النبرة إلى حوار هادئ.",
+                ],
+                "en": [
+                    "Anchor a tiny opening ritual so rhythm unifies quickly.",
+                    "Encourage jotting down inspiring moments to multiply ideas.",
+                    "Remind the crew that surprise is precise collaboration, not chaos.",
+                    "If volume climbs, reset the tone to a calm dialogue.",
+                ],
+            },
+        },
+        {
+            "id": "vr_echo",
+            "trait_weights": {"vr": 0.7, "puzzles": 0.2, "stealth": 0.2},
+            "identity_weights": {"adventure": 0.4, "tactical": 0.15},
+            "signature_terms": ["vr", "echo", "immersive"],
+            "labels": {
+                "ar": [
+                    "مدار الواقع المتداخل",
+                    "طيف المحاكاة الحية",
+                    "متاهة الإشارات الافتراضية",
+                ],
+                "en": [
+                    "Immersive Echo Circuit",
+                    "Living Simulation Orbit",
+                    "Virtual Signal Maze",
+                ],
+            },
+            "what": {
+                "ar": [
+                    [
+                        "رحلة تتنقل بين طبقات واقع متداخل، حيث تؤثر كل حركة على قصة رقمية تتشكل حولك وتشعر أن الحدود بين الواقع والخيال تتلاشى برفق.",
+                        "تتعامل مع الألوان والصوت كأنها ألغاز يجب فكّها قبل الانتقال إلى المرحلة التالية.",
+                        "الهدف أن تكتشف كيف يمكن للخيال التقني أن يدعم جرأتك من دون أن يفقدك الهدوء.",
+                    ],
+                    [
+                        "تجربة معدّة لتختبر ذكاءك داخل فضاء محاكى يتفاعل مع نبضك وإيماءاتك.",
+                        "كل مرة تبتكر مسارًا جديدًا، تعيد الخوارزمية تحليل خطواتك وتمنحك مشهدًا مطورًا.",
+                        "تشعر وكأنك تهندس لعبة خاصة بك، بقدر ما تستمتع بإعادة تصميمها من الداخل فتكتشف كيف يعيد الخيال صياغة شجاعتك كل مرة.",
+                    ],
+                ],
+                "en": [
+                    [
+                        "A journey moving through layered realities where each action edits a digital story around you.",
+                        "You treat color and sound as puzzles to solve before stepping into the next phase.",
+                        "The aim is to prove tech-driven imagination can amplify your courage without draining your calm.",
+                    ],
+                    [
+                        "An experience built to test your intellect inside a simulated realm that reacts to pulse and gesture.",
+                        "Whenever you design a new route, the algorithm reinterprets it and gifts you a refreshed scene.",
+                        "You feel as if you are engineering your own game while enjoying its constant re-design.",
+                    ],
+                ],
+            },
+            "why": {
+                "ar": [
+                    "تحب المزج بين الخيال الرقمي والمهارة الذهنية.",
+                    "تستمتع عندما تتحول التكنولوجيا إلى شريك استراتيجي.",
+                    "تنجذب إلى التجارب التي تتغير كلما قدمت فكرة جديدة.",
+                    "تقدّر المسارات التي تسمح لك بالاختفاء ثم الظهور بشكل مبتكر.",
+                ],
+                "en": [
+                    "You adore mixing digital imagination with mental skill.",
+                    "You enjoy technology acting as a strategic teammate.",
+                    "You gravitate to experiences that evolve when you offer a new idea.",
+                    "You value routes that let you vanish and reappear creatively.",
+                ],
+            },
+            "real": {
+                "ar": [
+                    "تختبر نمطًا بصريًا جديدًا ثم تقيس تأثيره على تنفسك قبل تثبيته.",
+                    "تعيد برمجة ترتيب المراحل لتصنع تحديًا يعكس بصمتك.",
+                    "تستخدم وقفات قصيرة لتحليل المعلومات القادمة من النظام.",
+                    "ترسم في ذهنك خريطة افتراضية تساعدك على احتواء المفاجآت.",
+                ],
+                "en": [
+                    "Try a new visual motif then evaluate how it shifts your breathing before committing.",
+                    "Reprogram the stage order to craft a challenge that mirrors your signature.",
+                    "Use micro-pauses to analyse the feedback streaming from the system.",
+                    "Sketch a virtual map in your mind to manage any surprise.",
+                ],
+            },
+            "notes": {
+                "ar": [
+                    "دوّن الإلهامات التقنية حتى تبني أرشيفًا شخصيًا.",
+                    "وازن بين الفضول والراحة كي لا يتحول الانبهار إلى إرهاق.",
+                    "احمِ عينيك من التشبع البصري عبر لحظات استرخاء قصيرة.",
+                    "ذكّر نفسك أن التقنية وسيلة لقصتك وليست بديلًا عنها.",
+                ],
+                "en": [
+                    "Document tech inspirations to build a personal archive.",
+                    "Balance curiosity with comfort so wonder never becomes fatigue.",
+                    "Protect your eyes from overload by inserting short rests.",
+                    "Remind yourself technology serves your story, not the other way around.",
+                ],
+            },
+        },
+        {
+            "id": "pulse_dash",
+            "trait_weights": {"adrenaline": 0.6, "precision": 0.3, "stealth": 0.2},
+            "identity_weights": {"achievement": 0.35, "adventure": 0.25},
+            "signature_terms": ["pulse", "dash", "focus"],
+            "labels": {
+                "ar": [
+                    "اندفاع النبض المحسوب",
+                    "وحدة الشعلة المتوازنة",
+                    "أفق الإيقاع المركّز",
+                ],
+                "en": [
+                    "Calibrated Pulse Rush",
+                    "Balanced Flame Unit",
+                    "Focused Rhythm Horizon",
+                ],
+            },
+            "what": {
+                "ar": [
+                    [
+                        "مسار ديناميكي يمنحك إثارة محسوبة حيث يرتفع النبض لكن العقل يظل المخرج.",
+                        "تعتمد على تغييرات سرعة مخطط لها مسبقًا لتثبت أنك تستطيع الجمع بين الجرأة والدقة.",
+                        "كل قفزة فكرية تسبق الحركة، فتتحول الطاقة العالية إلى لوحة منسجمة وتلمس كيف يتحول الانفجار إلى نغمة واعية.",
+                    ],
+                    [
+                        "برنامج مصمم ليشعل الحماس ثم يوجهه برفق لتبقى السيطرة في يدك.",
+                        "تتعلم كيف تدير دفعات الأدرينالين عبر هندسة انتقالات قصيرة ومتقنة.",
+                        "التجربة تذكرك بأن الإبداع يمكن أن يكون صاخبًا من الداخل، لكنه هادئ في شكله الخارجي ويمنحك قدرة على إعادة تشغيل الحماس متى شئت.",
+                    ],
+                ],
+                "en": [
+                    [
+                        "A dynamic path delivering measured thrill where pulse spikes yet mind stays the director.",
+                        "You rely on pre-planned tempo shifts to prove courage can coexist with precision.",
+                        "Every mental leap precedes motion so high energy becomes a coherent canvas.",
+                    ],
+                    [
+                        "A program built to ignite excitement then steer it gently so control remains yours.",
+                        "You learn to manage adrenaline bursts by engineering short, exact transitions.",
+                        "The experience reminds you creativity can roar inside while looking composed outside.",
+                    ],
+                ],
+            },
+            "why": {
+                "ar": [
+                    "تحب الإحساس بحرارة الطاقة عندما تظل الخطة في يدك.",
+                    "تبحث عن مغامرة تجعل الجرأة أداة مدروسة.",
+                    "تستمتع بتصعيد الحماس ثم تهدئته وفق إشارة منك.",
+                    "تحتاج لإثبات أن سرعتك يمكن أن تكون واعية.",
+                ],
+                "en": [
+                    "You love feeling energy flare while the plan stays in your hands.",
+                    "You want an adventure that turns boldness into a calculated tool.",
+                    "You enjoy raising excitement then settling it on your cue.",
+                    "You need to prove your speed can remain mindful.",
+                ],
+            },
+            "real": {
+                "ar": [
+                    "ترسم في ذهنك خطًا ثلاثي الأجزاء لضبط ارتفاع الطاقة وانخفاضها.",
+                    "تستخدم إشارة داخلية تشعر بها في صدرك لتحديد لحظة تخفيف الاندفاع.",
+                    "تعيد تشكيل الاستراتيجية فورًا إذا شعرت بأن الحماس تجاوز الحدود التي رسمتها.",
+                    "تدمج وقفات قصيرة من التنفس العميق لتعيد التوازن من دون كبح الإثارة.",
+                ],
+                "en": [
+                    "Sketch a three-part mental line to regulate when energy rises and eases.",
+                    "Use an internal cue pulsing in your chest to decide when to soften the surge.",
+                    "Rework the strategy instantly when excitement crosses the edge you set.",
+                    "Blend brief deep-breath moments to restore balance without muting thrill.",
+                ],
+            },
+            "notes": {
+                "ar": [
+                    "راقب الإشارات الجسدية التي تسبق الإفراط لتبقى متحكمًا.",
+                    "لا تترك الحماس يقود وحده؛ ذكر نفسك دومًا بالغاية الإبداعية.",
+                    "احتفل بالهدوء بعد الاندفاع لأنه دليل على النضج.",
+                    "إن شعرت بالتشتت، عد إلى مخططك الذهني بدل زيادة السرعة.",
+                ],
+                "en": [
+                    "Track the bodily cues that warn of overload so you stay in command.",
+                    "Do not let excitement steer solo; keep the creative aim in sight.",
+                    "Celebrate the calm after the rush because it proves maturity.",
+                    "If focus scatters, return to your mental blueprint instead of speeding up.",
+                ],
+            },
+        },
+    ]
+
+
+FALLBACK_BLUEPRINTS = _fallback_blueprints()
+
+
+def _egate_fallback(identity: Dict[str, float], traits: Dict[str, float], rng: random.Random) -> List[Dict[str, Any]]:
+    scored: List[Tuple[float, Dict[str, Any]]] = []
+    for blueprint in FALLBACK_BLUEPRINTS:
+        score = 0.0
+        for key, weight in blueprint.get("trait_weights", {}).items():
+            score += traits.get(key, 0.42) * weight
+        for key, weight in blueprint.get("identity_weights", {}).items():
+            score += identity.get(key, 0.45) * weight
+        scored.append((score + rng.random() * 0.01, blueprint))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [bp for _, bp in scored]
+
+
+def _top_trait_terms(traits: Dict[str, float], limit: int = 3) -> List[str]:
+    ordered = sorted(traits.items(), key=lambda item: item[1], reverse=True)
+    return [name for name, value in ordered[:limit] if value >= 0.6]
+
+
+def _fallback_identity(blueprint: Dict[str, Any], lang: str, identity: Dict[str, float], traits: Dict[str, float], drivers: List[str], rng: random.Random) -> Dict[str, Any]:
+    locale = "ar" if lang in ("العربية", "ar") else "en"
+    label = rng.choice(blueprint["labels"][locale])
+    what_variant = rng.choice(blueprint["what"][locale])
+    what_lines = [_mask_names(_scrub_forbidden(line, lang)) for line in what_variant]
+    why_pool = list(blueprint["why"][locale])
+    if drivers:
+        driver_sentence = _mask_names(_scrub_forbidden(drivers[0], lang))
+        if driver_sentence:
+            why_pool.append(driver_sentence)
+    if len(why_pool) >= 3:
+        why_selected = rng.sample(why_pool, k=3)
+    elif len(why_pool) == 2:
+        why_selected = list(why_pool)
+    elif why_pool:
+        why_selected = why_pool * 2
+    else:
+        why_selected = []
+    if len(why_selected) > 3:
+        rng.shuffle(why_selected)
+        why_selected = why_selected[:3]
+    if len(why_selected) < 2 and why_pool:
+        base = why_selected or why_pool[:1]
+        why_selected = (base * 2)[:2]
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for item in why_selected:
+        if item not in seen:
+            deduped.append(item)
+            seen.add(item)
+    why_selected = deduped[:3]
+    if len(why_selected) < 2:
+        extra = next((line for line in blueprint["why"][locale] if line not in why_selected), None)
+        if extra:
+            why_selected.append(extra)
+    if len(why_selected) < 2:
+        base = why_selected or blueprint["why"][locale][:1]
+        why_selected = (base * 2)[:2]
+    real_pool = blueprint["real"][locale]
+    notes_pool = blueprint["notes"][locale]
+    real_selected = rng.sample(real_pool, k=min(3, len(real_pool)))
+    notes_selected = rng.sample(notes_pool, k=min(3, len(notes_pool)))
+    signature_terms = set(blueprint["signature_terms"])
+    signature_terms.update(_top_trait_terms(traits))
+    signature_terms.update(label.lower().split())
+    signature = f"{blueprint['id']}::{rng.random():.4f}"
+    return {
+        "sport_label": _mask_names(_scrub_forbidden(label, lang)),
+        "what_it_looks_like": what_lines,
+        "why_you": why_selected,
+        "real_world": real_selected,
+        "notes": notes_selected,
+        "signature": signature,
+        "signature_terms": list(signature_terms),
+    }
+
+
+def _card_signature_text(card: Dict[str, Any]) -> str:
+    what = card.get("what_it_looks_like", [])
+    if isinstance(what, list):
+        what_text = " ".join(str(x) for x in what)
+    else:
+        what_text = str(what)
+    why = card.get("why_you", [])
+    if isinstance(why, list):
+        why_text = " ".join(str(x) for x in why)
+    else:
+        why_text = str(why)
+    real = card.get("real_world", [])
+    if isinstance(real, list):
+        real_text = " ".join(str(x) for x in real)
+    else:
+        real_text = str(real)
+    notes = card.get("notes", [])
+    if isinstance(notes, list):
+        notes_text = " ".join(str(x) for x in notes)
+    else:
+        notes_text = str(notes)
+    joined = f"{card.get('sport_label', '')} {what_text} {why_text} {real_text} {notes_text}"
+    return _postprocess_text(joined)
+
+
+def _quality_filter(card: Dict[str, Any], lang: str) -> bool:
+    what = card.get("what_it_looks_like", [])
+    if isinstance(what, list):
+        what_text = " ".join(what)
+    else:
+        what_text = str(what)
+    if len(_scrub_forbidden(what_text, lang)) < 220:
+        return False
+    for section in ("why_you", "real_world", "notes"):
+        values = card.get(section, [])
+        if isinstance(values, list):
+            cleaned = [str(item).strip() for item in values if str(item).strip()]
+        else:
+            cleaned = [seg.strip() for seg in str(values).splitlines() if seg.strip()]
+        if len(cleaned) < 2:
+            return False
+        joined = " ".join(cleaned).lower()
+        for term in ("minute", "hour", "week", "cost", "price", "equipment", "location", "stadium", "gear", "ball", "court", "مكان", "موقع", "ساعة", "دقيقة", "معدات", "ملعب", "صالة", "تكلفة", "سعر", "وقت"):
+            if term in joined:
+                return False
+    return True
+
+
+def _hard_dedupe_and_fill(initial_cards: List[Dict[str, Any]], blueprint_order: List[Dict[str, Any]], lang: str, identity: Dict[str, float], traits: Dict[str, float], drivers: List[str], rng: random.Random) -> List[Dict[str, Any]]:
+    final_cards: List[Dict[str, Any]] = []
+
+    def _is_unique(candidate: Dict[str, Any]) -> bool:
+        cand_text = _card_signature_text(candidate)
+        return all(_jaccard(_card_signature_text(existing), cand_text) <= 0.6 for existing in final_cards)
+
+    for card in initial_cards:
+        if _quality_filter(card, lang) and _is_unique(card):
+            final_cards.append(card)
+    for blueprint in blueprint_order:
+        attempts = 0
+        while len(final_cards) < 3 and attempts < 6:
+            candidate = _fallback_identity(blueprint, lang, identity, traits, drivers, rng)
+            attempts += 1
+            if not _quality_filter(candidate, lang):
+                continue
+            if not _is_unique(candidate):
+                continue
+            final_cards.append(candidate)
+        if len(final_cards) >= 3:
+            break
+    while len(final_cards) < 3 and blueprint_order:
+        candidate = _fallback_identity(rng.choice(blueprint_order), lang, identity, traits, drivers, rng)
+        candidate["sport_label"] = candidate["sport_label"] + (" ∂" if lang in ("العربية", "ar") else " ∂")
+        candidate["signature"] = candidate.get("signature", "sig") + f":{rng.random():.3f}"
+        if _quality_filter(candidate, lang) and _is_unique(candidate):
+            final_cards.append(candidate)
+    return final_cards[:3]
 
 
 # Archetype content ---------------------------------------------------------
@@ -468,58 +1222,386 @@ def _dedupe(cards: List[str], keys: List[str], identity: Dict[str, float], drive
     return cards
 
 
-def _generate_cards(answers: Dict[str, Any], lang: str) -> List[str]:
+
+def _clean_json_payload(text: str) -> str:
+    text = (text or '').strip()
+    if text.startswith('```'):
+        text = re.sub(r'^```(?:json)?', '', text, flags=re.IGNORECASE).strip()
+        if text.endswith('```'):
+            text = text[:text.rfind('```')].strip()
+    return text
+
+
+def _parse_llm_response(raw: str) -> Optional[List[Dict[str, str]]]:
+    if not raw:
+        return None
+    cleaned = _clean_json_payload(raw)
+    data: Any
+    try:
+        data = json.loads(cleaned)
+    except Exception:
+        match = re.search(r'(\{.*\}|\[.*\])', cleaned, flags=re.DOTALL)
+        if not match:
+            return None
+        try:
+            data = json.loads(match.group(1))
+        except Exception:
+            return None
+    if isinstance(data, dict):
+        cards = data.get('cards') or data.get('recommendations')
+    else:
+        cards = data
+    if not isinstance(cards, list):
+        return None
+    parsed: List[Dict[str, str]] = []
+    for item in cards:
+        if not isinstance(item, dict):
+            continue
+        lower = {str(k).lower(): str(v) for k, v in item.items()}
+        title = lower.get('sport_label') or lower.get('title') or lower.get('heading') or ''
+        what = lower.get('what') or lower.get('description') or ''
+        why = lower.get('why') or lower.get('fit') or lower.get('reason') or ''
+        real = lower.get('real') or lower.get('realistic') or lower.get('experience') or ''
+        notes = lower.get('notes') or lower.get('tips') or lower.get('remarks') or ''
+        if all(p.strip() for p in (title, what, why, real, notes)):
+            parsed.append({
+                'title': title.strip(),
+                'what': what.strip(),
+                'why': why.strip(),
+                'real': real.strip(),
+                'notes': notes.strip(),
+            })
+    return parsed if len(parsed) >= 3 else None
+
+
+def _format_llm_card(data: Dict[str, str], lang: str) -> Dict[str, Any]:
+    label = _mask_names(_scrub_forbidden(data.get('title', ''), lang))
+    what_lines = [_mask_names(_scrub_forbidden(line, lang)) for line in _normalize_sentences(data.get('what', ''))][:3]
+    if not what_lines:
+        what_lines = [_mask_names(_scrub_forbidden(str(data.get('what', '')), lang))]
+    why_lines = [_mask_names(_scrub_forbidden(line, lang)) for line in _normalize_sentences(data.get('why', ''))][:3]
+    real_lines = [_mask_names(_scrub_forbidden(line, lang)) for line in _normalize_sentences(data.get('real', ''))][:3]
+    notes_lines = [_mask_names(_scrub_forbidden(line, lang)) for line in _normalize_sentences(data.get('notes', ''))][:3]
+    signature = hashlib.sha1((label or 'llm-card').encode('utf-8')).hexdigest()[:10]
+    return {
+        'sport_label': label or 'Identity Motion',
+        'what_it_looks_like': what_lines,
+        'why_you': why_lines,
+        'real_world': real_lines,
+        'notes': notes_lines,
+        'signature': f"llm::{signature}",
+        'signature_terms': [term for term in (label.lower().split() if label else ['llm'])],
+    }
+
+
+def _llm_cards(
+    answers: Dict[str, Any],
+    identity: Dict[str, float],
+    drivers: List[str],
+    lang: str,
+    traits: Optional[Dict[str, float]] = None,
+) -> Optional[List[Dict[str, Any]]]:
+    if chat_once is None or LLM_CLIENT is None:
+        return None
+    client = LLM_CLIENT
+    main_model = CHAT_MODEL
+    fallback_model = CHAT_MODEL_FALLBACK
+    if not client or not main_model:
+        return None
+
+    driver_sentence = _drivers_sentence(drivers, lang)
+    traits = traits or _derive_binary_traits(answers)
+    try:
+        answers_payload = json.loads(_stable_json(answers))
+    except Exception:
+        answers_payload = answers
+
+    data = {
+        'language': 'arabic' if lang in ('العربية', 'ar') else 'english',
+        'identity_weights': identity,
+        'traits': traits,
+        'drivers': drivers,
+        'drivers_sentence': driver_sentence,
+        'requirements': {
+            'sections': ['sport_label', 'what', 'why', 'real', 'notes'],
+            'max_points': 3,
+            'min_paragraphs': 2,
+            'forbidden_terms': BANNED_TERMS + FORBIDDEN_TERMS_AR + FORBIDDEN_TERMS_EN,
+            'style': 'tactical, sensory, imaginative, no time/cost/location/equipment, no cliché sport names',
+        },
+        'answers_hint': answers_payload,
+    }
+
+    if lang in ('العربية', 'ar'):
+        system_prompt = (
+            'أنت مساعد SportSync. أنشئ ثلاث بطاقات توصية متوازنة.'
+            ' يجب أن تعيد استجابة بصيغة JSON تحتوي على قائمة باسم "cards".'
+            ' كل بطاقة تضم الحقول sport_label, what, why, real, notes.'
+            ' اجعل what فقرتين أو ثلاث جمل قصيرة، واجعل why/real/notes قوائم نقاط (2-3 عناصر).'
+            ' تجنب ذكر الوقت أو التكلفة أو المواقع أو المعدات أو أسماء الرياضات الشائعة بشكل مباشر.'
+            ' اجعل النبرة إنسانية وتكتيكية وتقدّر الخيال.'
+        )
+    else:
+        system_prompt = (
+            'You are the SportSync assistant. Produce three balanced recommendation cards.'
+            ' Respond as JSON with a "cards" list where each card has sport_label, what, why, real, notes.'
+            ' Ensure "what" contains two to three short sentences and why/real/notes are 2-3 bullet ideas.'
+            ' Avoid mentioning time, cost, places, or equipment, and avoid generic sport names.'
+            ' Keep the tone strategic, sensory, and imaginative.'
+        )
+
+    user_prompt = json.dumps(data, ensure_ascii=False)
+
+    model_chain = main_model
+    try:
+        from core.llm_client import _split_models_csv as _split  # type: ignore
+    except Exception:
+        _split = None
+    if fallback_model and _split:
+        models_list = _split(main_model)
+        if fallback_model not in models_list:
+            model_chain = ','.join(models_list + [fallback_model]) if models_list else fallback_model
+    try:
+        raw = chat_once(
+            client,
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            model=model_chain or main_model,
+            temperature=0.55,
+            max_tokens=2200,
+            top_p=0.9,
+        )
+    except Exception:
+        return None
+
+    parsed = _parse_llm_response(raw)
+    if not parsed:
+        return None
+
+    cards: List[Dict[str, Any]] = []
+    for item in parsed[:3]:
+        if not isinstance(item, dict):
+            return None
+        card_struct = _format_llm_card({
+            'title': str(item.get('sport_label') or item.get('title') or ''),
+            'what': str(item.get('what') or item.get('description') or ''),
+            'why': str(item.get('why') or item.get('fit') or ''),
+            'real': str(item.get('real') or item.get('experience') or ''),
+            'notes': str(item.get('notes') or item.get('tips') or ''),
+        }, lang)
+        if not _quality_filter(card_struct, lang):
+            return None
+        if any(_jaccard(_card_signature_text(existing), _card_signature_text(card_struct)) > 0.6 for existing in cards):
+            return None
+        cards.append(card_struct)
+    return cards
+
+
+def _generate_cards(
+    answers: Dict[str, Any],
+    lang: str,
+    *,
+    identity: Optional[Dict[str, float]] = None,
+    drivers: Optional[List[str]] = None,
+    traits: Optional[Dict[str, float]] = None,
+    rng: Optional[random.Random] = None,
+) -> List[Dict[str, Any]]:
     session_id = _session_id_from_answers(answers)
     seed_base = session_id + _stable_json(answers) + datetime.utcnow().strftime("%Y-%m-%d")
-    seed = int(hashlib.sha256(seed_base.encode("utf-8")).hexdigest(), 16)
-    rng = random.Random(seed)
+    local_rng = rng or random.Random(int(hashlib.sha256(seed_base.encode("utf-8")).hexdigest(), 16))
 
-    identity = _extract_identity(answers)
-    drivers = _drivers(identity, lang)
-    keys = _select_archetype_keys(identity, rng)
+    identity = identity or _extract_identity(answers)
+    drivers = drivers or _drivers(identity, lang)
+    traits = traits or _derive_binary_traits(answers)
 
-    cards = []
-    for key in keys:
-        card = _compose_card(key, identity, drivers, lang, rng)
-        card = _postprocess_text(card)
-        cards.append(card)
+    blueprint_order = _egate_fallback(identity, traits, local_rng)
+    primary_cards = []
+    for blueprint in blueprint_order[:3]:
+        primary_cards.append(_fallback_identity(blueprint, lang, identity, traits, drivers, local_rng))
 
-    cards = _dedupe(cards, keys, identity, drivers, lang, rng)
+    cards = _hard_dedupe_and_fill(primary_cards, blueprint_order, lang, identity, traits, drivers, local_rng)
+    return cards
 
-    final_cards = []
-    for card in cards:
-        if len(card.split()) < 120:
-            extra = "\n" + ("هذه البطاقة تدعوك للاستماع لفضولك الداخلي وتذكرك بأن المتعة أصدق دليل." if lang in ("العربية", "ar") else "This card invites you to listen to inner curiosity and reminds you that delight is the truest compass.")
-            card += extra
-        if len(card) < 600:
-            filler = "\n" + ("اسمح للكلمات أن تتحول إلى صور، وللصور أن تتحول إلى حركات تعبر عنك بلا توتر." if lang in ("العربية", "ar") else "Let words turn into imagery and let imagery become movement that expresses you without strain.")
-            card += filler
-        final_cards.append(_postprocess_text(card))
-    return final_cards
+
+def _format_card_strict(card: Dict[str, Any], lang: str) -> str:
+    is_ar = lang in ('العربية', 'ar')
+    label = card.get('sport_label') or ('هوية متوازنة' if is_ar else 'Balanced Identity')
+    label = _mask_names(_scrub_forbidden(label, lang))
+
+    what_raw = card.get('what_it_looks_like') or []
+    if isinstance(what_raw, list):
+        what_lines = [line for line in what_raw if str(line).strip()]
+    else:
+        what_lines = _normalize_sentences(what_raw)
+    if not what_lines:
+        what_lines = [_mask_names(_scrub_forbidden(str(card.get('what_it_looks_like', '')), lang))]
+    what_lines = what_lines[:3]
+    what_text = '\n'.join(_mask_names(_scrub_forbidden(line, lang)) for line in what_lines)
+
+    why_bullets = _to_bullets(card.get('why_you', []), lang)
+    if not why_bullets:
+        fallback = [
+            'تحب قصة ذكية تتحرك على إيقاعك.' if is_ar else 'You prefer a smart storyline that moves at your rhythm.',
+            'تبحث عن إشارات دقيقة بدل التعليمات الصاخبة.' if is_ar else 'You look for precise cues instead of loud instructions.',
+        ]
+        why_bullets = _to_bullets(fallback, lang)
+
+    real_bullets = _to_bullets(card.get('real_world', []), lang)
+    if not real_bullets:
+        fallback = [
+            'تراقب التحولات الصغيرة وتعيد صياغة الخطة فورًا.' if is_ar else 'Observe subtle shifts and rewrite the plan instantly.',
+            'تحافظ على مرونتك دون التخلي عن الدقة.' if is_ar else 'Keep your agility without dropping precision.',
+        ]
+        real_bullets = _to_bullets(fallback, lang)
+
+    notes_bullets = _to_bullets(card.get('notes', []), lang)
+    if not notes_bullets:
+        fallback = [
+            'دوّن ما أدهشك لتعود إليه عند الحاجة.' if is_ar else 'Note what surprised you so you can revisit it.',
+            'ذكّر نفسك بأن الفضول هو الوقود.' if is_ar else 'Remind yourself curiosity is the fuel.',
+        ]
+        notes_bullets = _to_bullets(fallback, lang)
+
+    if is_ar:
+        sections = [
+            f'🎯 الرياضة المثالية لك: {label}',
+            '',
+            '💡 ما هي؟',
+            what_text,
+            '',
+            '🎮 ليه تناسبك؟',
+            why_bullets,
+            '',
+            '🔍 شكلها الواقعي:',
+            real_bullets,
+            '',
+            '⸻',
+            '',
+            '👁️‍🗨️ ملاحظات مهمة:',
+            notes_bullets,
+        ]
+    else:
+        sections = [
+            f'🎯 Your Ideal Sport Identity: {label}',
+            '',
+            '💡 What is it?',
+            what_text,
+            '',
+            '🎮 Why it fits?',
+            why_bullets,
+            '',
+            '🔍 How it looks IRL:',
+            real_bullets,
+            '',
+            '⸻',
+            '',
+            '👁️‍🗨️ Key Notes:',
+            notes_bullets,
+        ]
+
+    return '\n'.join(segment for segment in sections if segment is not None)
 
 
 def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العربية") -> List[str]:
-    """
-    يُرجع List[str] من 3 بطاقات Recommendation طويلة بصيغة موحّدة.
-    - صيغة كل بطاقة:
-      🎯 العنوان
-      💠 المحرك الصامت:
-      💡 ما هي؟
-      🎮 ليه تناسبك؟
-      🔍 شكلها الواقعي
-      🔄 ابدأ من هنا
-      👁️‍🗨️ ملاحظات
-    - تمنع التشابه العالي بين البطاقات.
-    - تستخدم seed حتمي من (session_id + تجزئة الإجابات + تاريخ اليوم) للتنوع عبر الجلسات.
-    - تتجنب كلمات “خسارة الوزن/حرق الدهون” وتستبدلها بهوية ومتعة.
-    """
-    cards = _generate_cards(answers, lang)
-    return cards
+    """Return three recommendation cards formatted with the strict SportSync layout."""
+    global LAST_RECOMMENDER_SOURCE
+
+    start_ts = time.time()
+    answers_copy: Dict[str, Any] = dict(answers or {})
+    force_flag = bool(answers_copy.pop("_force_fallback", False))
+    env_force = os.getenv("FORCE_ANALYTICAL_FALLBACK", "").strip().lower() == "true"
+    disable_flag = os.getenv("DISABLE_LLM", "").strip().lower() == "true"
+    session_id = _session_id_from_answers(answers_copy)
+
+    identity = _extract_identity(answers_copy)
+    drivers = _drivers(identity, lang)
+    traits = _derive_binary_traits(answers_copy)
+
+    cards_struct: Optional[List[Dict[str, Any]]] = None
+    source = "fallback"
+
+    llm_possible = bool(LLM_CLIENT and CHAT_MODEL)
+    llm_attempted = False
+
+    if not disable_flag and not force_flag and not env_force and llm_possible:
+        print(f"[REC] llm_path=ON model={CHAT_MODEL} fb={CHAT_MODEL_FALLBACK or 'none'}")
+        try:
+            cards_struct = _llm_cards(answers_copy, identity, drivers, lang, traits)
+        except Exception:
+            cards_struct = None
+        llm_attempted = True
+        if cards_struct:
+            source = "llm"
+        else:
+            print("[REC] llm_path=OFF (KB/Hybrid only)")
+    else:
+        print("[REC] llm_path=OFF (KB/Hybrid only)")
+
+    if not cards_struct:
+        cards_struct = _generate_cards(
+            answers_copy,
+            lang,
+            identity=identity,
+            drivers=drivers,
+            traits=traits,
+        )
+        source = "fallback"
+
+    formatted_cards = [_format_card_strict(card, lang) for card in cards_struct]
+
+    LAST_RECOMMENDER_SOURCE = source
+
+    models_info = {
+        "chat_model": CHAT_MODEL,
+        "chat_model_fallback": CHAT_MODEL_FALLBACK,
+        "source": source,
+        "llm_attempted": llm_attempted,
+        "llm_possible": llm_possible,
+    }
+
+    try:
+        log_event(
+            user_id=str(answers_copy.get("_user_id", "unknown")),
+            session_id=session_id,
+            name="generate_recommendation",
+            payload=models_info,
+            lang=lang,
+        )
+    except Exception:
+        pass
+
+    snapshot = {
+        "answers": answers_copy,
+        "z_signals": {
+            "identity": identity,
+            "drivers": drivers,
+            "traits": traits,
+        },
+        "final_cards": cards_struct,
+        "models": models_info,
+        "timings": {
+            "elapsed_s": round(time.time() - start_ts, 3),
+            "generated_at": datetime.utcnow().isoformat(),
+        },
+    }
+
+    try:
+        log_recommendation_result(session_id, snapshot)
+    except Exception:
+        pass
+
+    return formatted_cards
+
+
+def get_last_rec_source() -> str:
+    return LAST_RECOMMENDER_SOURCE
 
 
 if __name__ == "__main__":
     sample_answers = {"q1": {"answer": ["أحب الذكاء والتخطيط"]}, "_session_id": "demo-session"}
     recs = generate_sport_recommendation(sample_answers, "العربية")
     assert len(recs) == 3
-    assert all(len(r) > 600 for r in recs)
-    print("OK", [len(r) for r in recs])
+    assert all(card.startswith('🎯') and '⸻' in card for card in recs)
+    print("OK")

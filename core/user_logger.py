@@ -166,6 +166,20 @@ def log_event(
         print("[LOGGER] failed to append event", exc)
 
 
+def log_recommendation_result(session_id: str, payload: Dict[str, Any]) -> None:
+    """Persist recommendation snapshots under data/logs for auditing and QA."""
+    try:
+        target_dir = Path('data/logs')
+        target_dir.mkdir(parents=True, exist_ok=True)
+        safe_session = session_id or 'anon'
+        ts = datetime.utcnow().strftime('%Y%m%dT%H%M%S')
+        path_obj = target_dir / f'{safe_session}_{ts}.json'
+        with path_obj.open('w', encoding='utf-8') as fh:
+            json.dump(payload, fh, ensure_ascii=False, indent=2)
+    except Exception as exc:
+        print('[LOGGER] failed to persist recommendation snapshot', exc)
+
+
 def _count_csv_rows(path: Path) -> int:
     if not path.exists():
         return 0
