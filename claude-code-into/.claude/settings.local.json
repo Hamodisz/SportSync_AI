@@ -21,7 +21,6 @@
       "Bash(gh issue view:*)",
       "WebFetch(domain:docs.anthropic.com)"
       "mcp__serena",
-      "mcp__archon"
     ],
     "deny": []
   }
