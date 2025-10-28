@@ -1,0 +1,12 @@
+{
+  "title": "Cinematic Flow",
+  "style": "Slow-motion studio lighting",
+  "prompt": "Close-up portrait of athlete preparing for action, dramatic rim light, shallow depth of field, 35mm anamorphic lens, particles in air",
+  "negative_prompt": "grainy, distorted faces, watermark, text",
+  "palette": {
+    "background": "#111D32",
+    "accent": "#FF9362"
+  },
+  "duration_seconds": 4,
+  "seed": 7341
+}

@@ -1,0 +1,12 @@
+{
+  "title": "Neon Tactics",
+  "style": "Arcade strategy with kinetic lighting",
+  "prompt": "Ultra wide shot of futuristic sport arena with neon trails and tactical overlays, expressive motion lines, volumetric fog, cinematic lighting, emphasis on agile athletes",
+  "negative_prompt": "logo, text, watermark, blur, lowres",
+  "palette": {
+    "background": "#0E1225",
+    "accent": "#74F7FF"
+  },
+  "duration_seconds": 4,
+  "seed": 4242
+}

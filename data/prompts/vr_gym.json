@@ -1,0 +1,12 @@
+{
+  "title": "Layer-Z VR Lab",
+  "style": "Immersive virtual gym",
+  "prompt": "Wide shot of futuristic VR training lab, holographic sport identity panels, AI coach silhouettes guiding user, cool blue lighting, ambient particles",
+  "negative_prompt": "text, glitch, low detail",
+  "palette": {
+    "background": "#081425",
+    "accent": "#5DD0FF"
+  },
+  "duration_seconds": 5,
+  "seed": 9988
+}

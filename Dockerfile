@@ -10,7 +10,7 @@ WORKDIR /app
 
 # System deps (ffmpeg ضروري للفيديو)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg git build-essential libglib2.0-0 libsm6 libxrender1 libxext6 \
+    ffmpeg fonts-dejavu-core git build-essential libglib2.0-0 libsm6 libxrender1 libxext6 \
     && rm -rf /var/lib/apt/lists/*
 
 # Python deps
