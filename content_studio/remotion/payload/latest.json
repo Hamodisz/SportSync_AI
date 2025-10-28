@@ -1,0 +1,28 @@
+{
+  "title": "SportSync Layer-Z Teaser",
+  "bullets": [
+    "Decode your sport identity in under 3 minutes",
+    "Layer-Z blends mindset + biomechanics into daily prompts",
+    "AI coach unlocks personalised playbooks for every mood"
+  ],
+  "footage": [
+    {
+      "type": "image",
+      "src": "/Users/mohammadal-saati/SportSync_AI/build/generated/sportsync_teaser_6s_clip1.png"
+    },
+    {
+      "type": "image",
+      "src": "/Users/mohammadal-saati/SportSync_AI/build/generated/sportsync_teaser_6s_clip2.png"
+    }
+  ],
+  "brandSignature": {
+    "palette": {
+      "background": "#0d1628",
+      "accent": "#5dd0ff",
+      "text": "#ffffff",
+      "overlay": "rgba(13,22,40,0.82)"
+    },
+    "logo": "assets/brand/logo.png",
+    "tagline": "Layer-Z Intelligence by SportSync"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "title": "Urban Flow",
+  "style": "High-energy parkour",
+  "prompt": "Athlete performing fluid parkour moves across rooftop skyline at sunrise, handheld camera feel, warm tones, motion blur",
+  "negative_prompt": "static pose, blur faces, watermark",
+  "palette": {
+    "background": "#1D0F2B",
+    "accent": "#FDD36A"
+  },
+  "duration_seconds": 3,
+  "seed": 1203
+}
