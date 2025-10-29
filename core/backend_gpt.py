@@ -1430,79 +1430,91 @@ def _format_card_strict(card: Dict[str, Any], lang: str) -> str:
     label = card.get('sport_label') or ('هوية متوازنة' if is_ar else 'Balanced Identity')
     label = _mask_names(_scrub_forbidden(label, lang))
 
-    what_raw = card.get('what_it_looks_like') or []
-    if isinstance(what_raw, list):
-        what_lines = [line for line in what_raw if str(line).strip()]
-    else:
-        what_lines = _normalize_sentences(what_raw)
-    if not what_lines:
-        what_lines = [_mask_names(_scrub_forbidden(str(card.get('what_it_looks_like', '')), lang))]
-    what_lines = what_lines[:3]
-    what_text = '\n'.join(_mask_names(_scrub_forbidden(line, lang)) for line in what_lines)
+    def _clean_lines(value: Any, limit: int = 3) -> List[str]:
+        if isinstance(value, list):
+            parts = [str(item).strip() for item in value if str(item).strip()]
+        else:
+            parts = _normalize_sentences(value)
+        cleaned: List[str] = []
+        for part in parts:
+            sanitized = _mask_names(_scrub_forbidden(part, lang))
+            if sanitized:
+                cleaned.append(sanitized)
+            if len(cleaned) == limit:
+                break
+        return cleaned
 
-    why_bullets = _to_bullets(card.get('why_you', []), lang)
-    if not why_bullets:
-        fallback = [
-            'تحب قصة ذكية تتحرك على إيقاعك.' if is_ar else 'You prefer a smart storyline that moves at your rhythm.',
-            'تبحث عن إشارات دقيقة بدل التعليمات الصاخبة.' if is_ar else 'You look for precise cues instead of loud instructions.',
-        ]
-        why_bullets = _to_bullets(fallback, lang)
+    def _join_lines(lines: List[str], *, bullet: bool = False) -> str:
+        if not lines:
+            return ""
+        if bullet:
+            return "\n".join(f"- {line}" for line in lines)
+        return "\n".join(lines)
 
-    real_bullets = _to_bullets(card.get('real_world', []), lang)
-    if not real_bullets:
-        fallback = [
-            'تراقب التحولات الصغيرة وتعيد صياغة الخطة فورًا.' if is_ar else 'Observe subtle shifts and rewrite the plan instantly.',
-            'تحافظ على مرونتك دون التخلي عن الدقة.' if is_ar else 'Keep your agility without dropping precision.',
-        ]
-        real_bullets = _to_bullets(fallback, lang)
-
-    notes_bullets = _to_bullets(card.get('notes', []), lang)
-    if not notes_bullets:
-        fallback = [
-            'دوّن ما أدهشك لتعود إليه عند الحاجة.' if is_ar else 'Note what surprised you so you can revisit it.',
-            'ذكّر نفسك بأن الفضول هو الوقود.' if is_ar else 'Remind yourself curiosity is the fuel.',
-        ]
-        notes_bullets = _to_bullets(fallback, lang)
+    what_lines = _clean_lines(card.get('what_it_looks_like'))
+    why_lines = _clean_lines(card.get('why_you'))
+    real_lines = _clean_lines(card.get('real_world'))
+    notes_lines = _clean_lines(card.get('notes'))
 
     if is_ar:
-        sections = [
-            f'🎯 الرياضة المثالية لك: {label}',
-            '',
-            '💡 ما هي؟',
-            what_text,
-            '',
-            '🎮 ليه تناسبك؟',
-            why_bullets,
-            '',
-            '🔍 شكلها الواقعي:',
-            real_bullets,
-            '',
-            '⸻',
-            '',
-            '👁️‍🗨️ ملاحظات مهمة:',
-            notes_bullets,
-        ]
+        default_personality = 'تميل إلى فضول تحليلي هادئ.'
+        default_sport_desc = 'تجربة حركية تتشكل حسب خيالك وتقديرك للتفاصيل.'
+        default_why_lines = ['تحتاج لمساحة تحترم ذكاءك العاطفي.', 'تفضّل بناء القرارات بهدوء قبل الاندفاع.']
+        default_real_lines = ['ابدأ بخطوات قصيرة تراقب فيها الإشارات الصغيرة.', 'دوّن إحساسك بعد كل تجربة لتضبط المسار.']
+        default_ai_lines = ['تحليل سريع من البيانات المتوفرة.']
+        headings = {
+            'personality': '🧩 **الشخصية الرياضية باختصار:**',
+            'sport': '🏅 **الرياضة المثالية لك:**',
+            'what': '💡 **ما هي؟**',
+            'why': '🎮 **لماذا تناسبك؟**',
+            'start': '⚙️ **كيف تبدأ؟**',
+            'ai': '🧠 **تفسير الذكاء:**',
+        }
     else:
-        sections = [
-            f'🎯 Your Ideal Sport Identity: {label}',
-            '',
-            '💡 What is it?',
-            what_text,
-            '',
-            '🎮 Why it fits?',
-            why_bullets,
-            '',
-            '🔍 How it looks IRL:',
-            real_bullets,
-            '',
-            '⸻',
-            '',
-            '👁️‍🗨️ Key Notes:',
-            notes_bullets,
-        ]
+        default_personality = 'You lean toward a calm, analytical curiosity.'
+        default_sport_desc = 'A movement space that adapts to your imagination and eye for detail.'
+        default_why_lines = ['You need a setting that respects your emotional intelligence.', 'You prefer to layer decisions quietly before moving.']
+        default_real_lines = ['Start with short sessions where you watch for subtle cues.', 'Capture how each run feels so you can adjust your flow.']
+        default_ai_lines = ['Quick analysis based on the signals you shared.']
+        headings = {
+            'personality': '🧩 **Sport Personality Snapshot:**',
+            'sport': '🏅 **Your Ideal Sport:**',
+            'what': '💡 **What Is It?**',
+            'why': '🎮 **Why It Fits You?**',
+            'start': '⚙️ **How To Begin?**',
+            'ai': '🧠 **AI Insight:**',
+        }
 
-    return '\n'.join(segment for segment in sections if segment is not None)
+    personality_summary = '؛ '.join(why_lines[:2]) if is_ar else '; '.join(why_lines[:2])
+    if not personality_summary:
+        personality_summary = default_personality
 
+    sport_description = ' '.join(what_lines) if what_lines else default_sport_desc
+
+    why_reasoning_lines = why_lines if why_lines else default_why_lines
+    why_reasoning = _join_lines(why_reasoning_lines, bullet=True)
+
+    how_lines = real_lines if real_lines else default_real_lines
+    how_to_start = _join_lines(how_lines, bullet=True)
+
+    ai_lines = notes_lines if notes_lines else default_ai_lines
+    ai_explanation = _join_lines(ai_lines, bullet=len(ai_lines) > 1)
+
+    personality_section = f"{headings['personality']}\n{personality_summary}\n"
+    sport_section = f"{headings['sport']} {label}\n{headings['what']} {sport_description}\n"
+    why_section = f"{headings['why']}\n{why_reasoning}\n"
+    how_section = f"{headings['start']}\n{how_to_start}\n"
+    explanation_section = f"{headings['ai']}\n{ai_explanation}\n"
+
+    recommendation_output = (
+        personality_section + "\n---\n" +
+        sport_section + "\n---\n" +
+        why_section + "\n---\n" +
+        how_section + "\n---\n" +
+        explanation_section
+    )
+
+    return recommendation_output.strip()
 
 def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العربية") -> List[str]:
     """Return three recommendation cards formatted with the strict SportSync layout."""
@@ -1603,5 +1615,5 @@ if __name__ == "__main__":
     sample_answers = {"q1": {"answer": ["أحب الذكاء والتخطيط"]}, "_session_id": "demo-session"}
     recs = generate_sport_recommendation(sample_answers, "العربية")
     assert len(recs) == 3
-    assert all(card.startswith('🎯') and '⸻' in card for card in recs)
+    assert all(card.startswith('🧩') and card.count('\n---\n') == 4 for card in recs)
     print("OK")
