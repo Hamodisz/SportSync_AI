@@ -182,7 +182,19 @@ def _to_list(val: Any, lang: str) -> List[str]:
 
 def load_identity(label: str, lang: str, identities_dir: Path, kb: dict) -> Dict[str, Any]:
     lab = resolve_label(label, kb)
+    
+    # محاولة 1: بالمسافات (كما جاء من resolve_label)
     path = (identities_dir / f"{lab}.json")
+    
+    # محاولة 2: لو ما لقى الملف، جرب بالشرطات السفلية
+    if not path.exists():
+        lab_underscore = lab.replace(" ", "_")
+        path = (identities_dir / f"{lab_underscore}.json")
+    
+    # محاولة 3: جرب اسم الملف الأصلي بدون تعديل
+    if not path.exists():
+        path = (identities_dir / f"{label}.json")
+    
     data = _load_json(path)
     if not data:
         return {}
@@ -200,6 +212,8 @@ def load_identity(label: str, lang: str, identities_dir: Path, kb: dict) -> Dict
         "variant_vr": _pick_lang(data.get("variant_vr",""), lang) or "",
         "variant_no_vr": _pick_lang(data.get("variant_no_vr",""), lang) or "",
         "difficulty": int(data.get("difficulty", 3)),
+        "real_world_examples": _pick_lang(data.get("real_world_examples",""), lang) or "",
+        "psychological_hook": _pick_lang(data.get("psychological_hook",""), lang) or "",
     }
     return out
 
@@ -219,38 +233,78 @@ def render_card(rec: Dict[str,Any], idx: int, lang: str) -> str:
     head = (head_ar if lang == "العربية" else head_en)[idx]
 
     label = rec.get("sport_label","").strip()
-    scene = rec.get("what_it_looks_like","").strip()
+    scene = rec.get("what_it_looks_like","").strip()  # النص الكامل - لا اختصار!
     inner = rec.get("inner_sensation","").strip()
     why   = rec.get("why_you","").strip()
-    week  = _bullets(rec.get("first_week",""), 6)
-    prog  = _bullets(rec.get("progress_markers",""), 4)
+    week  = rec.get("first_week","").strip()  # النص الكامل
+    prog  = rec.get("progress_markers","").strip()  # النص الكامل
     win   = rec.get("win_condition","").strip()
     skills= rec.get("core_skills", [])[:5]
     diff  = rec.get("difficulty", 3)
     mode  = (rec.get("mode") or "").strip()
     vr    = (rec.get("variant_vr") or "").strip()
     novr  = (rec.get("variant_no_vr") or "").strip()
-
-    intro = _one_liner(scene, inner)
+    
+    # الحقول الجديدة
+    real_examples = rec.get("real_world_examples", "").strip() if isinstance(rec.get("real_world_examples"), str) else _pick_lang(rec.get("real_world_examples", {}), lang)
+    psych_hook = rec.get("psychological_hook", "").strip() if isinstance(rec.get("psychological_hook"), str) else _pick_lang(rec.get("psychological_hook", {}), lang)
 
     if lang == "العربية":
         out = [head, ""]
-        if label: out.append(f"🎯 الهوية المثالية لك: {label}")
-        if intro: out += ["\n💡 ما هي؟", f"- {intro}"]
+        if label: out.append(f"🎯 الرياضة المثالية لك: **{label}**\n")
+        
+        # القصة الكاملة - بدون اختصار!
+        if scene: 
+            out.append("💡 **ما هي؟**")
+            out.append(scene + "\n")
+        
+        if inner:
+            out.append(f"✨ **الإحساس الداخلي:**\n{inner}\n")
+        
         if why:
-            out += ["\n🎮 ليه تناسبك؟"]
-            for b in _bullets(why, 4) or [why]: out.append(f"- {b}")
+            out.append("🎮 **ليه تناسبك؟**")
+            out.append(why + "\n")
+        
         if skills:
-            out += ["\n🧩 مهارات أساسية:"] + [f"- {s}" for s in skills]
-        if win: out += ["\n🏁 كيف تفوز؟", f"- {win}"]
-        if week: out += ["\n🚀 أول أسبوع (نوعي):"] + [f"- {b}" for b in week]
-        if prog: out += ["\n✅ علامات تقدم محسوسة:"] + [f"- {b}" for b in prog]
-        notes = []
-        if mode: notes.append(("وضع اللعب: " + mode))
-        if novr: notes.append("بدون VR: " + novr)
-        if vr: notes.append("VR (اختياري): " + vr)
-        if notes: out += ["\n👁‍🗨 ملاحظات:", f"- " + "\n- ".join(str(x) for x in notes)]
-        out.append(f"\nالمستوى التقريبي: {diff}/5")
+            out.append("🧩 **مهارات أساسية:**")
+            for s in skills:
+                out.append(f"• {s}")
+            out.append("")
+        
+        if win:
+            out.append("🏁 **كيف تفوز؟**")
+            out.append(win + "\n")
+        
+        if week:
+            out.append("🚀 **الأسبوع الأول:**")
+            out.append(week + "\n")
+        
+        if prog:
+            out.append("✅ **علامات التقدم:**")
+            out.append(prog + "\n")
+        
+        # خيارات VR/Non-VR
+        if vr or novr:
+            out.append("🎮 **الخيارات المتاحة:**\n")
+            if vr:
+                out.append(vr)
+            if novr:
+                out.append("\n" + novr if vr else novr)
+            out.append("")
+        
+        # أماكن حقيقية
+        if real_examples:
+            out.append(real_examples + "\n")
+        
+        # الـ Hook النفسي
+        if psych_hook:
+            out.append(psych_hook + "\n")
+        
+        if mode:
+            out.append(f"👥 **الوضع:** {mode}")
+        
+        out.append(f"\n📊 **المستوى:** {diff}/5")
+        
         return "\n".join(str(x) for x in out)
     else:
         out = [head, ""]
@@ -311,3 +365,34 @@ def rank_and_render(answers: Dict[str,Any], lang: str,
     # ضمان 3 عناصر
     while len(cards) < 3: cards.append("—")
     return cards
+
+
+def rank_and_get_identities(answers: Dict[str,Any], lang: str,
+                             kb_path: Path, identities_dir: Path,
+                             top_k: int = 3) -> List[Dict[str, Any]]:
+    """
+    نفس rank_and_render لكن ترجع dicts بدلاً من نصوص
+    عشان backend_gpt يستخدمها مباشرة
+    """
+    kb = load_kb(kb_path)
+    traits = extract_traits(answers, lang, kb)
+
+    # نرشّح المرشحين إلى الموجودين فعليًا في identities_dir
+    available = []
+    for p in identities_dir.glob("*.json"):
+        available.append(p.stem)
+
+    ranked = score_labels(traits, kb, available)
+    if not ranked:
+        return []
+
+    # نختار أعلى top_k موجودة ونرجع الـ dicts
+    identities: List[Dict[str, Any]] = []
+    for lab, _ in ranked:
+        rec = load_identity(lab, lang, identities_dir, kb)
+        if rec and rec.get('sport_label'):  # التأكد من وجود بيانات
+            identities.append(rec)
+        if len(identities) >= top_k:
+            break
+
+    return identities

@@ -1,29 +1,55 @@
 {
-  "sport_label": { "ar": "Grip & Balance Ascent", "en": "Grip & Balance Ascent" },
-  "what_it_looks_like": {
-    "ar": "مسار قبضات وتوازن تدريجي، قراءة مسك، تحويل وزن هادئ.",
-    "en": "Progressive holds and balance route; read grips, shift weight calmly."
+  "sport_label": { 
+    "ar": "صعود القبضة والتوازن", 
+    "en": "Grip & Balance Ascent" 
   },
-  "inner_sensation": { "ar": "تماسك داخلي وثقة حركة.", "en": "Inner cohesion with confident movement." },
+  "what_it_looks_like": {
+    "ar": "أنت أمام جدار تسلق، مليء بالقبضات الملونة - خضراء، زرقاء، حمراء.\n\nكل لون مسار مختلف، كل قبضة تحدي جديد.\n\nتقف أمام الجدار، تشوف المسار، تخطط في عقلك: يمين، يسار، صعود، تحويل وزن...\n\nتمسك القبضة الأولى - الإحساس بالخشونة تحت أصابعك، العضلات تشد، القلب يبدأ يدق بقوة.\n\nتبدأ الصعود... خطوة بخطوة، قبضة بقبضة...\n\nجسمك يميل، تحاول تحافظ على التوازن، قدمك اليسرى على حافة صغيرة، يدك اليمنى تمسك قبضة بعيدة...\n\nلحظة حرجة - تحتاج تحول كل وزنك على يد واحدة عشان تمسك القبضة التالية...\n\nالعضلات تحترق، الأصابع تتعب، لكن العقل يقول: \"تقدر!\"\n\nتصعد أكثر... القمة قريبة... آخر قبضة... وصلت!\n\nالمتعة ليست في الوصول فقط - بل في كل قرار، كل تحول وزن، كل لحظة توازن.",
+    "en": "You're before a climbing wall, full of colored holds - green, blue, red.\n\nEach color a different route, each hold a new challenge.\n\nYou stand before the wall, see the path, plan in your mind: right, left, up, weight shift...\n\nYou grip the first hold - feeling the roughness under your fingers, muscles tense, heart starts pounding.\n\nYou start ascending... step by step, hold by hold...\n\nYour body leans, you try to maintain balance, left foot on small edge, right hand gripping distant hold...\n\nCritical moment - need to shift all your weight on one hand to reach next hold...\n\nMuscles burning, fingers tiring, but mind says: \"You can!\"\n\nClimb higher... summit close... last hold... made it!\n\nThe thrill isn't just reaching the top - it's every decision, every weight shift, every balance moment."
+  },
+  "inner_sensation": {
+    "ar": "تماسك داخلي مع شعور بالقوة المحسوبة - جسمك كله يعمل كوحدة واحدة، كل عضلة تعرف دورها.",
+    "en": "Inner cohesion with feeling of calculated strength - your whole body works as one unit, every muscle knows its role."
+  },
   "why_you": {
-    "ar": "- تحب تحدّي تحكّم الجسد بدون ضجيج",
-    "en": "- Enjoy quiet body-control challenges"
+    "ar": "- أنت تحب التحدي الجسدي المباشر - مو ألعاب ذهنية بس، بل قوة حقيقية وتحكم واقعي\n- تستمتع بحل المشاكل بجسمك - كل مسار لغز، وجسمك هو الأداة\n- تحب الشعور بالإنجاز الملموس - لما توصل للقمة، تحس فعلاً إنك حققت شيء\n- التحدي عندك تصاعدي - كل مرة مسار أصعب، كل أسبوع قبضات أصغر",
+    "en": "- You love direct physical challenge - not just mind games, but real strength and actual control\n- You enjoy solving problems with your body - each route a puzzle, your body the tool\n- You love feeling of tangible achievement - when you reach the top, you truly feel you accomplished something\n- Your challenge is progressive - harder route each time, smaller holds each week"
   },
   "first_week": {
-    "ar": "- قراءة موضع القبضة\n- وزن الحمل\n- صعود بطيء محسوب",
-    "en": "- Read grip positions\n- Balance the load\n- Slow, deliberate ascent"
+    "ar": "**الأسبوع الأول - التعرف على القبضات:**\n\n• اليوم 1-2: قراءة المسارات - تتعلم كيف تقرأ القبضات والألوان، تخطط المسار قبل ما تبدأ\n\n• اليوم 3-4: تمارين القبضة - تقوي أصابعك ومعصمك، تتعلم كيف تمسك بأمان\n\n• اليوم 5-7: أول صعود كامل - مسار سهل (V0-V1)، المهم الوصول للقمة وأنت تحس بالثقة\n\nالهدف: بناء الثقة في قوتك وقدرتك على القراءة السريعة للمسار",
+    "en": "**First Week - Getting to Know Holds:**\n\n• Day 1-2: Route reading - learn to read holds and colors, plan path before starting\n\n• Day 3-4: Grip exercises - strengthen fingers and wrist, learn to hold safely\n\n• Day 5-7: First complete climb - easy route (V0-V1), important thing is reaching top feeling confident\n\nGoal: Build confidence in your strength and quick route-reading ability"
   },
   "progress_markers": {
-    "ar": "- تعب ساعد أقل\n- اتزان أوضح",
-    "en": "- Less forearm fatigue\n- Clearer balance"
+    "ar": "**كيف تعرف إنك تتطور:**\n\n✓ أصابعك تصير أقوى - تقدر تمسك قبضات أصغر لمدة أطول\n\n✓ قراءتك للمسار تصير أسرع - تعرف المسار الأمثل بمجرد النظر\n\n✓ التعب يأتي متأخر - تقدر تصعد مسارات أطول قبل ما تتعب\n\n✓ التوازن يصير طبيعي - جسمك يعرف كيف يتوزن تلقائياً",
+    "en": "**How You Know You're Progressing:**\n\n✓ Your fingers become stronger - can hold smaller grips for longer\n\n✓ Your route reading becomes faster - know optimal path just by looking\n\n✓ Fatigue comes later - can climb longer routes before getting tired\n\n✓ Balance becomes natural - body knows how to balance automatically"
   },
-  "win_condition": { "ar": "الوصول للنقطة العلوية دون إفلات.", "en": "Reach the top point without a slip." },
+  "win_condition": {
+    "ar": "الفوز الحقيقي:\n\n• الوصول للقمة دون سقوط (clean climb)\n• أو إكمال مسار بدرجة أعلى من قدرتك المعتادة (grade challenger)\n• أو استخدام أقل عدد من المحاولات (efficiency master)\n\nكل نجاح خطوة للأمام",
+    "en": "True victory:\n\n• Reaching top without falling (clean climb)\n• Or completing route above your usual grade (grade challenger)\n• Or using minimum attempts (efficiency master)\n\nEach success a step forward"
+  },
   "core_skills": {
-    "ar": ["قبضة","تحويل وزن","توازن","قراءة مسار"],
-    "en": ["grip","weight shift","balance","route reading"]
+    "ar": ["قوة القبضة والأصابع","قراءة سريعة للمسارات","تحويل الوزن والتوازن","تحمل العضلات","التخطيط الذهني"],
+    "en": ["Grip and finger strength","Quick route reading","Weight shifting and balance","Muscle endurance","Mental planning"]
   },
-  "mode": { "ar": "فردي", "en": "Solo" },
-  "variant_vr": { "ar": "مسارات قبضات افتراضية.", "en": "Virtual hold routes." },
-  "variant_no_vr": { "ar": "عناصر قبضة آمنة خفيفة.", "en": "Light, safe grip elements." },
-  "difficulty": 2
+  "mode": { 
+    "ar": "فردي (تحدي شخصي) أو جماعي (تشجيع ومساعدة)", 
+    "en": "Solo (personal challenge) or Group (encouragement and help)" 
+  },
+  "variant_vr": {
+    "ar": "**نسخة VR:**\n\nألعاب مثل:\n• The Climb 1 & 2 - تسلق واقعي في مناظر خلابة\n• Cave Digger: Riches - تسلق في كهوف\n• Climbey - تحديات تسلق إبداعية\n\nالميزة: تجربة التسلق بدون خطر السقوط، مسارات غير محدودة",
+    "en": "**VR Version:**\n\nGames like:\n• The Climb 1 & 2 - realistic climbing in stunning scenery\n• Cave Digger: Riches - climbing in caves\n• Climbey - creative climbing challenges\n\nAdvantage: Climbing experience without fall risk, unlimited routes"
+  },
+  "variant_no_vr": {
+    "ar": "**نسخة بدون VR:**\n\n• Boulder Climbing في صالات التسلق\n• Indoor Climbing Gyms مع مسارات متعددة\n• Outdoor Rock Climbing (للمتقدمين)\n\nتحتاج:\n• حذاء تسلق مناسب\n• مغنيسيا (Chalk) لتحسين القبضة\n• مدرب للبداية (لتعلم السلامة)\n\nالميزة: تدريب جسدي كامل، بناء عضلات حقيقية، مجتمع داعم",
+    "en": "**Non-VR Version:**\n\n• Boulder Climbing in climbing gyms\n• Indoor Climbing Gyms with multiple routes\n• Outdoor Rock Climbing (for advanced)\n\nYou need:\n• Proper climbing shoes\n• Chalk for better grip\n• Trainer for start (to learn safety)\n\nAdvantage: Complete physical training, real muscle building, supportive community"
+  },
+  "difficulty": 2,
+  "real_world_examples": {
+    "ar": "**أماكن حقيقية تقدر تبدأ فيها:**\n\n🎯 السعودية:\n• Rock Climb في الرياض (أكبر صالة تسلق)\n• Climb Central في جدة\n• Boulder gyms في الدمام والخبر\n\n🌍 عالمياً:\n• Local Climbing Gyms (موجودة في كل مدينة كبيرة)\n• Bouldering Cafes - تسلق + قهوة + مجتمع\n• Outdoor climbing spots (اسأل المجتمع المحلي)",
+    "en": "**Real Places You Can Start:**\n\n🎯 Saudi Arabia:\n• Rock Climb in Riyadh (largest climbing gym)\n• Climb Central in Jeddah\n• Boulder gyms in Dammam & Khobar\n\n🌍 Worldwide:\n• Local Climbing Gyms (found in every major city)\n• Bouldering Cafes - climbing + coffee + community\n• Outdoor climbing spots (ask local community)"
+  },
+  "psychological_hook": {
+    "ar": "**ليش راح تدمن عليها:**\n\nهذي رياضة التحدي المباشر - أنت ضد الجاذبية، ضد الجدار، ضد نفسك.\n\nكل مسار قصة نجاح - كل قبضة تمسكها، كل خطوة تصعدها، كل قمة توصلها.\n\nالمجتمع هنا مختلف - الكل يشجع الكل، ما في منافسة سامة، فقط دعم وتحفيز.\n\nبعد أول شهر، راح تفهم ليش اللاعبين يقولون:\n\"التسلق مو رياضة بس - هو meditation، تحدي، ومجتمع في نفس الوقت\"",
+    "en": "**Why You'll Get Hooked:**\n\nThis is the sport of direct challenge - you against gravity, against the wall, against yourself.\n\nEvery route a success story - every hold you grip, every step you climb, every summit you reach.\n\nThe community here is different - everyone encourages everyone, no toxic competition, just support and motivation.\n\nAfter first month, you'll understand why climbers say:\n\"Climbing isn't just sport - it's meditation, challenge, and community all at once\""
+  }
 }

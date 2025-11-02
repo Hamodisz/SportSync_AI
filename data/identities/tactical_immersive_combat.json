@@ -1,41 +1,55 @@
 {
-  "sport_label": { "ar": "Tactical Immersive Combat", "en": "Tactical Immersive Combat" },
+  "sport_label": { 
+    "ar": "القتال التكتيكي الغامر", 
+    "en": "Tactical Immersive Combat" 
+  },
   "what_it_looks_like": {
-    "ar": "ساحة محاكاة ذكية أو VR: تتبّع زوايا، كمين قصير، اقتراب محسوب، انسحاب آمن.",
-    "en": "Arena/VR: angle tracking, brief ambush, calculated approach and safe exit."
+    "ar": "أنت في ساحة معركة محاكاة - ظلام، أصوات خطوات بعيدة، ضوء خافت يتسلل من الزوايا.\n\nمعك رشاش (أو سيف طاقة في بعض السيناريوهات)، وأمامك خصم ذكي - حقيقي أو AI متطور.\n\nتسمع صوت تنفسه... قريب... قلبك يدق بقوة، الأدرينالين يخبص في عروقك.\n\nتتخبى خلف جدار، تراقب انعكاس الظلال على الأرض، تحسب كل خطوة.\n\nهل تنتظر؟ هل تنقض الآن؟ عقلك يحلل بسرعة فائقة...\n\nوفجأة - تتخذ القرار! تنقض من زاوية مفاجئة، التوقيت مثالي، الحركة دقيقة.\n\nالمتعة مو في الفوز بس - المتعة في اللحظة قبل القرار، في الصمت المشحون، في الشعور إنك تسيطر على كل متغير.",
+    "en": "You're in a simulated battlefield - darkness, distant footsteps, dim light creeping from corners.\n\nYou hold a rifle (or energy sword in some scenarios), facing a smart opponent - real human or advanced AI.\n\nYou hear their breathing... close... your heart pounds, adrenaline floods your veins.\n\nYou hide behind a wall, watch shadows reflect on the floor, calculate every step.\n\nWait? Strike now? Your mind analyzes at lightning speed...\n\nSuddenly - you decide! You strike from an unexpected angle, timing perfect, movement precise.\n\nThe thrill isn't just winning - it's the moment before the decision, the charged silence, the feeling of controlling every variable."
   },
   "inner_sensation": {
-    "ar": "يقظة عالية مع ثقة هادئة.",
-    "en": "High alert with calm confidence."
+    "ar": "يقظة شديدة مع هدوء عميق - عقلك صافي، قلبك يدق، لكن أنت متحكم. كأنك ترى كل شيء بحركة بطيئة.",
+    "en": "Intense alertness with deep calm - mind clear, heart racing, yet you're in control. Like seeing everything in slow motion."
   },
   "why_you": {
-    "ar": "- عقل تكتيكي\n- تفضّل قرارات خاطفة على التكرار الممل\n- تحب مبارزة ذهنية/جسدية عادلة",
-    "en": "- Tactical mind\n- Prefer snap decisions over dull repetition\n- Enjoy fair mind–body duels"
+    "ar": "- أنت تكره التكرار الممل - كل معركة قصة جديدة، قرار جديد، تحدي جديد\n- عقلك تكتيكي - تحب تحلل المواقف وتتوقع الخطوة التالية\n- تشعر بالمتعة في الضغط الحقيقي - الأدرينالين + التفكير = منطقة القوة حقك\n- تريد مبارزة عادلة - مو luck، بل مهارة حقيقية وذكاء",
+    "en": "- You hate boring repetition - every battle is a new story, new decision, new challenge\n- Your mind is tactical - you love analyzing situations and predicting next moves\n- You thrive under real pressure - adrenaline + thinking = your power zone\n- You want fair duels - not luck, but real skill and intelligence"
   },
   "first_week": {
-    "ar": "- جولة حسّية للتعرّف على الإيقاع\n- اقتراب/انسحاب بنَفَس ثابت\n- تثبيت نظرة قبل القرار",
-    "en": "- Sensory lap to learn rhythm\n- Approach/retreat with steady breath\n- Gaze anchor before decision"
+    "ar": "**الأسبوع الأول - تعرف على ساحتك:**\n\n• اليوم 1-2: جولة استكشافية - امشي في الساحة ببطء، احفظ الزوايا، لاحظ أماكن الاختباء\n\n• اليوم 3-4: تمرين التنفس تحت الضغط - تخبى، تنتظر، تتنفس بعمق، تحافظ على هدوءك رغم الأدرينالين\n\n• اليوم 5-7: مواجهة بطيئة - معركة محسوبة، ما تسرع، كل قرار مدروس، كل حركة واعية\n\nالهدف: تبني muscle memory للهدوء تحت النار",
+    "en": "**First Week - Know Your Arena:**\n\n• Day 1-2: Exploration lap - walk slowly through arena, memorize angles, spot hiding places\n\n• Day 3-4: Breathing under pressure drill - hide, wait, breathe deeply, stay calm despite adrenaline\n\n• Day 5-7: Slow engagement - calculated battle, no rushing, every decision measured, every move conscious\n\nGoal: Build muscle memory for calm under fire"
   },
   "progress_markers": {
-    "ar": "- قرارات أسرع\n- هدوء تحت الضغط\n- سيطرة أعلى",
-    "en": "- Faster decisions\n- Calmer under pressure\n- Greater control"
+    "ar": "**كيف تعرف إنك تتطور:**\n\n✓ قراراتك تصير أسرع لكن أدق - مو تهور، بل سرعة واعية\n\n✓ تبدأ تقرأ خصمك - تتوقع حركته قبل ما يسويها\n\n✓ الأدرينالين يصير صديقك - ما يخليك تشتت، بل يحسن تركيزك\n\n✓ تحس بالهدوء حتى في أشد اللحظات - الفوضى حولك، لكن عقلك صافي",
+    "en": "**How You Know You're Progressing:**\n\n✓ Your decisions get faster yet more precise - not reckless, but consciously quick\n\n✓ You start reading opponents - predicting their move before they make it\n\n✓ Adrenaline becomes your ally - doesn't scatter you, but sharpens your focus\n\n✓ You feel calm even in intense moments - chaos around you, but your mind is clear"
   },
   "win_condition": {
-    "ar": "تحقيق الهدف دون انكشاف أو تعطيل الخصم بقرار خاطف.",
-    "en": "Reach the objective unseen or neutralize via a snap decision."
+    "ar": "الفوز مو بس تعطيل الخصم - الفوز الحقيقي:\n\n• تحقق الهدف بدون ما يشوفك أحد (stealth master)\n• أو تنقض بقرار خاطف في اللحظة المثالية (tactical strike)\n• أو تقرأ اللعبة كاملة وتسيطر على الساحة (area control)\n\nكل أسلوب له متعته الخاصة - جرّب كلهم، اختر طريقتك",
+    "en": "Winning isn't just neutralizing the opponent - true victory:\n\n• Achieve objective unseen (stealth master)\n• Or strike with snap decision at perfect moment (tactical strike)\n• Or read the entire game and control the arena (area control)\n\nEach style has its own thrill - try them all, choose your way"
   },
   "core_skills": {
-    "ar": ["تتبّع زاوية الرؤية","تغيير الإيقاع","قرار سريع","توازن","تنفّس هادئ"],
-    "en": ["angle tracking","tempo shifts","fast decision","balance","quiet breath"]
+    "ar": ["قراءة زوايا الرؤية والظلال","تغيير الإيقاع - متى تسرع ومتى تبطئ","اتخاذ قرارات خاطفة تحت الضغط","توازن جسدي + ذهني","تنفس عميق وهادئ حتى في الفوضى"],
+    "en": ["Reading sight lines and shadows","Tempo control - when to speed up, when to slow down","Snap decisions under pressure","Physical + mental balance","Deep calm breathing even in chaos"]
   },
-  "mode": { "ar": "فردي/جماعي", "en": "Solo/Team" },
+  "mode": { 
+    "ar": "فردي (1v1 duels) أو جماعي (squad tactics)", 
+    "en": "Solo (1v1 duels) or Team (squad tactics)" 
+  },
   "variant_vr": {
-    "ar": "مبارزات تكتيكية في VR مع مؤشّر مجال رؤية.",
-    "en": "Tactical VR duels with FOV indicator."
+    "ar": "**نسخة VR (الأقوى):**\n\nألعاب مثل:\n• Zero Latency VR - ساحات حقيقية كبيرة، تتحرك بحرية\n• Pavlov VR - تكتيكات واقعية، أسلحة متنوعة\n• Onward VR - محاكاة عسكرية، تواصل فريق\n\nالميزة: الغمر الكامل - جسمك يتحرك حقيقي، عقلك يصدق إنك في المعركة",
+    "en": "**VR Version (Most Intense):**\n\nGames like:\n• Zero Latency VR - real large arenas, free movement\n• Pavlov VR - realistic tactics, varied weapons\n• Onward VR - military simulation, team communication\n\nAdvantage: Full immersion - your body moves for real, your brain believes you're in battle"
   },
   "variant_no_vr": {
-    "ar": "عوائق رغوية مع ممرات ظلّ.",
-    "en": "Foam obstacles with shadow lanes."
+    "ar": "**نسخة بدون VR:**\n\n• Airsoft/Paintball التكتيكي في ساحات مغلقة\n• Laser Tag المتطور مع سيناريوهات معقدة\n• تمارين NERF Tactical في بيئات حضرية\n\nتحتاج:\n• عوائق رغوية أو خشبية\n• ممرات ظل ومناطق اختباء\n• إضاءة خافتة للتحدي الإضافي\n\nالميزة: تفاعل اجتماعي أكثر، تكلفة أقل، متاح في أي مكان",
+    "en": "**Non-VR Version:**\n\n• Tactical Airsoft/Paintball in indoor arenas\n• Advanced Laser Tag with complex scenarios\n• NERF Tactical drills in urban environments\n\nYou need:\n• Foam or wooden obstacles\n• Shadow corridors and hiding spots\n• Low lighting for extra challenge\n\nAdvantage: More social interaction, lower cost, available anywhere"
   },
-  "difficulty": 3
+  "difficulty": 3,
+  "real_world_examples": {
+    "ar": "**أماكن حقيقية تقدر تبدأ فيها:**\n\n🎯 السعودية:\n• VR Zone في الرياض بارك\n• Arena Games في جدة\n• أي Paintball Arena (اطلب السيناريو التكتيكي)\n\n🌍 عالمياً:\n• Zero Latency (متواجد في 25+ دولة)\n• The Void VR (USA, UK, دبي)\n• أي Airsoft Field مع تكتيكات CQB",
+    "en": "**Real Places You Can Start:**\n\n🎯 Saudi Arabia:\n• VR Zone at Riyadh Park\n• Arena Games in Jeddah\n• Any Paintball Arena (ask for tactical scenario)\n\n🌍 Worldwide:\n• Zero Latency (available in 25+ countries)\n• The Void VR (USA, UK, Dubai)\n• Any Airsoft Field with CQB tactics"
+  },
+  "psychological_hook": {
+    "ar": "**ليش راح تدمن عليها:**\n\nهذي مو رياضة عادية - هذي محاكاة لأقدم غريزة عندك: البقاء، الصيد، السيطرة.\n\nكل معركة قصة جديدة، كل قرار اختبار لذكائك، كل فوز إثبات لقدراتك.\n\nالأدرينالين + التفكير الاستراتيجي + الإنجاز الفوري = مزيج نادر ما تلقاه في رياضات ثانية.\n\nبعد أول جلسة، راح تفهم ليش اللاعبين يقولون:\n\"مو لعبة - تجربة حياة مصغرة\"",
+    "en": "**Why You'll Get Hooked:**\n\nThis isn't ordinary sport - it's a simulation of your oldest instinct: survival, hunting, dominance.\n\nEvery battle is a new story, every decision tests your intelligence, every win proves your abilities.\n\nAdrenaline + strategic thinking + instant achievement = rare combination found in few sports.\n\nAfter first session, you'll understand why players say:\n\"Not a game - a miniature life experience\""
+  }
 }

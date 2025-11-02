@@ -1,29 +1,55 @@
 {
-  "sport_label": { "ar": "Stealth-Flow Missions", "en": "Stealth-Flow Missions" },
-  "what_it_looks_like": {
-    "ar": "مسار صامت: اختباء قصير، ظهور محسوب، لمس علامة ثم اختفاء.",
-    "en": "Silent path: brief hide, measured reveal, tag and vanish."
+  "sport_label": { 
+    "ar": "مهمات التدفق الخفي", 
+    "en": "Stealth Flow Missions" 
   },
-  "inner_sensation": { "ar": "تركيز عميق وتنظيم نفس.", "en": "Deep focus and breath control." },
+  "what_it_looks_like": {
+    "ar": "أنت في ممر خافت الإضاءة، جدران رمادية، أرضية خشبية صامتة.\n\nالهدف أمامك: نقطة حمراء صغيرة في نهاية المسار - تحتاج تلمسها دون ما يكتشفك أحد.\n\nتسمع صوت خطواتك... كل حركة تحسبها... تمشي ببطء، تختبي خلف حاجز، تنتظر اللحظة المناسبة.\n\nالصمت ثقيل، الأدرينالين منخفض لكن موجود - مو خوف، بل تركيز حاد.\n\nتراقب الظلال... تحسب الزوايا... تتنفس بعمق وهدوء.\n\nتنطلق! حركة سلسة، خطوتين سريعتين، تلمس الهدف، وتختفي خلف الحاجز التالي.\n\nالمتعة هنا مو في السرعة - بل في السيطرة الكاملة، في الحركة الناعمة، في الشعور إنك شبح ذكي.",
+    "en": "You're in a dimly lit corridor, gray walls, silent wooden floor.\n\nThe target ahead: a small red point at the path's end - you need to touch it without being detected.\n\nYou hear your footsteps... every move calculated... you walk slowly, hide behind cover, wait for the right moment.\n\nThe silence is heavy, adrenaline low but present - not fear, but sharp focus.\n\nYou watch shadows... calculate angles... breathe deeply and quietly.\n\nYou move! Smooth motion, two quick steps, touch the target, vanish behind next cover.\n\nThe thrill here isn't speed - it's complete control, smooth movement, feeling like a smart ghost."
+  },
+  "inner_sensation": {
+    "ar": "تركيز عميق كأن الوقت يمشي ببطء، تنفس منتظم، هدوء كامل مع يقظة شديدة.",
+    "en": "Deep focus as if time moves slowly, steady breathing, complete calm with intense alertness."
+  },
   "why_you": {
-    "ar": "- تفضّل التقدم الهادئ\n- تحب الإتقان بلا ضجيج",
-    "en": "- Prefer quiet, tangible progress\n- Enjoy mastery without noise"
+    "ar": "- أنت تكره الفوضى والضجيج - تحب الإتقان الصامت والحركة المحسوبة\n- تستمتع بالتحكم الكامل في جسمك - كل حركة واعية، كل خطوة مقصودة\n- التحدي عندك مو في القوة بل في الدقة - أن تكون غير مرئي، أن تتحرك بلا صوت\n- تحب الشعور بالسيطرة الذكية - مو عن طريق القوة، بل عن طريق الفهم والتوقيت",
+    "en": "- You hate chaos and noise - you love silent mastery and calculated movement\n- You enjoy complete body control - every motion conscious, every step intentional\n- Your challenge isn't strength but precision - being invisible, moving soundlessly\n- You love the feeling of smart control - not through power, but understanding and timing"
   },
   "first_week": {
-    "ar": "- تبديل سرعات بسلاسة\n- قراءة زوايا آمنة",
-    "en": "- Smooth tempo shifts\n- Reading safe angles"
+    "ar": "**الأسبوع الأول - التعرف على الصمت:**\n\n• اليوم 1-2: المشي الصامت - تتعلم كيف تمشي بدون صوت، كل خطوة واعية، كل حركة قدم محسوبة\n\n• اليوم 3-4: القراءة السريعة للحواجز - تدخل المسار، تشوف الحواجز، تحدد أماكن الاختباء في ثواني\n\n• اليوم 5-7: أول مهمة بطيئة - تحاول تلمس الهدف بدون ما تُكتشف، ما يهم الوقت، المهم الدقة والصمت\n\nالهدف: تبني الثقة في حركتك الصامتة وقدرتك على القراءة السريعة للمساحة",
+    "en": "**First Week - Getting to Know Silence:**\n\n• Day 1-2: Silent walking - learn to walk soundlessly, every step conscious, every foot movement calculated\n\n• Day 3-4: Quick cover reading - enter the path, see obstacles, identify hiding spots in seconds\n\n• Day 5-7: First slow mission - try to touch target undetected, time doesn't matter, precision and silence do\n\nGoal: Build confidence in your silent movement and quick space-reading ability"
   },
   "progress_markers": {
-    "ar": "- توتر أقل\n- نعومة حركة\n- وضوح قرار",
-    "en": "- Lower tension\n- Smoother motion\n- Clearer decision"
+    "ar": "**كيف تعرف إنك تتطور:**\n\n✓ خطواتك تصير أهدى وأنعم - جسمك يتحرك بانسيابية طبيعية\n\n✓ تقرأ المسار أسرع - تعرف وين تختبي قبل ما تدخل\n\n✓ التوتر يختفي - تحس بهدوء حتى لما تكون قريب من الكشف\n\n✓ تبدأ تحس بـ \"الإيقاع\" - متى تتحرك ومتى تتوقف بدون تفكير واعي",
+    "en": "**How You Know You're Progressing:**\n\n✓ Your steps become quieter and smoother - body moves with natural flow\n\n✓ You read paths faster - know where to hide before entering\n\n✓ Tension disappears - feel calm even when close to detection\n\n✓ You start feeling the \"rhythm\" - when to move and stop without conscious thought"
   },
-  "win_condition": { "ar": "إنجاز المهمة دون انكشاف.", "en": "Complete the mission undetected." },
+  "win_condition": {
+    "ar": "الفوز الحقيقي:\n\n• إنجاز المهمة بدون أي كشف (ghost mode)\n• أو باستخدام أقل عدد ممكن من الحركات (efficiency master)\n• أو بأسرع وقت ممكن مع الحفاظ على الصمت (speed stealth)\n\nكل أسلوب له متعته - اختر طريقتك أو امزج بينهم",
+    "en": "True victory:\n\n• Complete mission without any detection (ghost mode)\n• Or using minimum possible movements (efficiency master)\n• Or fastest time while maintaining silence (speed stealth)\n\nEach style has its thrill - choose your way or mix them"
+  },
   "core_skills": {
-    "ar": ["توقيت الظهور","قراءة الحواجز","تعديل الإيقاع","تنفّس صامت","توازن"],
-    "en": ["timed reveal","reading cover","tempo control","silent breath","balance"]
+    "ar": ["المشي الصامت والخطوات الخفيفة","قراءة سريعة للحواجز والزوايا","التحكم في إيقاع الحركة","تنفس عميق هادئ تحت التركيز","التوازن الجسدي والذهني"],
+    "en": ["Silent walking and light footsteps","Quick reading of cover and angles","Movement tempo control","Deep quiet breathing under focus","Physical and mental balance"]
   },
-  "mode": { "ar": "فردي", "en": "Solo" },
-  "variant_vr": { "ar": "تسلل افتراضي مع مؤشّر انكشاف.", "en": "Stealth VR with exposure meter." },
-  "variant_no_vr": { "ar": "عوائق خفيفة وأشرطة ظل.", "en": "Light obstacles and shadow tape." },
-  "difficulty": 2
+  "mode": { 
+    "ar": "فردي (تركيز شخصي) أو جماعي (تنسيق صامت)", 
+    "en": "Solo (personal focus) or Team (silent coordination)" 
+  },
+  "variant_vr": {
+    "ar": "**نسخة VR:**\n\nألعاب مثل:\n• Espire 1: VR Operative - تسلل واقعي مع حرية حركة\n• Phantom: Covert Ops - مهمات صامتة في قارب\n• Sneak & Stealth VR - تحديات خفية متنوعة\n\nالميزة: الغمر الكامل - تحس فعلاً إنك داخل المهمة، كل حركة تحسبها",
+    "en": "**VR Version:**\n\nGames like:\n• Espire 1: VR Operative - realistic stealth with free movement\n• Phantom: Covert Ops - silent missions in kayak\n• Sneak & Stealth VR - varied stealth challenges\n\nAdvantage: Full immersion - you truly feel inside the mission, calculating every move"
+  },
+  "variant_no_vr": {
+    "ar": "**نسخة بدون VR:**\n\n• ممرات مع عوائق خفيفة وأشرطة ظل\n• لعبة \"Capture the Flag\" الصامتة\n• تمارين Ninja Warrior بطيئة ومحسوبة\n\nتحتاج:\n• مساحة هادئة مع إضاءة خافتة\n• عوائق رغوية أو خشبية للاختباء\n• علامات الأهداف (أضواء LED أو ملصقات)\n\nالميزة: تدريب جسدي حقيقي، بناء عضلات التوازن والتحكم",
+    "en": "**Non-VR Version:**\n\n• Corridors with light obstacles and shadow tape\n• Silent \"Capture the Flag\" game\n• Slow, calculated Ninja Warrior drills\n\nYou need:\n• Quiet space with dim lighting\n• Foam or wooden obstacles for hiding\n• Target markers (LED lights or stickers)\n\nAdvantage: Real physical training, building balance and control muscles"
+  },
+  "difficulty": 2,
+  "real_world_examples": {
+    "ar": "**أماكن حقيقية تقدر تبدأ فيها:**\n\n🎯 السعودية:\n• أي Parkour Gym مع تحدي الصمت\n• Ninja Warrior arenas في الرياض وجدة\n• VR Zones مع ألعاب stealth\n\n🌍 عالمياً:\n• Urban Jungle Gym (UK) - تحديات خفية\n• Stealth Training Centers (USA)\n• أي Obstacle Course مع وضع \"Silent Mode\"",
+    "en": "**Real Places You Can Start:**\n\n🎯 Saudi Arabia:\n• Any Parkour Gym with silent challenge\n• Ninja Warrior arenas in Riyadh & Jeddah\n• VR Zones with stealth games\n\n🌍 Worldwide:\n• Urban Jungle Gym (UK) - stealth challenges\n• Stealth Training Centers (USA)\n• Any Obstacle Course with \"Silent Mode\""
+  },
+  "psychological_hook": {
+    "ar": "**ليش راح تدمن عليها:**\n\nهذي رياضة الأذكياء الهادئين - اللي يحبون السيطرة الكاملة بدون صوت.\n\nكل مهمة اختبار لصبرك، ذكائك، قدرتك على القراءة السريعة للمساحة.\n\nالأدرينالين هنا مختلف - مو صراخ وفوضى، بل تركيز حاد وهدوء عميق.\n\nبعد أول جلسة، راح تفهم ليش اللاعبين يقولون:\n\"الصمت أقوى من الصوت، والحركة الخفية أذكى من الظهور\"",
+    "en": "**Why You'll Get Hooked:**\n\nThis is the sport of quiet intellectuals - who love complete control without noise.\n\nEvery mission tests your patience, intelligence, ability to read space quickly.\n\nAdrenaline here is different - not screaming chaos, but sharp focus and deep calm.\n\nAfter first session, you'll understand why players say:\n\"Silence is stronger than sound, hidden movement smarter than showing up\""
+  }
 }

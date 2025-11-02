@@ -216,3 +216,22 @@ def get_log_stats() -> Dict[str, Any]:
             "events": events,
         }
     }
+
+
+def log_user_insight(user_id: str, content: Dict[str, Any], event_type: str = "insight") -> None:
+    """Log user insights for analysis and tracking."""
+    try:
+        payload = {
+            "user_id": user_id,
+            "event_type": event_type,
+            "content": content,
+        }
+        log_event(
+            user_id=user_id,
+            session_id=content.get("session_id", "unknown"),
+            name=event_type,
+            payload=content,
+            lang=content.get("lang", "ar")
+        )
+    except Exception as exc:
+        print(f"[LOGGER] failed to log user insight: {exc}")

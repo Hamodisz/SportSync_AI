@@ -1399,6 +1399,68 @@ def _llm_cards(
     return cards
 
 
+def _parse_kb_card_to_dict(card_text: str, lang: str) -> Optional[Dict[str, Any]]:
+    """
+    تحويل نص بطاقة KB Ranker إلى dict structure
+    يقرأ النص المنسق من kb_ranker.render_card ويحوله لـ dict
+    """
+    if not card_text or card_text == "—":
+        return None
+    
+    lines = [l.strip() for l in card_text.split('\n') if l.strip()]
+    
+    card = {
+        'sport_label': '',
+        'what_it_looks_like': [],
+        'why_you': [],
+        'real_world': [],
+        'notes': []
+    }
+    
+    current_section = None
+    
+    for line in lines:
+        # تجاهل الأسطر الفارغة والعناوين
+        if not line or line.startswith(('🟢','🌿','🔮','---')):
+            continue
+        
+        # تحديد القسم الحالي
+        if '🎯' in line:
+            # استخراج اسم الرياضة
+            if ':' in line:
+                card['sport_label'] = line.split(':')[-1].strip()
+        elif any(marker in line for marker in ['💡','ما هي','What is it']):
+            current_section = 'what'
+        elif any(marker in line for marker in ['🎮','لماذا','ليه','Why','why']):
+            current_section = 'why'
+        elif any(marker in line for marker in ['⚙️','🚀','كيف تبدأ','How To Begin','First week']):
+            current_section = 'start'
+        elif any(marker in line for marker in ['🧠','✅','👁','ملاحظات','Notes']):
+            current_section = 'notes'
+        elif line.startswith('-') and current_section:
+            # محتوى بنقاط
+            text = line[1:].strip()
+            if text:
+                if current_section == 'what':
+                    card['what_it_looks_like'].append(text)
+                elif current_section == 'why':
+                    card['why_you'].append(text)
+                elif current_section == 'start':
+                    card['real_world'].append(text)
+                elif current_section == 'notes':
+                    card['notes'].append(text)
+        elif current_section and not any(marker in line for marker in ['🎯','💡','🎮','⚙️','🚀','🧠','✅','👁']):
+            # سطر عادي ضمن القسم
+            if current_section == 'what':
+                card['what_it_looks_like'].append(line)
+    
+    # التأكد من وجود محتوى أساسي
+    if not card['sport_label'] or not card['what_it_looks_like']:
+        return None
+    
+    return card
+
+
 def _generate_cards(
     answers: Dict[str, Any],
     lang: str,
@@ -1408,6 +1470,47 @@ def _generate_cards(
     traits: Optional[Dict[str, float]] = None,
     rng: Optional[random.Random] = None,
 ) -> List[Dict[str, Any]]:
+    """
+    توليد البطاقات باستخدام KB Ranker (يقرأ من data/identities/)
+    مع fallback للـ blueprints لو فشل
+    """
+    # محاولة استخدام KB Ranker أولاً
+    try:
+        import core.kb_ranker as kb_ranker
+        from pathlib import Path as _KBPath
+        
+        kb_path = _KBPath("data/sportsync_knowledge.json")
+        identities_dir = _KBPath("data/identities")
+        
+        # استخدام KB Ranker للحصول على identities مباشرة (dicts)
+        kb_identities = kb_ranker.rank_and_get_identities(
+            answers=answers,
+            lang=lang,
+            kb_path=kb_path,
+            identities_dir=identities_dir,
+            top_k=3
+        )
+        
+        if len(kb_identities) >= 3:
+            print(f"[REC] Using KB Ranker (identities files) - {len(kb_identities)} cards")
+            return kb_identities
+        else:
+            print(f"[WARN] KB Ranker returned only {len(kb_identities)} cards, falling back to blueprints")
+            
+    except Exception as e:
+        print(f"[WARN] KB Ranker failed: {e}, using fallback blueprints")
+    
+        if len(cards) >= 3:
+            print(f"[REC] Using KB Ranker (identities files) - {len(cards)} cards")
+            return cards[:3]
+        else:
+            print(f"[WARN] KB Ranker returned only {len(cards)} cards, falling back to blueprints")
+            
+    except Exception as e:
+        print(f"[WARN] KB Ranker failed: {e}, using fallback blueprints")
+    
+    # Fallback: استخدام الكود القديم (blueprints)
+    print("[REC] Using fallback blueprints")
     session_id = _session_id_from_answers(answers)
     seed_base = session_id + _stable_json(answers) + datetime.utcnow().strftime("%Y-%m-%d")
     local_rng = rng or random.Random(int(hashlib.sha256(seed_base.encode("utf-8")).hexdigest(), 16))
@@ -1423,6 +1526,98 @@ def _generate_cards(
 
     cards = _hard_dedupe_and_fill(primary_cards, blueprint_order, lang, identity, traits, drivers, local_rng)
     return cards
+
+
+def _format_kb_card(card: Dict[str, Any], lang: str, index: int = 0) -> str:
+    """
+    تنسيق خاص لبطاقات KB التي تحتوي على سرد قصصي كامل
+    يحترم النصوص الطويلة ولا يقصها
+    """
+    is_ar = lang in ('العربية', 'ar')
+    
+    # العناوين حسب الترتيب
+    headers_ar = ["🟢 التوصية رقم 1", "🌿 التوصية رقم 2", "🔮 التوصية رقم 3 (ابتكارية)"]
+    headers_en = ["🟢 Recommendation #1", "🌿 Recommendation #2", "🔮 Recommendation #3 (Innovative)"]
+    header = (headers_ar if is_ar else headers_en)[min(index, 2)]
+    
+    # استخراج البيانات
+    sport_label = card.get('sport_label', '')
+    what = card.get('what_it_looks_like', '')
+    why = card.get('why_you', '')
+    first_week = card.get('first_week', '')
+    progress = card.get('progress_markers', '')
+    win = card.get('win_condition', '')
+    skills = card.get('core_skills', [])
+    mode = card.get('mode', '')
+    vr = card.get('variant_vr', '')
+    no_vr = card.get('variant_no_vr', '')
+    real_examples = card.get('real_world_examples', '')
+    psych_hook = card.get('psychological_hook', '')
+    
+    # بناء البطاقة
+    sections = [header, ""]
+    
+    if sport_label:
+        sections.append(f"🎯 {'الرياضة المثالية لك' if is_ar else 'Your Ideal Sport'}: **{sport_label}**")
+        sections.append("")
+    
+    if what:
+        sections.append(f"💡 {'ما هي؟' if is_ar else 'What is it?'}")
+        sections.append(what)
+        sections.append("")
+    
+    if why:
+        sections.append(f"🎮 {'ليه تناسبك؟' if is_ar else 'Why does it fit you?'}")
+        sections.append(why)
+        sections.append("")
+    
+    if skills:
+        sections.append(f"🧩 {'مهارات أساسية' if is_ar else 'Core Skills'}:")
+        for skill in skills[:6]:  # نحد عند 6 مهارات
+            sections.append(f"• {skill}")
+        sections.append("")
+    
+    if win:
+        sections.append(f"🏁 {'كيف تفوز؟' if is_ar else 'How to win?'}")
+        sections.append(win)
+        sections.append("")
+    
+    if first_week:
+        sections.append(f"🚀 {'أول أسبوع' if is_ar else 'First Week'}:")
+        sections.append(first_week)
+        sections.append("")
+    
+    if progress:
+        sections.append(f"✅ {'علامات التقدم' if is_ar else 'Progress Markers'}:")
+        sections.append(progress)
+        sections.append("")
+    
+    # ملاحظات إضافية
+    notes = []
+    if mode:
+        notes.append(f"{'وضع اللعب' if is_ar else 'Mode'}: {mode}")
+    if no_vr:
+        notes.append(f"{'بدون VR' if is_ar else 'Non-VR'}: {no_vr}")
+    if vr:
+        notes.append(f"VR: {vr}")
+    
+    if notes:
+        sections.append(f"👁️‍🗨️ {'ملاحظات' if is_ar else 'Notes'}:")
+        sections.append("\n".join(notes))
+        sections.append("")
+    
+    if real_examples:
+        sections.append(f"📍 {'أماكن حقيقية' if is_ar else 'Real Places'}:")
+        sections.append(real_examples)
+        sections.append("")
+    
+    if psych_hook:
+        hook_title = 'ليش راح تدمن عليها' if is_ar else "Why You'll Get Hooked"
+        sections.append(f"🧠 {hook_title}:")
+        sections.append(psych_hook)
+        sections.append("")
+    
+    return "\n".join(sections).strip()
 
 
 def _format_card_strict(card: Dict[str, Any], lang: str) -> str:
@@ -1561,7 +1756,18 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         )
         source = "fallback"
 
-    formatted_cards = [_format_card_strict(card, lang) for card in cards_struct]
+    # اختيار الـ formatter المناسب حسب المصدر
+    # KB cards تحتوي على 'psychological_hook' بينما blueprint cards لا تحتوي عليها
+    is_kb_card = any(card.get('psychological_hook') or card.get('real_world_examples') for card in cards_struct)
+    
+    if is_kb_card:
+        # استخدام formatter خاص بـ KB الذي يحترم السرد القصصي
+        formatted_cards = [_format_kb_card(card, lang, i) for i, card in enumerate(cards_struct)]
+        if source == "fallback":
+            source = "kb"  # تصحيح المصدر
+    else:
+        # استخدام formatter التقليدي للـ blueprints
+        formatted_cards = [_format_card_strict(card, lang) for card in cards_struct]
 
     LAST_RECOMMENDER_SOURCE = source
 

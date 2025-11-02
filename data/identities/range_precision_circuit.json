@@ -1,29 +1,55 @@
 {
-  "sport_label": { "ar": "Range Precision Circuit", "en": "Range Precision Circuit" },
-  "what_it_looks_like": {
-    "ar": "دقة تصويب هادئة: زوايا ثابتة وانتقال منظّم بين أهداف آمنة.",
-    "en": "Quiet precision: stable angles and orderly transitions across safe targets."
+  "sport_label": { 
+    "ar": "دائرة الدقة والمدى", 
+    "en": "Range Precision Circuit" 
   },
-  "inner_sensation": { "ar": "هدوء متمركز ونبض مستقر.", "en": "Centered calm with steady pulse." },
+  "what_it_looks_like": {
+    "ar": "أنت في ساحة تصويب، أمامك عدة أهداف على مسافات مختلفة - قريبة، متوسطة، بعيدة.\n\nمعك أداة تصويب (سهم، كرة، ليزر - حسب النوع)، والمطلوب: الدقة، مو السرعة.\n\nتأخذ نفس عميق... تثبت نظرك على الهدف... تحسب الزاوية والمسافة...\n\nقلبك يدق بهدوء، يدك ثابتة، تركيزك كامل على نقطة صغيرة أمامك.\n\nتطلق! الصوت، الحركة، الانتظار... هل أصبت؟\n\nنعم! النقطة الحمراء في المنتصف تضيء - إحساس بالإنجاز الهادئ.\n\nتنتقل للهدف التالي، زاوية مختلفة، مسافة أبعد - نفس العملية، لكن أصعب.\n\nالمتعة هنا في التحسن التدريجي - كل يوم أدق، كل أسبوع أبعد، كل شهر أثبت.",
+    "en": "You're in a shooting range, multiple targets at different distances - close, medium, far.\n\nYou hold a shooting tool (arrow, ball, laser - depending on type), the requirement: precision, not speed.\n\nDeep breath... fix your gaze on target... calculate angle and distance...\n\nHeart beating calmly, hand steady, focus complete on small point ahead.\n\nYou shoot! The sound, movement, waiting... did you hit?\n\nYes! Red center point lights up - feeling of quiet achievement.\n\nMove to next target, different angle, farther distance - same process, but harder.\n\nThe thrill here is gradual improvement - more precise each day, farther each week, steadier each month."
+  },
+  "inner_sensation": {
+    "ar": "هدوء متمركز مع شعور بالسيطرة - نبضك مستقر، تنفسك منتظم، عقلك صافي كالمرآة.",
+    "en": "Centered calm with feeling of control - pulse steady, breathing regular, mind clear as mirror."
+  },
   "why_you": {
-    "ar": "- تميل للإتقان الصامت\n- تحب القياس الموضوعي للتقدّم",
-    "en": "- Prefer silent mastery\n- Like objective progress signals"
+    "ar": "- أنت تحب القياس الموضوعي للتقدم - الأرقام لا تكذب، التحسن واضح ومباشر\n- تميل للإتقان الصامت - لا تحتاج تصفيق أو ضجيج، النتيجة وحدها تكفي\n- تستمتع بالتحكم الدقيق - كل مليمتر يفرق، كل زاوية تحسب\n- التحدي عندك داخلي - أنت ضد نفسك، تحاول تتجاوز رقمك السابق",
+    "en": "- You love objective progress measurement - numbers don't lie, improvement is clear and direct\n- You lean toward silent mastery - don't need applause or noise, result alone suffices\n- You enjoy precise control - every millimeter matters, every angle counts\n- Your challenge is internal - you against yourself, trying to beat your previous record"
   },
   "first_week": {
-    "ar": "- تثبيت نظرة\n- ضبط نفس\n- تبديل زوايا بسلاسة",
-    "en": "- Gaze anchoring\n- Breath control\n- Smooth angle transitions"
+    "ar": "**الأسبوع الأول - بناء الأساس:**\n\n• اليوم 1-2: تثبيت النظرة - تتعلم كيف تركز على نقطة واحدة دون تشتت، تمرين النظرة الثابتة\n\n• اليوم 3-4: ضبط النفس - تربط التنفس بالتصويب، تطلق دائماً بعد الزفير\n\n• اليوم 5-7: الأهداف القريبة - تبدأ بمسافة 3-5 متر، المهم الدقة 100% قبل ما تبعد المسافة\n\nالهدف: بناء muscle memory للثبات والتركيز",
+    "en": "**First Week - Building Foundation:**\n\n• Day 1-2: Gaze fixing - learn to focus on single point without distraction, steady gaze drill\n\n• Day 3-4: Breath control - link breathing to shooting, always release after exhale\n\n• Day 5-7: Close targets - start with 3-5 meter distance, 100% accuracy before increasing range\n\nGoal: Build muscle memory for stability and focus"
   },
   "progress_markers": {
-    "ar": "- ثبات يد\n- قرارات أوضح\n- توتر أقل",
-    "en": "- Steadier hand\n- Clearer decisions\n- Lower tension"
+    "ar": "**كيف تعرف إنك تتطور:**\n\n✓ يدك تصير أثبت - ما تهتز حتى قبل التصويب\n\n✓ قراراتك أسرع وأوضح - تعرف متى تطلق بدون تردد\n\n✓ التوتر يختفي تماماً - التصويب يصير طبيعي مثل التنفس\n\n✓ تبدأ تصيب أهداف أبعد - المسافة تزيد والدقة تبقى",
+    "en": "**How You Know You're Progressing:**\n\n✓ Your hand becomes steadier - doesn't shake even before shooting\n\n✓ Your decisions faster and clearer - know when to release without hesitation\n\n✓ Tension disappears completely - shooting becomes natural like breathing\n\n✓ You start hitting farther targets - distance increases while precision remains"
   },
-  "win_condition": { "ar": "سلسلة دقة متتالية دون أخطاء متتابعة.", "en": "Consistent accuracy across a series with no consecutive errors." },
+  "win_condition": {
+    "ar": "الفوز الحقيقي:\n\n• سلسلة دقة متتالية دون أخطاء متتابعة (streak master)\n• أو الوصول لمسافة جديدة مع الحفاظ على الدقة (distance challenger)\n• أو تحطيم رقمك الشخصي في النقاط (score breaker)\n\nكل هدف له متعته، اختر تحديك",
+    "en": "True victory:\n\n• Consecutive precision streak without sequential errors (streak master)\n• Or reaching new distance while maintaining accuracy (distance challenger)\n• Or breaking your personal score record (score breaker)\n\nEach goal has its thrill, choose your challenge"
+  },
   "core_skills": {
-    "ar": ["تثبيت نظرة","ضبط نفس","انتقال زوايا","تحكّم دقيق"],
-    "en": ["gaze hold","breath control","angle transition","fine control"]
+    "ar": ["تثبيت النظرة والتركيز العميق","ضبط التنفس والتزامن","تحكم دقيق في الحركة","قراءة الزوايا والمسافات","الثبات الجسدي والذهني"],
+    "en": ["Gaze fixing and deep focus","Breath control and synchronization","Precise movement control","Reading angles and distances","Physical and mental stability"]
   },
-  "mode": { "ar": "فردي", "en": "Solo" },
-  "variant_vr": { "ar": "تصويب افتراضي تفاعلي.", "en": "Interactive VR marksmanship." },
-  "variant_no_vr": { "ar": "لوحات أهداف إسفنجية آمنة.", "en": "Safe foam target boards." },
-  "difficulty": 2
+  "mode": { 
+    "ar": "فردي (تحدي شخصي) أو منافسة (مقارنة النتائج)", 
+    "en": "Solo (personal challenge) or Competition (score comparison)" 
+  },
+  "variant_vr": {
+    "ar": "**نسخة VR:**\n\nألعاب مثل:\n• In Death VR - رماية بالسهم في عوالم خيالية\n• The Lab: Longbow - دقة تصويب كلاسيكية\n• QuiVR - تحديات قوس وسهم تعاونية\n\nالميزة: تصويب افتراضي تفاعلي مع feedback فوري",
+    "en": "**VR Version:**\n\nGames like:\n• In Death VR - archery in fantasy worlds\n• The Lab: Longbow - classic shooting precision\n• QuiVR - cooperative bow and arrow challenges\n\nAdvantage: Interactive virtual shooting with instant feedback"
+  },
+  "variant_no_vr": {
+    "ar": "**نسخة بدون VR:**\n\n• رماية السهام (Archery) في نوادي متخصصة\n• تصويب بالكرات في أهداف محددة\n• ألعاب الدارت الاحترافية\n\nتحتاج:\n• لوحات أهداف إسفنجية آمنة\n• أدوات تصويب مناسبة للمستوى\n• مساحة آمنة ومنظمة\n\nالميزة: تدريب عضلي حقيقي، تطوير التنسيق الجسدي الفعلي",
+    "en": "**Non-VR Version:**\n\n• Archery at specialized clubs\n• Ball shooting at defined targets\n• Professional darts\n\nYou need:\n• Safe foam target boards\n• Shooting tools suitable for level\n• Safe organized space\n\nAdvantage: Real muscle training, actual physical coordination development"
+  },
+  "difficulty": 2,
+  "real_world_examples": {
+    "ar": "**أماكن حقيقية تقدر تبدأ فيها:**\n\n🎯 السعودية:\n• Archery Centers في الرياض وجدة والخبر\n• Dart Clubs في المولات الكبرى\n• VR Zones مع ألعاب تصويب\n\n🌍 عالمياً:\n• Local Archery Clubs (متوفرة في كل مدينة تقريباً)\n• Indoor Shooting Ranges للرياضات الآمنة\n• Laser Tag arenas مع وضع \"Precision Mode\"",
+    "en": "**Real Places You Can Start:**\n\n🎯 Saudi Arabia:\n• Archery Centers in Riyadh, Jeddah & Khobar\n• Dart Clubs in major malls\n• VR Zones with shooting games\n\n🌍 Worldwide:\n• Local Archery Clubs (available in almost every city)\n• Indoor Shooting Ranges for safe sports\n• Laser Tag arenas with \"Precision Mode\""
+  },
+  "psychological_hook": {
+    "ar": "**ليش راح تدمن عليها:**\n\nهذي رياضة التحسن المرئي - كل يوم تشوف نفسك أفضل من الأمس.\n\nلا فيه حظ، لا فيه عشوائية - كل شيء يعتمد على تدريبك وتركيزك.\n\nالأرقام لا تكذب: دقتك تتحسن، مسافتك تزيد، ثباتك يقوى.\n\nبعد أول أسبوع، راح تفهم ليش اللاعبين يقولون:\n\"الدقة إدمان - لما تبدأ تشوف التحسن، ما تقدر توقف\"",
+    "en": "**Why You'll Get Hooked:**\n\nThis is the sport of visible improvement - every day you see yourself better than yesterday.\n\nNo luck, no randomness - everything depends on your training and focus.\n\nNumbers don't lie: your accuracy improves, distance increases, stability strengthens.\n\nAfter first week, you'll understand why players say:\n\"Precision is addictive - once you start seeing improvement, you can't stop\""
+  }
 }
