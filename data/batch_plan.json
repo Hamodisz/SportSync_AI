@@ -1,0 +1,806 @@
+{
+  "shorts": [
+    {
+      "id": "short_tips_01",
+      "type": "short",
+      "category": "tips",
+      "topic": "Quick Tip #1: Sport Psychology Insight",
+      "duration": 30,
+      "status": "script_ready"
+    },
+    {
+      "id": "short_tips_02",
+      "type": "short",
+      "category": "tips",
+      "topic": "Quick Tip #2: Sport Psychology Insight",
+      "duration": 30,
+      "status": "script_ready"
+    },
+    {
+      "id": "short_tips_03",
+      "type": "short",
+      "category": "tips",
+      "topic": "Quick Tip #3: Sport Psychology Insight",
+      "duration": 30,
+      "status": "script_ready"
+    },
+    {
+      "id": "short_tips_04",
+      "type": "short",
+      "category": "tips",
+      "topic": "Quick Tip #4: Sport Psychology Insight",
+      "duration": 30,
+      "status": "script_ready"
+    },
+    {
+      "id": "short_tips_05",
+      "type": "short",
+      "category": "tips",
+      "topic": "Quick Tip #5: Sport Psychology Insight",
+      "duration": 30,
+      "status": "script_ready"
+    },
+    {
+      "id": "short_tips_06",
+      "type": "short",
+      "category": "tips",
+      "topic": "Quick Tip #6: Sport Psychology Insight",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_tips_07",
+      "type": "short",
+      "category": "tips",
+      "topic": "Quick Tip #7: Sport Psychology Insight",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_tips_08",
+      "type": "short",
+      "category": "tips",
+      "topic": "Quick Tip #8: Sport Psychology Insight",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_tips_09",
+      "type": "short",
+      "category": "tips",
+      "topic": "Quick Tip #9: Sport Psychology Insight",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_tips_10",
+      "type": "short",
+      "category": "tips",
+      "topic": "Quick Tip #10: Sport Psychology Insight",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_tips_11",
+      "type": "short",
+      "category": "tips",
+      "topic": "Quick Tip #11: Sport Psychology Insight",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_tips_12",
+      "type": "short",
+      "category": "tips",
+      "topic": "Quick Tip #12: Sport Psychology Insight",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_tips_13",
+      "type": "short",
+      "category": "tips",
+      "topic": "Quick Tip #13: Sport Psychology Insight",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_tips_14",
+      "type": "short",
+      "category": "tips",
+      "topic": "Quick Tip #14: Sport Psychology Insight",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_tips_15",
+      "type": "short",
+      "category": "tips",
+      "topic": "Quick Tip #15: Sport Psychology Insight",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_tips_16",
+      "type": "short",
+      "category": "tips",
+      "topic": "Quick Tip #16: Sport Psychology Insight",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_tips_17",
+      "type": "short",
+      "category": "tips",
+      "topic": "Quick Tip #17: Sport Psychology Insight",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_tips_18",
+      "type": "short",
+      "category": "tips",
+      "topic": "Quick Tip #18: Sport Psychology Insight",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_tips_19",
+      "type": "short",
+      "category": "tips",
+      "topic": "Quick Tip #19: Sport Psychology Insight",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_tips_20",
+      "type": "short",
+      "category": "tips",
+      "topic": "Quick Tip #20: Sport Psychology Insight",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_stories_01",
+      "type": "short",
+      "category": "stories",
+      "topic": "Success Story #1: AI Transformation",
+      "duration": 45,
+      "status": "pending"
+    },
+    {
+      "id": "short_stories_02",
+      "type": "short",
+      "category": "stories",
+      "topic": "Success Story #2: AI Transformation",
+      "duration": 45,
+      "status": "pending"
+    },
+    {
+      "id": "short_stories_03",
+      "type": "short",
+      "category": "stories",
+      "topic": "Success Story #3: AI Transformation",
+      "duration": 45,
+      "status": "pending"
+    },
+    {
+      "id": "short_stories_04",
+      "type": "short",
+      "category": "stories",
+      "topic": "Success Story #4: AI Transformation",
+      "duration": 45,
+      "status": "pending"
+    },
+    {
+      "id": "short_stories_05",
+      "type": "short",
+      "category": "stories",
+      "topic": "Success Story #5: AI Transformation",
+      "duration": 45,
+      "status": "pending"
+    },
+    {
+      "id": "short_stories_06",
+      "type": "short",
+      "category": "stories",
+      "topic": "Success Story #6: AI Transformation",
+      "duration": 45,
+      "status": "pending"
+    },
+    {
+      "id": "short_stories_07",
+      "type": "short",
+      "category": "stories",
+      "topic": "Success Story #7: AI Transformation",
+      "duration": 45,
+      "status": "pending"
+    },
+    {
+      "id": "short_stories_08",
+      "type": "short",
+      "category": "stories",
+      "topic": "Success Story #8: AI Transformation",
+      "duration": 45,
+      "status": "pending"
+    },
+    {
+      "id": "short_stories_09",
+      "type": "short",
+      "category": "stories",
+      "topic": "Success Story #9: AI Transformation",
+      "duration": 45,
+      "status": "pending"
+    },
+    {
+      "id": "short_stories_10",
+      "type": "short",
+      "category": "stories",
+      "topic": "Success Story #10: AI Transformation",
+      "duration": 45,
+      "status": "pending"
+    },
+    {
+      "id": "short_stories_11",
+      "type": "short",
+      "category": "stories",
+      "topic": "Success Story #11: AI Transformation",
+      "duration": 45,
+      "status": "pending"
+    },
+    {
+      "id": "short_stories_12",
+      "type": "short",
+      "category": "stories",
+      "topic": "Success Story #12: AI Transformation",
+      "duration": 45,
+      "status": "pending"
+    },
+    {
+      "id": "short_stories_13",
+      "type": "short",
+      "category": "stories",
+      "topic": "Success Story #13: AI Transformation",
+      "duration": 45,
+      "status": "pending"
+    },
+    {
+      "id": "short_stories_14",
+      "type": "short",
+      "category": "stories",
+      "topic": "Success Story #14: AI Transformation",
+      "duration": 45,
+      "status": "pending"
+    },
+    {
+      "id": "short_stories_15",
+      "type": "short",
+      "category": "stories",
+      "topic": "Success Story #15: AI Transformation",
+      "duration": 45,
+      "status": "pending"
+    },
+    {
+      "id": "short_stories_16",
+      "type": "short",
+      "category": "stories",
+      "topic": "Success Story #16: AI Transformation",
+      "duration": 45,
+      "status": "pending"
+    },
+    {
+      "id": "short_stories_17",
+      "type": "short",
+      "category": "stories",
+      "topic": "Success Story #17: AI Transformation",
+      "duration": 45,
+      "status": "pending"
+    },
+    {
+      "id": "short_stories_18",
+      "type": "short",
+      "category": "stories",
+      "topic": "Success Story #18: AI Transformation",
+      "duration": 45,
+      "status": "pending"
+    },
+    {
+      "id": "short_stories_19",
+      "type": "short",
+      "category": "stories",
+      "topic": "Success Story #19: AI Transformation",
+      "duration": 45,
+      "status": "pending"
+    },
+    {
+      "id": "short_stories_20",
+      "type": "short",
+      "category": "stories",
+      "topic": "Success Story #20: AI Transformation",
+      "duration": 45,
+      "status": "pending"
+    },
+    {
+      "id": "short_comparisons_01",
+      "type": "short",
+      "category": "comparisons",
+      "topic": "VR vs Real #1: Sport Comparison",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_comparisons_02",
+      "type": "short",
+      "category": "comparisons",
+      "topic": "VR vs Real #2: Sport Comparison",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_comparisons_03",
+      "type": "short",
+      "category": "comparisons",
+      "topic": "VR vs Real #3: Sport Comparison",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_comparisons_04",
+      "type": "short",
+      "category": "comparisons",
+      "topic": "VR vs Real #4: Sport Comparison",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_comparisons_05",
+      "type": "short",
+      "category": "comparisons",
+      "topic": "VR vs Real #5: Sport Comparison",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_comparisons_06",
+      "type": "short",
+      "category": "comparisons",
+      "topic": "VR vs Real #6: Sport Comparison",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_comparisons_07",
+      "type": "short",
+      "category": "comparisons",
+      "topic": "VR vs Real #7: Sport Comparison",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_comparisons_08",
+      "type": "short",
+      "category": "comparisons",
+      "topic": "VR vs Real #8: Sport Comparison",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_comparisons_09",
+      "type": "short",
+      "category": "comparisons",
+      "topic": "VR vs Real #9: Sport Comparison",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_comparisons_10",
+      "type": "short",
+      "category": "comparisons",
+      "topic": "VR vs Real #10: Sport Comparison",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_comparisons_11",
+      "type": "short",
+      "category": "comparisons",
+      "topic": "VR vs Real #11: Sport Comparison",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_comparisons_12",
+      "type": "short",
+      "category": "comparisons",
+      "topic": "VR vs Real #12: Sport Comparison",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_comparisons_13",
+      "type": "short",
+      "category": "comparisons",
+      "topic": "VR vs Real #13: Sport Comparison",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_comparisons_14",
+      "type": "short",
+      "category": "comparisons",
+      "topic": "VR vs Real #14: Sport Comparison",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_comparisons_15",
+      "type": "short",
+      "category": "comparisons",
+      "topic": "VR vs Real #15: Sport Comparison",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_comparisons_16",
+      "type": "short",
+      "category": "comparisons",
+      "topic": "VR vs Real #16: Sport Comparison",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_comparisons_17",
+      "type": "short",
+      "category": "comparisons",
+      "topic": "VR vs Real #17: Sport Comparison",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_comparisons_18",
+      "type": "short",
+      "category": "comparisons",
+      "topic": "VR vs Real #18: Sport Comparison",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_comparisons_19",
+      "type": "short",
+      "category": "comparisons",
+      "topic": "VR vs Real #19: Sport Comparison",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_comparisons_20",
+      "type": "short",
+      "category": "comparisons",
+      "topic": "VR vs Real #20: Sport Comparison",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_challenges_01",
+      "type": "short",
+      "category": "challenges",
+      "topic": "60-Second Challenge #1: Predict Your Sport",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_challenges_02",
+      "type": "short",
+      "category": "challenges",
+      "topic": "60-Second Challenge #2: Predict Your Sport",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_challenges_03",
+      "type": "short",
+      "category": "challenges",
+      "topic": "60-Second Challenge #3: Predict Your Sport",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_challenges_04",
+      "type": "short",
+      "category": "challenges",
+      "topic": "60-Second Challenge #4: Predict Your Sport",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_challenges_05",
+      "type": "short",
+      "category": "challenges",
+      "topic": "60-Second Challenge #5: Predict Your Sport",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_challenges_06",
+      "type": "short",
+      "category": "challenges",
+      "topic": "60-Second Challenge #6: Predict Your Sport",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_challenges_07",
+      "type": "short",
+      "category": "challenges",
+      "topic": "60-Second Challenge #7: Predict Your Sport",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_challenges_08",
+      "type": "short",
+      "category": "challenges",
+      "topic": "60-Second Challenge #8: Predict Your Sport",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_challenges_09",
+      "type": "short",
+      "category": "challenges",
+      "topic": "60-Second Challenge #9: Predict Your Sport",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_challenges_10",
+      "type": "short",
+      "category": "challenges",
+      "topic": "60-Second Challenge #10: Predict Your Sport",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_challenges_11",
+      "type": "short",
+      "category": "challenges",
+      "topic": "60-Second Challenge #11: Predict Your Sport",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_challenges_12",
+      "type": "short",
+      "category": "challenges",
+      "topic": "60-Second Challenge #12: Predict Your Sport",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_challenges_13",
+      "type": "short",
+      "category": "challenges",
+      "topic": "60-Second Challenge #13: Predict Your Sport",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_challenges_14",
+      "type": "short",
+      "category": "challenges",
+      "topic": "60-Second Challenge #14: Predict Your Sport",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_challenges_15",
+      "type": "short",
+      "category": "challenges",
+      "topic": "60-Second Challenge #15: Predict Your Sport",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_challenges_16",
+      "type": "short",
+      "category": "challenges",
+      "topic": "60-Second Challenge #16: Predict Your Sport",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_challenges_17",
+      "type": "short",
+      "category": "challenges",
+      "topic": "60-Second Challenge #17: Predict Your Sport",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_challenges_18",
+      "type": "short",
+      "category": "challenges",
+      "topic": "60-Second Challenge #18: Predict Your Sport",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_challenges_19",
+      "type": "short",
+      "category": "challenges",
+      "topic": "60-Second Challenge #19: Predict Your Sport",
+      "duration": 30,
+      "status": "pending"
+    },
+    {
+      "id": "short_challenges_20",
+      "type": "short",
+      "category": "challenges",
+      "topic": "60-Second Challenge #20: Predict Your Sport",
+      "duration": 30,
+      "status": "pending"
+    }
+  ],
+  "long": [
+    {
+      "id": "long_01",
+      "type": "long",
+      "category": "tutorial",
+      "topic": "How AI Finds Your Perfect Sport - Complete Guide",
+      "duration": 1200,
+      "status": "script_ready"
+    },
+    {
+      "id": "long_02",
+      "type": "long",
+      "category": "tutorial",
+      "topic": "The Science Behind Sport-Personality Matching",
+      "duration": 1200,
+      "status": "script_ready"
+    },
+    {
+      "id": "long_03",
+      "type": "long",
+      "category": "tutorial",
+      "topic": "Why 90% Choose Wrong Sport (AI Solution)",
+      "duration": 1200,
+      "status": "pending"
+    },
+    {
+      "id": "long_04",
+      "type": "long",
+      "category": "tutorial",
+      "topic": "SportSync Algorithm Deep Dive",
+      "duration": 1200,
+      "status": "pending"
+    },
+    {
+      "id": "long_05",
+      "type": "long",
+      "category": "tutorial",
+      "topic": "The Future of Personalized Sport Recommendations",
+      "duration": 1200,
+      "status": "pending"
+    },
+    {
+      "id": "long_06",
+      "type": "long",
+      "category": "tutorial",
+      "topic": "From Couch to Champion with AI",
+      "duration": 1200,
+      "status": "pending"
+    },
+    {
+      "id": "long_07",
+      "type": "long",
+      "category": "tutorial",
+      "topic": "Layer-Z: The Silent Engine Explained",
+      "duration": 1200,
+      "status": "pending"
+    },
+    {
+      "id": "long_08",
+      "type": "long",
+      "category": "tutorial",
+      "topic": "Sport Identity Psychology Full Analysis",
+      "duration": 1200,
+      "status": "pending"
+    },
+    {
+      "id": "long_09",
+      "type": "long",
+      "category": "tutorial",
+      "topic": "Machine Learning in Sports Science",
+      "duration": 1200,
+      "status": "pending"
+    },
+    {
+      "id": "long_10",
+      "type": "long",
+      "category": "tutorial",
+      "topic": "VR Sports Revolution Complete Guide",
+      "duration": 1200,
+      "status": "pending"
+    },
+    {
+      "id": "long_11",
+      "type": "long",
+      "category": "case_study",
+      "topic": "Case Study: Gamer to Combat Athlete",
+      "duration": 1200,
+      "status": "pending"
+    },
+    {
+      "id": "long_12",
+      "type": "long",
+      "category": "case_study",
+      "topic": "Case Study: Burnout to Champion Journey",
+      "duration": 1200,
+      "status": "pending"
+    },
+    {
+      "id": "long_13",
+      "type": "long",
+      "category": "case_study",
+      "topic": "Case Study: Introvert Archery Master",
+      "duration": 1200,
+      "status": "pending"
+    },
+    {
+      "id": "long_14",
+      "type": "long",
+      "category": "case_study",
+      "topic": "Case Study: Mid-Life Sport Discovery",
+      "duration": 1200,
+      "status": "pending"
+    },
+    {
+      "id": "long_15",
+      "type": "long",
+      "category": "case_study",
+      "topic": "Case Study: ADHD Athlete Success Story",
+      "duration": 1200,
+      "status": "pending"
+    },
+    {
+      "id": "long_16",
+      "type": "long",
+      "category": "deep_dive",
+      "topic": "Technical: 141 Analysis Layers Breakdown",
+      "duration": 1200,
+      "status": "pending"
+    },
+    {
+      "id": "long_17",
+      "type": "long",
+      "category": "deep_dive",
+      "topic": "Technical: Neural Networks in Sport Prediction",
+      "duration": 1200,
+      "status": "pending"
+    },
+    {
+      "id": "long_18",
+      "type": "long",
+      "category": "deep_dive",
+      "topic": "Technical: AI Evolution in Sports Science",
+      "duration": 1200,
+      "status": "pending"
+    },
+    {
+      "id": "long_19",
+      "type": "long",
+      "category": "deep_dive",
+      "topic": "Technical: Personality Psychology + ML",
+      "duration": 1200,
+      "status": "pending"
+    },
+    {
+      "id": "long_20",
+      "type": "long",
+      "category": "deep_dive",
+      "topic": "Technical: Future of AI Sports Technology",
+      "duration": 1200,
+      "status": "pending"
+    }
+  ]
+}

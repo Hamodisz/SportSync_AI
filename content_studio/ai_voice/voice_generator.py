@@ -87,7 +87,7 @@ def generate_voice_from_script(script: str, lang: str = "en") -> str:
     :param lang: 'en' أو 'ar' (أي قيمة لا تبدأ بـ en ستعامل كـ ar).
     :return: مسار ملف MP3 النهائي.
     """
-    from moviepy.editor import AudioFileClip, concatenate_audioclips  # import محلي لتسريع التحميل
+    from moviepy import AudioFileClip, concatenate_audioclips  # import محلي لتسريع التحميل
 
     lang_code = "en" if str(lang).lower().startswith("en") else "ar"
     text = _normalize_text(script)
@@ -114,7 +114,7 @@ def generate_voice_from_script(script: str, lang: str = "en") -> str:
         # اجمع عبر MoviePy
         clips = [AudioFileClip(str(p)) for p in tmp_paths]
         final = concatenate_audioclips(clips)
-        final.write_audiofile(str(VOICE_PATH), fps=44100, bitrate="128k", verbose=False, logger=None)
+        final.write_audiofile(str(VOICE_PATH), fps=44100, bitrate="128k")
 
         # أغلق المقاطع لتفريغ المقابض
         for c in clips:

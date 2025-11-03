@@ -12,3 +12,17 @@ reports/
 .cache/
 dist/
 build/
+
+# Generated content
+content_studio/ai_voice/voices/
+content_studio/ai_images/outputs/*.png
+content_studio/ai_images/outputs/*.jpg
+content_studio/ai_video/final_videos/*.mp4
+content_studio/ai_video/final_videos/*.avi
+
+# Test logs
+data/logs/test-*.json
+
+# Backups
+*.backup
+*_backup.py

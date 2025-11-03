@@ -6,14 +6,14 @@ import logging
 from pathlib import Path
 from typing import Optional, List, Tuple
 
-from moviepy.editor import (
+# MoviePy 2.x imports
+from moviepy import (
     ImageClip,
     AudioFileClip,
     concatenate_videoclips,
     CompositeAudioClip,
 )
-from moviepy.audio.fx import all as afx
-from moviepy.audio.fx.all import audio_loop  # لعمل لووب للصوت الخلفي
+from moviepy.audio.fx import AudioLoop, AudioFadeIn, AudioFadeOut
 
 # ======================== لوجينغ ========================
 logging.basicConfig(
@@ -57,9 +57,9 @@ def _prepare_clip(path: Path, duration: float, resolution: Tuple[int, int]) -> I
     - يضيف خلفيّة (letterbox) لتصبح بالحجم المطلوب دون قص
     """
     w, h = resolution
-    clip = ImageClip(str(path)).set_duration(duration)
-    clip = clip.resize(height=h)  # يحافظ على النسبة الأصلية
-    clip = clip.on_color(size=resolution, color=(0, 0, 0), col_opacity=1)
+    # MoviePy 2.x: use set_duration and resized
+    clip = ImageClip(str(path)).with_duration(duration)
+    clip = clip.resized(height=h)  # يحافظ على النسبة الأصلية
     return clip
 
 # ======================== الدالة الرئيسية ========================
@@ -111,7 +111,7 @@ def compose_video_from_assets(
 
             # Ken Burns: تكبير تدريجي بسيط
             if kenburns_zoom and kenburns_zoom > 0:
-                c = c.resize(lambda t: 1.0 + kenburns_zoom * (t / dur))
+                c = c.resized(lambda t: 1.0 + kenburns_zoom * (t / dur))
 
             # crossfade داخلي للصورة عدا الأولى
             if xfade and i > 0:
@@ -126,23 +126,25 @@ def compose_video_from_assets(
         # تعليق صوتي
         vp = Path(voice_path) if voice_path else VOICE_PATH_DEFAULT
         if vp and vp.exists():
-            voice_clip = AudioFileClip(str(vp)).fx(afx.audio_fadein, 0.3).fx(afx.audio_fadeout, 0.3)
+            voice_clip = AudioFileClip(str(vp))
+            voice_clip = voice_clip.with_effects([AudioFadeIn(0.3), AudioFadeOut(0.3)])
 
         # موسيقى خلفية (لووب بطول الفيديو + خفض الصوت)
         if music_path and Path(music_path).exists():
             music_raw = AudioFileClip(music_path)
-            music_clip = audio_loop(music_raw, duration=video.duration).volumex(music_volume)
-            music_clip = music_clip.fx(afx.audio_fadein, 0.5).fx(afx.audio_fadeout, 0.5)
+            music_clip = music_raw.with_effects([AudioLoop(duration=video.duration)])
+            music_clip = music_clip.with_volume_scaled(music_volume)
+            music_clip = music_clip.with_effects([AudioFadeIn(0.5), AudioFadeOut(0.5)])
 
         if voice_clip and music_clip:
             # Ducking بسيط بخفض الموسيقى قليلًا
-            music_clip = music_clip.volumex(0.6)
+            music_clip = music_clip.with_volume_scaled(0.6)
             audio = CompositeAudioClip([voice_clip, music_clip])
-            video = video.set_audio(audio)
+            video = video.with_audio(audio)
         elif voice_clip:
-            video = video.set_audio(voice_clip)
+            video = video.with_audio(voice_clip)
         elif music_clip:
-            video = video.set_audio(music_clip)
+            video = video.with_audio(music_clip)
         # وإلا: بدون صوت
 
         # 5) التصدير
@@ -165,8 +167,6 @@ def compose_video_from_assets(
                 "yuv420p",
                 # توافق أوسع
             ],
-            verbose=False,
-            logger=None,
         )
 
         if not out_path.exists():
@@ -208,7 +208,7 @@ def compose_video_from_assets(
             pass
 
 # ======================== تشغيل سريع (اختياري) ========================
-if _name_ == "_main_":
+if __name__ == "__main__":
     # تأكد أن لديك صورًا داخل IMAGES_DIR قبل التجربة
     out = compose_video_from_assets(
         image_duration=4,

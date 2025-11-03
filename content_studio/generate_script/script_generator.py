@@ -2,9 +2,33 @@
 
 import os
 import json
-import openai
+from dotenv import load_dotenv
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Load environment variables from .env file
+load_dotenv()
+
+# Detect if using OpenRouter (keys start with sk-or-v1-)
+api_key = os.getenv("OPENAI_API_KEY")
+is_openrouter = api_key and api_key.startswith("sk-or-v1-")
+
+# Try new OpenAI client (v1.x)
+try:
+    from openai import OpenAI
+    if is_openrouter:
+        client = OpenAI(
+            api_key=api_key,
+            base_url="https://openrouter.ai/api/v1"
+        )
+    else:
+        client = OpenAI(api_key=api_key)
+    USE_NEW_API = True
+except ImportError:
+    # Fallback to old API (v0.x)
+    import openai
+    openai.api_key = api_key
+    if is_openrouter:
+        openai.api_base = "https://openrouter.ai/api/v1"
+    USE_NEW_API = False
 
 def generate_script(topic: str, tone: str = "emotional", lang: str = "english") -> str:
     if lang.lower() == "arabic":
@@ -23,13 +47,23 @@ The script should be 4 to 6 short scenes (1–2 lines each) in clear English.
 Make it visually expressive to convert into a short video later.
 """
 
-    response = openai.ChatCompletion.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7
-    )
-
-    return response.choices[0].message.content.strip()
+    if USE_NEW_API:
+        # New OpenAI API (v1.x)
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7
+        )
+        return response.choices[0].message.content.strip()
+    else:
+        # Old OpenAI API (v0.x)
+        import openai
+        response = openai.ChatCompletion.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7
+        )
+        return response.choices[0].message.content.strip()
 
 
 def generate_multiple_scripts(topics, tone="emotional", lang="english", output_path="data/video_scripts.json"):
@@ -46,7 +80,7 @@ def generate_multiple_scripts(topics, tone="emotional", lang="english", output_p
     print(f"\n✅ All scripts saved to {output_path}")
 
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     # تقدر تعدل المواضيع هنا حسب خطة اليوم
     topics = [
         "The hidden power of staying silent",
