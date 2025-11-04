@@ -221,17 +221,35 @@ def get_log_stats() -> Dict[str, Any]:
 def log_user_insight(user_id: str, content: Dict[str, Any], event_type: str = "insight") -> None:
     """Log user insights for analysis and tracking."""
     try:
+        # تنظيف البيانات من أي objects غير قابلة للتحويل لـ JSON
+        def clean_data(obj):
+            """تحويل البيانات لشكل قابل للتسلسل JSON"""
+            if isinstance(obj, (str, int, float, bool, type(None))):
+                return obj
+            elif isinstance(obj, dict):
+                return {str(k): clean_data(v) for k, v in obj.items()}
+            elif isinstance(obj, (list, tuple)):
+                return [clean_data(item) for item in obj]
+            elif isinstance(obj, slice):
+                # تحويل slice objects لـ string
+                return f"slice({obj.start}:{obj.stop}:{obj.step})"
+            else:
+                # أي object آخر نحوله لـ string
+                return str(obj)
+        
+        cleaned_content = clean_data(content)
+        
         payload = {
             "user_id": user_id,
             "event_type": event_type,
-            "content": content,
+            "content": cleaned_content,
         }
         log_event(
             user_id=user_id,
-            session_id=content.get("session_id", "unknown"),
+            session_id=cleaned_content.get("session_id", "unknown"),
             name=event_type,
-            payload=content,
-            lang=content.get("lang", "ar")
+            payload=cleaned_content,
+            lang=cleaned_content.get("lang", "ar")
         )
     except Exception as exc:
         print(f"[LOGGER] failed to log user insight: {exc}")
