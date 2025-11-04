@@ -19,10 +19,18 @@ from typing import Any, Dict, List, Sequence, Optional, Tuple
 
 try:  # Optional LLM client; fallback works without it.
     from core.llm_client import make_llm_client, pick_models, chat_once  # type: ignore
+    from core.dual_model_client import (  # type: ignore
+        analyze_user_with_reasoning,
+        generate_recommendations_with_intelligence
+    )
+    DUAL_MODEL_ENABLED = True
 except Exception:  # pragma: no cover - LLM unavailable
     make_llm_client = None
     pick_models = None
     chat_once = None
+    analyze_user_with_reasoning = None
+    generate_recommendations_with_intelligence = None
+    DUAL_MODEL_ENABLED = False
 from core.user_logger import log_event, log_recommendation_result
 
 
@@ -1292,6 +1300,66 @@ def _format_llm_card(data: Dict[str, str], lang: str) -> Dict[str, Any]:
         'signature': f"llm::{signature}",
         'signature_terms': [term for term in (label.lower().split() if label else ['llm'])],
     }
+
+
+def _llm_cards_dual_model(
+    answers: Dict[str, Any],
+    identity: Dict[str, float],
+    drivers: List[str],
+    lang: str,
+    traits: Optional[Dict[str, float]] = None,
+) -> Optional[List[Dict[str, Any]]]:
+    """
+    Dual-Model approach for sport recommendations:
+    1. Reasoning Model (o1-mini): Analyzes user psychology deeply
+    2. Intelligence Model (gpt-4o): Generates creative recommendations
+    """
+    if not DUAL_MODEL_ENABLED:
+        return None
+    
+    print("[DUAL_MODEL] Starting dual-model recommendation pipeline...")
+    
+    # Step 1: Deep analysis with Reasoning Model
+    print("[DUAL_MODEL] Phase 1: Analyzing user with Reasoning Model...")
+    analysis = analyze_user_with_reasoning(answers, identity, traits or {}, lang)
+    
+    if not analysis:
+        print("[DUAL_MODEL] Reasoning analysis failed, falling back...")
+        return None
+    
+    # Step 2: Creative generation with Intelligence Model
+    print("[DUAL_MODEL] Phase 2: Generating recommendations with Intelligence Model...")
+    cards_raw = generate_recommendations_with_intelligence(analysis, drivers, lang)
+    
+    if not cards_raw:
+        print("[DUAL_MODEL] Intelligence generation failed, falling back...")
+        return None
+    
+    # Step 3: Format and validate cards
+    cards: List[Dict[str, Any]] = []
+    for item in cards_raw[:3]:
+        if not isinstance(item, dict):
+            continue
+        
+        card_struct = _format_llm_card({
+            'title': str(item.get('sport_label') or item.get('title') or ''),
+            'what': str(item.get('what') or item.get('description') or ''),
+            'why': str(item.get('why') or item.get('fit') or ''),
+            'real': str(item.get('real') or item.get('experience') or ''),
+            'notes': str(item.get('notes') or item.get('tips') or ''),
+        }, lang)
+        
+        if not _quality_filter(card_struct, lang):
+            continue
+        
+        cards.append(card_struct)
+    
+    if len(cards) < 3:
+        print(f"[DUAL_MODEL] Only {len(cards)} valid cards generated, falling back...")
+        return None
+    
+    print(f"[DUAL_MODEL] Successfully generated {len(cards)} recommendations")
+    return cards
 
 
 def _llm_cards(
