@@ -6,7 +6,12 @@ import io, re, os, base64, logging, traceback
 
 # فيديو/صور/صوت
 from PIL import Image, ImageDraw, ImageFont
-from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
+# moviepy 2.x uses different import structure
+try:
+    from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
+except ImportError:
+    # moviepy 2.x style
+    from moviepy import ImageClip, concatenate_videoclips, AudioFileClip
 from gtts import gTTS
 
 # مسارات العمل (ثابتة داخل مشروع Render)

@@ -26,3 +26,21 @@ data/logs/test-*.json
 # Backups
 *.backup
 *_backup.py
+*.bak
+*.old
+*~
+
+# Temporary files
+tmp/
+*.tmp
+*TEMP*.mp4
+*.temp
+
+# Old logs (keep only recent ones)
+data/logs/demo-*.json
+data/logs/sample-*.json
+data/logs/*_202410*.json
+data/logs/*_202411*.json
+
+# External archives (if needed later)
+external/orchive/

@@ -32,7 +32,7 @@ def suggest_topic_from_keywords(keywords: list) -> str:
 
 
 # 🧪 للتجربة اليدوية فقط
-if _name_ == "_main_":
+if __name__ == "__main__":
     example_topic = "Why most people give up on fitness"
     output = generate_video_from_topic(example_topic)
 

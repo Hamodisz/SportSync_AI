@@ -36,7 +36,7 @@ def _split_scenes(script: str) -> List[str]:
     if buf: scenes.append(" ".join(str(x) for x in buf))
     return scenes[:4] if scenes else [script.strip()[:140]]
 
-def _try_openai(prompt: str) -> bytes | None:
+def _try_openai(prompt: str) -> Optional[bytes]:
     if os.getenv("USE_OPENAI","0") != "1": return None
     key = os.getenv("OPENAI_API_KEY"); 
     if not key: return None

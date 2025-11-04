@@ -18,7 +18,7 @@ def generate_video_from_topic(topic: str, lang: str = "english", tone: str = "em
     }
 
 # مثال تجريبي لتشغيل الملف يدويًا
-if _name_ == "_main_":
+if __name__ == "__main__":
     topic = "Why most people quit sports after 2 weeks"
     result = generate_video_from_topic(topic)
     print("\n===== TOPIC =====")
