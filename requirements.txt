@@ -27,3 +27,37 @@ runpod>=1.5.0
 
 # Type Safety
 pydantic>=2.5.0
+
+# ========================================
+# Added: User System & Advanced Features
+# Date: 2025-11-04
+# Phase 1: Foundation
+# ========================================
+
+# Database (PostgreSQL/Supabase)
+asyncpg>=0.29.0
+psycopg2-binary>=2.9.9
+
+# Authentication & Security
+bcrypt>=4.1.2
+PyJWT>=2.8.0
+cryptography>=42.0.0
+
+# Pydantic AI (Official Framework)
+pydantic-ai>=0.0.13
+
+# ML & Data Science (for collaborative filtering)
+scikit-learn>=1.4.0
+numpy>=1.26.0
+pandas>=2.2.0
+
+# Caching & Performance
+redis>=5.0.0  # Optional: for distributed caching
+aioredis>=2.0.1
+
+# API & Web Framework
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+
+# Monitoring & Logging
+sentry-sdk>=1.40.0  # Optional: error tracking
