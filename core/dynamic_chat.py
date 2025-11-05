@@ -86,7 +86,7 @@ try:
             logging.info(f"user_analysis fallback: {e}")
             traits = []
         return {
-            "quick_profile": " | ".join(map(str, traits[:6])) if traits else "fallback",
+            "quick_profile": " | ".join(map(str, (traits if isinstance(traits, list) else list(traits.values()) if isinstance(traits, dict) else [])[:6])) if traits else "fallback",
             "raw": answers,
             "traits": traits
         }
