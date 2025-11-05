@@ -1,412 +1,141 @@
-# -*- coding: utf-8 -*-
-"""
-SportSync AI - Streamlit UI with Collaborative Filtering
-========================================================
-Version 2.0 - Integrated with FastAPI backend
-"""
-
+# app_streamlit.py
+# -- coding: utf-8 --
 import time
 import uuid
+from typing import List
 import streamlit as st
 from pathlib import Path
-from typing import List, Dict, Optional
-import requests
-import json
-
-# Core imports
 from core.core_engine import run_full_generation, quick_diagnose
 from core.backend_gpt import generate_sport_recommendation, get_last_rec_source
 from core.llm_client import make_llm_client, pick_models
 from core.user_logger import get_log_stats
 
-# Database and ML imports
+# Apply v2.2 Complete Sport System integration
 try:
-    from database.supabase_client import get_supabase_client
-    from ml.collaborative_filtering import CollaborativeFilteringEngine
-    CF_AVAILABLE = True
-except ImportError:
-    CF_AVAILABLE = False
+    from core.backend_gpt_integration import patch_backend_gpt
+    patch_backend_gpt()
+except Exception as e:
+    print(f"[PATCH] Warning: {e}")
 
-# Page config
-st.set_page_config(
-    page_title="SportSync AI - Dual Intelligence System",
-    page_icon="🎯",
-    layout="wide"
-)
 
-# Initialize services
-@st.cache_resource
-def init_services():
-    """Initialize database and CF engine"""
-    if CF_AVAILABLE:
-        db = get_supabase_client()
-        cf_engine = CollaborativeFilteringEngine(supabase_client=db)
-        if cf_engine.is_available():
-            cf_engine.load_ratings_from_db()
-            return db, cf_engine
-    return None, None
+st.set_page_config(page_title="SportSync — Quick Video", layout="centered")
 
-db, cf_engine = init_services()
+st.title("SportSync — Video + Personalizer (V1.1)")
 
-# Session state initialization
-if 'user_id' not in st.session_state:
-    st.session_state.user_id = str(uuid.uuid4())
-if 'session_id' not in st.session_state:
-    st.session_state.session_id = str(uuid.uuid4())
-if 'quiz_completed' not in st.session_state:
-    st.session_state.quiz_completed = False
-if 'recommendations' not in st.session_state:
-    st.session_state.recommendations = []
-if 'user_ratings' not in st.session_state:
-    st.session_state.user_ratings = {}
+st.session_state.setdefault("rec_source", "?")
+st.session_state.setdefault("force_fallback", False)
+st.session_state.setdefault("preview_session_id", uuid.uuid4().hex)
 
-# Header
-st.title("🎯 SportSync AI - نظام الذكاء المزدوج")
-st.markdown("**Discovery Model (o4-mini)** + **Reasoning Model (gpt-5)** + **Collaborative Filtering**")
-
-# Sidebar
 with st.sidebar:
-    st.header("⚙️ System Status")
-    
-    # LLM Status
     client = make_llm_client()
-    main_model, fb_model = pick_models()
-    st.metric("LLM Status", "✅ Connected" if client else "❌ Disconnected")
-    st.caption(f"Discovery: o4-mini")
-    st.caption(f"Reasoning: gpt-5")
-    
-    # Database Status
-    if db and db.is_enabled():
-        st.metric("Database", "✅ Connected")
-    else:
-        st.metric("Database", "❌ Disconnected")
-    
-    # CF Engine Status
-    if cf_engine and cf_engine.is_available():
-        st.metric("CF Engine", "✅ Ready")
-        st.caption(f"Users: {len(cf_engine.user_item_matrix)}")
-        st.caption(f"Sports: {len(cf_engine.item_users_matrix)}")
-    else:
-        st.metric("CF Engine", "❌ Unavailable")
-    
-    st.divider()
-    
-    # User Info
-    st.caption(f"User ID: {st.session_state.user_id[:8]}...")
-    st.caption(f"Session: {st.session_state.session_id[:8]}...")
-    
-    if st.button("🔄 Refresh CF Data"):
-        if cf_engine and cf_engine.is_available():
-            with st.spinner("Refreshing..."):
-                cf_engine.refresh_data()
-            st.success("Data refreshed!")
-        else:
-            st.warning("CF not available")
+    main_model, _fb_model = pick_models()
+    st.write("LLM ready:", bool(client))
+    st.write("Model (main):", main_model)
+    st.write("Rec engine source:", st.session_state.get("rec_source", "?"))
+    if st.button("Force fallback (debug)"):
+        st.session_state["force_fallback"] = True
 
-# Main tabs
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "🎬 Quick Video",
-    "📝 Quiz & Recommendations", 
-    "⭐ My Ratings",
-    "👥 Similar Users",
-    "📊 Analytics"
-])
+lang = st.selectbox("Language", ["en","ar"], index=0)
 
-# ========================================
-# Tab 1: Quick Video Generation
-# ========================================
-with tab1:
-    st.header("🎬 Quick Video Generation")
-    
-    lang = st.selectbox("Language", ["ar", "en"], index=0)
-    
-    DEFAULT_SCRIPT = """Title: Start your sport today
+DEFAULT_SCRIPT = """Title: Start your sport today
 
 Scene 1: Sunrise over a quiet track — "Every beginning is a step."
 Scene 2: Shoes hitting the ground — "Start with one simple move."
 Scene 3: A calm smile — "Consistency beats perfection."
 Outro: Give it 10 minutes today.
 """
-    
-    script = st.text_area("Script", DEFAULT_SCRIPT, height=200)
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        seconds = st.slider("Seconds per image", 2, 8, 4)
-        add_voice = st.checkbox("Add voice-over", value=False)
-    
-    with col2:
-        use_ai = st.checkbox("Use AI images (OpenAI)", value=False)
-        use_stock = st.checkbox("Use stock photos", value=True)
-    
-    if st.button("🎥 Generate Video", type="primary"):
-        with st.spinner("Generating video..."):
-            result = run_full_generation({
-                "script": script,
-                "lang": lang,
-                "seconds_per_image": seconds,
-                "add_voice": add_voice,
-                "use_ai": use_ai,
-                "use_stock": use_stock
-            })
-        
-        if result.get("ok"):
-            st.success("✅ Video generated!")
-            
-            vpath = Path(result["video"])
-            if vpath.exists():
-                with open(vpath, "rb") as f:
-                    video_bytes = f.read()
-                    st.video(video_bytes)
-                    st.download_button(
-                        "📥 Download MP4",
-                        data=video_bytes,
-                        file_name="sportsync_video.mp4",
-                        mime="video/mp4"
-                    )
-        else:
-            st.error(f"❌ Error: {result.get('error')}")
-    
-    if st.button("🔍 Quick Diagnose"):
-        st.json(quick_diagnose())
 
-# ========================================
-# Tab 2: Quiz & Recommendations
-# ========================================
-with tab2:
-    st.header("📝 Sport Discovery Quiz")
-    
-    if not st.session_state.quiz_completed:
-        st.markdown("### Answer these questions to discover your perfect sport")
-        
-        # Simplified quiz for demo
-        with st.form("quiz_form"):
-            q1 = st.select_slider(
-                "كيف تشعر عند مواجهة تحدي جديد؟",
-                options=["خائف", "قلق", "محايد", "متحمس", "متحمس جداً"]
-            )
-            
-            q2 = st.multiselect(
-                "أي بيئة تفضل؟",
-                ["المنزل", "النادي", "الهواء الطلق", "المسبح", "ملعب جماعي"]
-            )
-            
-            q3 = st.select_slider(
-                "مستوى الطاقة المفضل؟",
-                options=["استرخاء", "طاقة منخفضة", "متوسط", "طاقة عالية", "طاقة عالية جداً"]
-            )
-            
-            q4 = st.radio(
-                "تفضل التفاعل الاجتماعي؟",
-                ["أفضل وحدي", "مع شريك", "أحياناً مع آخرين", "دائماً مع فريق"]
-            )
-            
-            submitted = st.form_submit_button("🎯 Get Recommendations", type="primary")
-            
-            if submitted:
-                with st.spinner("Analyzing with Dual-Model AI..."):
-                    # Simulate quiz submission
-                    answers = {
-                        "1": q1,
-                        "2": ", ".join(q2) if q2 else "None",
-                        "3": q3,
-                        "4": q4
-                    }
-                    
-                    # In real implementation, call dual_model_client
-                    # For demo, generate sample recommendations
-                    time.sleep(2)
-                    
-                    recommendations = [
-                        {
-                            "sport_label": "كرة القدم" if lang == "ar" else "Football",
-                            "match_percentage": 92,
-                            "why": ["تناسب طاقتك العالية", "تحب العمل الجماعي"],
-                            "category": "team_sport"
-                        },
-                        {
-                            "sport_label": "السباحة" if lang == "ar" else "Swimming",
-                            "match_percentage": 85,
-                            "why": ["تمرين شامل", "مناسب للاسترخاء"],
-                            "category": "individual_sport"
-                        },
-                        {
-                            "sport_label": "اليوجا" if lang == "ar" else "Yoga",
-                            "match_percentage": 78,
-                            "why": ["توازن وهدوء", "مرونة عالية"],
-                            "category": "mindful_activity"
-                        }
-                    ]
-                    
-                    # Apply collaborative filtering if available
-                    if cf_engine and cf_engine.is_available():
-                        try:
-                            recommendations = cf_engine.hybrid_recommend(
-                                user_id=st.session_state.user_id,
-                                content_based_recs=recommendations,
-                                n_recommendations=3,
-                                cf_weight=0.4
-                            )
-                            st.info("✨ Recommendations enhanced with Collaborative Filtering!")
-                        except:
-                            pass
-                    
-                    st.session_state.recommendations = recommendations
-                    st.session_state.quiz_completed = True
-                    st.rerun()
-    
-    else:
-        st.success("✅ Quiz Completed!")
-        
-        st.markdown("### 🎯 Your Personalized Recommendations")
-        
-        for idx, rec in enumerate(st.session_state.recommendations, 1):
-            with st.expander(f"#{idx} {rec['sport_label']} - {rec['match_percentage']}% Match", expanded=True):
-                st.metric("Match Score", f"{rec['match_percentage']}%")
-                
-                if rec.get('hybrid_score'):
-                    col1, col2, col3 = st.columns(3)
-                    col1.metric("Content Score", f"{rec.get('cb_score', 0):.2f}")
-                    col2.metric("CF Score", f"{rec.get('cf_score', 0):.2f}")
-                    col3.metric("Hybrid Score", f"{rec['hybrid_score']:.2f}")
-                
-                st.markdown("**Why it's perfect for you:**")
-                for reason in rec.get('why', []):
-                    st.markdown(f"- {reason}")
-                
-                # Rating
-                rating = st.slider(
-                    f"Rate {rec['sport_label']}",
-                    0.0, 5.0, 3.0, 0.5,
-                    key=f"rating_{idx}"
-                )
-                
-                if st.button(f"💾 Save Rating", key=f"save_{idx}"):
-                    # Save rating
-                    if db and db.is_enabled():
-                        db.save_sport_rating(
-                            user_id=st.session_state.user_id,
-                            sport_label=rec['sport_label'],
-                            rating=rating,
-                            was_recommended=True,
-                            was_liked=rating >= 4.0
-                        )
-                    
-                    # Update CF engine
-                    if cf_engine and cf_engine.is_available():
-                        cf_engine.update_user_rating(
-                            user_id=st.session_state.user_id,
-                            sport_label=rec['sport_label'],
-                            rating=rating
-                        )
-                    
-                    st.session_state.user_ratings[rec['sport_label']] = rating
-                    st.success(f"Rating saved: {rating}⭐")
-        
-        if st.button("🔄 Take Quiz Again"):
-            st.session_state.quiz_completed = False
-            st.session_state.recommendations = []
-            st.rerun()
+script = st.text_area("Script", DEFAULT_SCRIPT, height=240)
+seconds = st.slider("Seconds per image", 2, 8, 4)
+add_voice = st.checkbox("Add voice-over", value=False)
+show_diag = st.checkbox("Show debug (diagnose)", value=True)
 
-# ========================================
-# Tab 3: My Ratings
-# ========================================
-with tab3:
-    st.header("⭐ My Sport Ratings")
-    
-    if st.session_state.user_ratings:
-        for sport, rating in st.session_state.user_ratings.items():
-            col1, col2 = st.columns([3, 1])
-            col1.write(f"**{sport}**")
-            col2.metric("Rating", f"{rating}⭐")
-    else:
-        st.info("No ratings yet. Complete the quiz and rate some sports!")
-    
-    # Get CF recommendations based on ratings
-    if cf_engine and cf_engine.is_available() and st.session_state.user_ratings:
-        if st.button("🎯 Get More Recommendations (CF)"):
-            with st.spinner("Finding sports you'll love..."):
-                cf_recs = cf_engine.recommend_for_user(
-                    user_id=st.session_state.user_id,
-                    n_recommendations=5
-                )
-                
-                if cf_recs:
-                    st.success(f"Found {len(cf_recs)} recommendations!")
-                    for rec in cf_recs:
-                        st.write(f"- **{rec['sport_label']}** (Predicted: {rec['predicted_rating']}⭐)")
-                else:
-                    st.warning("Need more ratings to generate CF recommendations")
+col1, col2 = st.columns([1,1])
+gen_btn = col1.button("Generate video", type="primary")
+diag_btn = col2.button("Quick diagnose")
 
-# ========================================
-# Tab 4: Similar Users
-# ========================================
-with tab4:
-    st.header("👥 Users Similar to You")
-    
-    if cf_engine and cf_engine.is_available():
-        if st.button("🔍 Find Similar Users"):
-            with st.spinner("Analyzing similarities..."):
-                similar = cf_engine.compute_user_similarity(
-                    user_id=st.session_state.user_id,
-                    top_k=10
-                )
-                
-                if similar:
-                    st.success(f"Found {len(similar)} similar users!")
-                    
-                    for uid, score in similar[:5]:
-                        st.metric(f"User {uid[:8]}...", f"{score:.2%} similar")
-                        
-                        # Show their favorite sports
-                        user_sports = cf_engine.user_item_matrix.get(uid, {})
-                        top_sports = sorted(user_sports.items(), key=lambda x: x[1], reverse=True)[:3]
-                        st.caption("Their favorites: " + ", ".join([s for s, _ in top_sports]))
-                else:
-                    st.info("Need more activity to find similar users")
-    else:
-        st.warning("Collaborative filtering not available")
-
-# ========================================
-# Tab 5: Analytics
-# ========================================
-with tab5:
-    st.header("📊 System Analytics")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    # Stats
-    if db and db.is_enabled():
-        popular = db.get_popular_sports(limit=10)
-        
-        col1.metric("Popular Sports", len(popular))
-        
-        if cf_engine and cf_engine.is_available():
-            col2.metric("Total Users", len(cf_engine.user_item_matrix))
-            col3.metric("Total Sports", len(cf_engine.item_users_matrix))
-        
-        # Popular sports chart
-        if popular:
-            st.subheader("🏆 Most Popular Sports")
-            for sport in popular[:10]:
-                col1, col2, col3 = st.columns([2, 1, 1])
-                col1.write(sport['sport_label'])
-                col2.metric("Users", sport.get('unique_users', 0))
-                col3.metric("Avg Rating", f"{sport.get('avg_rating', 0):.1f}⭐")
-    
-    # System diagnostics
-    with st.expander("🔧 System Diagnostics"):
-        st.json(quick_diagnose())
-    
-    # Log stats
+if diag_btn:
+    st.json(quick_diagnose())
     try:
         stats = get_log_stats()
-        with st.expander("📝 Log Statistics"):
-            st.json(stats)
-    except:
-        pass
+        st.markdown("### Log Counters")
+        files = stats.get("files", {})
+        st.write({"Submissions": files.get("submissions", 0),
+                  "Ratings": files.get("ratings", 0),
+                  "Chat msgs": files.get("chat", 0),
+                  "Events": files.get("events", 0)})
+        if "sqlite" in stats:
+            st.write({f"DB::{k}": v for k, v in stats["sqlite"].items()})
+    except Exception as exc:
+        st.warning(f"Logger stats unavailable: {exc}")
 
-# Footer
-st.divider()
-st.caption("SportSync AI v2.0 - Powered by Dual-Model Intelligence + Collaborative Filtering")
-st.caption("Discovery (o4-mini) + Reasoning (gpt-5) + CF Engine")
+if gen_btn:
+    with st.spinner("Generating images / voice / video..."):
+        result = run_full_generation({
+            "script": script,
+            "lang": lang,
+            "seconds_per_image": seconds,
+            "add_voice": add_voice
+        })
+
+    if not result.get("ok"):
+        st.error(f"ERROR: {result.get('error','unknown')}")
+        if show_diag:
+            st.json(result.get("debug", {}))
+    else:
+        st.success("✅ Done.")
+        if show_diag:
+            st.json({
+                "images": result["images"],
+                "voice": result["voice"],
+                "video": result["video"]
+            })
+
+        # أعرض الفيديو فعليًا من الملف (بايتس)
+        vpath = Path(result["video"])
+        if vpath.exists():
+            with open(vpath, "rb") as f:
+                st.video(f.read())
+            st.download_button("Download MP4", data=open(vpath, "rb").read(), file_name="final_video.mp4")
+        else:
+            st.warning("Video file not found after pipeline.")
+
+        st.divider()
+
+# =============== Identity Cards Preview ===============
+st.header("Sport Identity Cards")
+
+if "card_ratings" not in st.session_state:
+    st.session_state["card_ratings"] = [3, 3, 3]
+
+LIVE_TYPING = st.checkbox("Live typing preview", value=True, key="cards_live_typing")
+TYPE_SPEED_MS = st.slider("Typing speed (ms per line)", 1, 40, 8, key="cards_speed")
+identity_text = st.text_area("Describe what kind of sport vibe you want", "", height=160)
+if st.button("Generate identity cards"):
+    with st.spinner("Crafting your identity cards..."):
+        answers = {
+            "persona": {"answer": [identity_text]},
+            "_session_id": st.session_state.get("preview_session_id", uuid.uuid4().hex),
+        }
+        if st.session_state.get("force_fallback"):
+            answers["_force_fallback"] = True
+        cards = generate_sport_recommendation(answers, lang)
+        st.session_state["rec_source"] = get_last_rec_source()
+        st.session_state["force_fallback"] = False
+    headers_ar = ["🟢 التوصية رقم 1", "🌿 التوصية رقم 2", "🔮 التوصية رقم 3 (ابتكارية)"]
+    headers_en = ["🟢 Recommendation #1", "🌿 Recommendation #2", "🔮 Recommendation #3 (Creative)"]
+    for i, card_md in enumerate(cards[:3]):
+        st.subheader(headers_ar[i] if lang == "ar" else headers_en[i])
+        placeholder = st.empty()
+        card_md = card_md or ""
+        if LIVE_TYPING:
+            buffer: List[str] = []
+            for line in card_md.splitlines(True):
+                buffer.append(line)
+                placeholder.markdown("".join(buffer))
+                time.sleep(max(TYPE_SPEED_MS, 1) / 1000.0)
+        else:
+            placeholder.markdown(card_md)
+        rating_key = f"card_rating_{i}"
+        default_val = st.session_state["card_ratings"][i]
+        st.session_state["card_ratings"][i] = st.slider("Rate this card", 1, 5, value=default_val, key=rating_key)
