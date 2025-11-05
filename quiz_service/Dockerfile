@@ -24,9 +24,10 @@ COPY quiz_service/app.py /app/app.py
 COPY core /app/core
 COPY analysis /app/analysis
 COPY questions /app/questions
+COPY data /app/data
 
 # ✅ عرّف المجلدات كـ Packages صريحة لتفادي مشاكل الاستيراد على Render
-RUN bash -lc "mkdir -p /app/core /app/analysis && touch /app/core/__init__.py /app/analysis/__init__.py"
+RUN bash -lc "mkdir -p /app/core /app/analysis /app/data && touch /app/core/__init__.py /app/analysis/__init__.py"
 
 # ===== Runtime =====
 EXPOSE 10000

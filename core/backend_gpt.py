@@ -1547,8 +1547,10 @@ def _generate_cards(
         import core.kb_ranker as kb_ranker
         from pathlib import Path as _KBPath
         
-        kb_path = _KBPath("data/sportsync_knowledge.json")
-        identities_dir = _KBPath("data/identities")
+        # ✅ دعم المسارات المطلقة والنسبية (محلي + Docker)
+        ROOT = _KBPath(__file__).resolve().parent.parent
+        kb_path = ROOT / "data" / "sportsync_knowledge.json"
+        identities_dir = ROOT / "data" / "identities"
         
         # استخدام KB Ranker للحصول على identities مباشرة (dicts)
         kb_identities = kb_ranker.rank_and_get_identities(
