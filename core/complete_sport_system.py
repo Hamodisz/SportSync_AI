@@ -147,40 +147,93 @@ def _enhance_with_reasoning(
         }
         
         if language == 'ar':
-            system_prompt = """أنت مستشار رياضي خبير.
-مهمتك: تحسين وتطوير الرياضات المخترعة لتكون أكثر جاذبية وعملية.
+            system_prompt = """أنت مستشار رياضي نفسي عميق. مهمتك: تشخيص الهوية الرياضية المخفية للشخص.
 
-لكل رياضة:
-1. حسّن الاسم ليكون أكثر إلهاماً
-2. اكتب وصفاً مثيراً (3-4 جمل)
-3. اشرح لماذا هي مثالية للمستخدم (3-4 نقاط شخصية)
+**القاعدة الذهبية:**
+- لا تصف الرياضة فقط - شخّص العلاقة بين الشخص والرياضة
+- استخدم لغة "أنت" المباشرة - المس الدوافع العميقة
 
-أعط إجابتك بصيغة JSON.
+**البنية الدقيقة:**
+
+🎯 الرياضة المثالية لك: [اسم بالإنجليزية]
+
+💡 ما هي؟
+• [3-4 جمل قصيرة تصف التجربة والإحساس - ليس التاريخ]
+
+🎮 ليه تناسبك؟
+• أنت [صفة نفسية عميقة] - [ربط بالرياضة]
+• [جملة ثانية تشرح الدافع الخفي]
+• [جملة ثالثة تصف المتعة الحقيقية عندهم]
+
+🔍 شكلها الواقعي:
+• تدخل [وصف البداية]
+• تستخدم [وصف التجربة الحية]
+• [النتيجة النفسية] - "لكن داخلك تعرف إنك تنمو"
+
+👁️‍🗨️ ملاحظات مهمة:
+• [جملة واحدة قوية تلامس الهوية]
+• [نصيحة عملية للبدء]
+
+**مثال حقيقي:**
+"أنت تكره التكرار، ترفض السطحية، وتحب توصل لجوهر الشي الحقيقي"
+
+**الطول:** 120-180 كلمة فقط
+**التركيز:** الهوية والشعور، ليس الوصف التقني
+
+JSON format required.
 """
         else:
-            system_prompt = """You are an expert sports advisor.
-Your task: Enhance and develop invented sports to be more attractive and practical.
+            system_prompt = """You are a deep sports psychologist. Your mission: Diagnose the hidden athletic identity.
 
-For each sport:
-1. Improve the name to be more inspiring
-2. Write an exciting description (3-4 sentences)
-3. Explain why it's perfect for the user (3-4 personal points)
+**Golden Rule:**
+- Don't just describe the sport - diagnose the relationship between person and sport
+- Use direct "you" language - touch deep motivations
 
-Respond in JSON format.
+**Exact Structure:**
+
+🎯 Your Perfect Sport: [English name]
+
+💡 What is it?
+• [3-4 short sentences describing EXPERIENCE and FEELING - not history]
+
+🎮 Why it suits you?
+• You [deep psychological trait] - [connection to sport]
+• [Second sentence explaining hidden driver]
+• [Third sentence describing their true pleasure]
+
+🔍 What it looks like:
+• You enter [describe start]
+• You use [describe live experience]
+• [Psychological result] - "but inside you know you're growing"
+
+👁️‍🗨️ Important notes:
+• [One powerful identity-touching sentence]
+• [Practical advice to start]
+
+**Real Example:**
+"You hate repetition, reject superficiality, and love reaching the true essence of things"
+
+**Length:** 120-180 words only
+**Focus:** Identity and feeling, not technical description
+
+JSON format required.
 """
         
         import os
         reasoning_model = os.getenv("CHAT_MODEL_REASONING", "gpt-4o")
         
+        # إضافة السياق الشخصي العميق
+        user_context = _build_personal_context(discovery_analysis, language)
+        
         enhanced_json = chat_once(
             client,
             [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": json.dumps(reasoning_data, ensure_ascii=False)}
+                {"role": "user", "content": user_context + "\n\n" + json.dumps(reasoning_data, ensure_ascii=False)}
             ],
             model=reasoning_model,
             temperature=0.7,
-            max_tokens=2000
+            max_tokens=600  # REDUCED from 2000 for compact responses
         )
         
         # Parse and merge enhancements
@@ -228,6 +281,34 @@ def _validate_and_score(
     traits: Dict[str, float]
 ) -> List[Dict]:
     """
+    التحقق من صحة الاختراعات وتقييمها
+    + التأكد من الإيجاز والوضوح
+    """
+    for invention in inventions:
+        # Validate description length (max 60 words)
+        desc = invention.get('ai_description', '')
+        if desc:
+            words = desc.split()
+            if len(words) > 60:
+                invention['ai_description'] = ' '.join(words[:60]) + '...'
+        
+        # Validate reasons (max 3 points, each max 12 words)
+        reasons = invention.get('ai_reasons', [])
+        if len(reasons) > 3:
+            reasons = reasons[:3]
+        reasons = [' '.join(r.split()[:12]) for r in reasons]
+        invention['ai_reasons'] = reasons
+        
+        # Calculate match score
+        match_score = 0.85  # Base score
+        
+        # Bonus for having all fields
+        if all(k in invention for k in ['sport_label', 'ai_description', 'ai_reasons']):
+            match_score += 0.10
+        
+        invention['match_score'] = min(match_score, 1.0)
+    
+    return inventions
     التحقق من صحة الاختراعات وحساب الدرجات
     """
     for invention in inventions:
@@ -273,6 +354,63 @@ def _fallback_recommendations(language: str) -> List[Dict]:
                 'fallback': True
             }
         ]
+
+
+def _build_personal_context(discovery_analysis: Dict, language: str) -> str:
+    """
+    بناء السياق الشخصي العميق للمستخدم
+    """
+    
+    # استخراج الهوية الأقوى
+    identity_scores = discovery_analysis.get('identity_scores', {})
+    dominant_identity = max(identity_scores.items(), key=lambda x: x[1])[0] if identity_scores else 'explorer'
+    identity_strength = max(identity_scores.values()) if identity_scores else 0.5
+    
+    # استخراج الدوافع الخفية
+    hidden_drivers = discovery_analysis.get('hidden_drives', [])[:3]
+    
+    # استخراج السمات النفسية الأقوى
+    traits = discovery_analysis.get('traits_summary', {})
+    top_traits = sorted(traits.items(), key=lambda x: x[1], reverse=True)[:3]
+    
+    if language == 'ar':
+        context = f"""
+**السياق الشخصي العميق:**
+
+🧬 **الهوية الأقوى:** {dominant_identity} ({identity_strength:.0%})
+- هذا الشخص يميل بقوة نحو الهوية: {dominant_identity}
+
+🔥 **الدوافع الخفية (Layer Z):**
+{chr(10).join([f'• {driver}' for driver in hidden_drivers])}
+
+🧠 **السمات النفسية الأقوى:**
+{chr(10).join([f'• {trait}: {score:.0%}' for trait, score in top_traits])}
+
+**مهمتك:**
+اخترع/اختر رياضة تلامس هذه الهوية والدوافع بعمق.
+استخدم لغة "أنت" المباشرة.
+اجعلهم يشعرون "هذا أنا تماماً!".
+"""
+    else:
+        context = f"""
+**Deep Personal Context:**
+
+🧬 **Dominant Identity:** {dominant_identity} ({identity_strength:.0%})
+- This person strongly leans toward identity: {dominant_identity}
+
+🔥 **Hidden Drivers (Layer Z):**
+{chr(10).join([f'• {driver}' for driver in hidden_drivers])}
+
+🧠 **Strongest Psychological Traits:**
+{chr(10).join([f'• {trait}: {score:.0%}' for trait, score in top_traits])}
+
+**Your Mission:**
+Invent/choose a sport touching this identity and drivers deeply.
+Use direct "you" language.
+Make them feel "This is exactly ME!".
+"""
+    
+    return context
 
 
 __all__ = ['generate_complete_sport_recommendations']
