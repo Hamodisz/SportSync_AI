@@ -1,1 +1,9 @@
-# weekly_analysis.json
+{
+  "week": null,
+  "analysis": {
+    "total_users": 0,
+    "top_sports": [],
+    "common_traits": [],
+    "insights": []
+  }
+}

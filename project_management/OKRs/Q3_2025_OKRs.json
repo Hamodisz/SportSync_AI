@@ -1,1 +1,53 @@
-# Q3_2025_OKRs.json
+{
+  "Q3_2025": {
+    "objectives": [
+      {
+        "id": "O1",
+        "title": "Launch AI-Powered Sport Matching",
+        "key_results": [
+          {
+            "kr": "KR1",
+            "description": "Achieve 70% accuracy in sport recommendations",
+            "target": 70,
+            "current": 0,
+            "unit": "percent"
+          },
+          {
+            "kr": "KR2",
+            "description": "Generate 1000 personalized recommendations",
+            "target": 1000,
+            "current": 0,
+            "unit": "recommendations"
+          },
+          {
+            "kr": "KR3",
+            "description": "Collect feedback from 200 users",
+            "target": 200,
+            "current": 0,
+            "unit": "users"
+          }
+        ]
+      },
+      {
+        "id": "O2",
+        "title": "Build Content Production Pipeline",
+        "key_results": [
+          {
+            "kr": "KR1",
+            "description": "Produce 100 AI-generated videos",
+            "target": 100,
+            "current": 0,
+            "unit": "videos"
+          },
+          {
+            "kr": "KR2",
+            "description": "Automate 80% of video creation process",
+            "target": 80,
+            "current": 0,
+            "unit": "percent"
+          }
+        ]
+      }
+    ]
+  }
+}

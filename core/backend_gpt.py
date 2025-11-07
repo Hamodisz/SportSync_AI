@@ -1806,15 +1806,17 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
         print(f"[REC] llm_path=ON model={CHAT_MODEL} fb={CHAT_MODEL_FALLBACK or 'none'}")
         try:
             cards_struct = _llm_cards(answers_copy, identity, drivers, lang, traits)
-        except Exception:
+        except Exception as e:
+            print(f"[REC] ❌ LLM failed: {e}")
             cards_struct = None
         llm_attempted = True
         if cards_struct:
             source = "llm"
+            print(f"[REC] ✅ LLM generated {len(cards_struct)} cards")
         else:
-            print("[REC] llm_path=OFF (KB/Hybrid only)")
+            print("[REC] ⚠️ LLM returned None, falling back to KB/Hybrid")
     else:
-        print("[REC] llm_path=OFF (KB/Hybrid only)")
+        print(f"[REC] llm_path=OFF - disable:{disable_flag} force:{force_flag} env:{env_force} possible:{llm_possible}")
 
     if not cards_struct:
         cards_struct = _generate_cards(

@@ -79,4 +79,79 @@ SHORTS_TEMPLATES = {
             "Sensitive soul heals through yoga combat",
             "Rebel finds freedom in extreme sports"
         ]
+    }
+}
+
+# ============================================
+# LONG VIDEO TEMPLATES (20 videos, 3-5 minutes)
+# ============================================
+
+LONG_TEMPLATES = {
+    "deep_dive": {
+        "name": "Deep Dive Analysis",
+        "duration": 240,
+        "count": 10,
+        "structure": {
+            "intro": "30 seconds - hook",
+            "problem": "60 seconds - common struggles",
+            "solution": "90 seconds - AI analysis",
+            "proof": "45 seconds - success story",
+            "cta": "15 seconds - call to action"
+        }
     },
+    "tutorial": {
+        "name": "How-To Guide",
+        "duration": 180,
+        "count": 10,
+        "structure": {
+            "intro": "20 seconds - what you'll learn",
+            "steps": "120 seconds - step by step",
+            "tips": "30 seconds - pro tips",
+            "cta": "10 seconds - try it now"
+        }
+    }
+}
+
+
+def get_all_templates() -> Dict:
+    """Return all available templates"""
+    return {
+        "shorts": SHORTS_TEMPLATES,
+        "long": LONG_TEMPLATES
+    }
+
+
+def get_template_by_type(template_type: str, category: str = None) -> Dict:
+    """Get specific template by type and optional category"""
+    all_templates = get_all_templates()
+    
+    if template_type == "shorts":
+        if category and category in SHORTS_TEMPLATES:
+            return SHORTS_TEMPLATES[category]
+        return SHORTS_TEMPLATES
+    elif template_type == "long":
+        if category and category in LONG_TEMPLATES:
+            return LONG_TEMPLATES[category]
+        return LONG_TEMPLATES
+    
+    return {}
+
+
+def calculate_total_videos() -> Dict[str, int]:
+    """Calculate total number of videos per category"""
+    shorts_count = sum(t["count"] for t in SHORTS_TEMPLATES.values())
+    long_count = sum(t["count"] for t in LONG_TEMPLATES.values())
+    
+    return {
+        "shorts": shorts_count,
+        "long": long_count,
+        "total": shorts_count + long_count
+    }
+
+
+if __name__ == "__main__":
+    stats = calculate_total_videos()
+    print(f"📊 Template Statistics:")
+    print(f"   Shorts: {stats['shorts']} videos")
+    print(f"   Long: {stats['long']} videos")
+    print(f"   Total: {stats['total']} videos")

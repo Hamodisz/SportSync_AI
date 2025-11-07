@@ -500,8 +500,8 @@ if st.session_state.get("chat_open", False):
                         user_message=user_text
                     ):
                         buf.append(_safe_str(chunk))
-                        if LIVE_TYPING:
-                            ph.markdown("".join(_safe_str(x) for x in buf))
+                        # عرض فوري لكل chunk - بدون انتظار
+                        ph.markdown("".join(_safe_str(x) for x in buf))
                     reply = "".join(_safe_str(x) for x in buf).strip()
                 except Exception:
                     reply = T("تم! سنعدّل الخطة بالتدريج حسب ملاحظتك.",
