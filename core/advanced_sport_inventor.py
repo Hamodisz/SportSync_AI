@@ -236,24 +236,20 @@ class AdvancedSportInventor:
     ) -> Dict[str, Any]:
         """
         Layer Z: التحليل العميق للنية الخفية
-        
-        مثال:
-        - جواب: "أحب التحدي لكن أكره الضغط"
-        - Layer Z: "يريد السيطرة الذاتية بدون تقييم خارجي"
         """
         if not self.layer_z_enabled:
-            return {"drivers": ["fallback_analysis"], "z_scores": {}}
+            return {"drivers": ["fallback_analysis"], "z_scores": {}, "hidden_intentions": [], "confidence": 0.5}
         
         try:
-            # Use Layer Z engine
-            z_result = analyze_silent_drivers_combined(
+            # Use Layer Z engine - returns List of drivers
+            drivers_list = analyze_silent_drivers_combined(
                 answers=answers,
                 lang=lang,
-                encoded=None  # Will auto-extract
+                encoded=None
             )
             
-            z_scores = z_result.get('z_scores', {})
-            drivers = z_drivers_from_scores(z_scores, lang)
+            # drivers_list is a list, not dict
+            drivers = drivers_list if isinstance(drivers_list, list) else ["fallback"]
             
             # Extract hidden intentions
             hidden_intentions = self._extract_hidden_intentions(
@@ -264,7 +260,7 @@ class AdvancedSportInventor:
             
             return {
                 "drivers": drivers,
-                "z_scores": z_scores,
+                "z_scores": {},  # Not provided by current Layer Z
                 "hidden_intentions": hidden_intentions,
                 "confidence": 0.85
             }
@@ -583,19 +579,6 @@ class AdvancedSportInventor:
             invention['where_to_start'] = self._suggest_starting_point(invention, facts_profile, lang)
         
         return invention
-
-
-# Singleton
-_advanced_inventor = None
-
-def get_advanced_inventor() -> AdvancedSportInventor:
-    global _advanced_inventor
-    if _advanced_inventor is None:
-        _advanced_inventor = AdvancedSportInventor()
-    return _advanced_inventor
-
-
-__all__ = ['AdvancedSportInventor', 'get_advanced_inventor']
     
     def _suggest_equipment(self, invention: Dict, lang: str) -> List[str]:
         """اقتراح المعدات المطلوبة"""
@@ -628,16 +611,25 @@ __all__ = ['AdvancedSportInventor', 'get_advanced_inventor']
                 "2. ابدأ بـ10 دقائق بدون ضغط",
                 "3. سجّل شعورك بعد كل جلسة",
                 "4. عدّل التجربة حسب راحتك",
-                "5. شارك تجربتك (اختياري)"
             ]
         else:
             return [
-                "1. Find a quiet place for first trial",
-                "2. Start with 10 minutes, no pressure",
-                "3. Journal your feelings after each session",
+                "1. Find a quiet place for first try",
+                "2. Start with 10 minutes no pressure",
+                "3. Record how you feel after each session",
                 "4. Adjust experience to your comfort",
-                "5. Share your experience (optional)"
             ]
 
 
+# Singleton
+_advanced_inventor = None
+
+def get_advanced_inventor() -> AdvancedSportInventor:
+    global _advanced_inventor
+    if _advanced_inventor is None:
+        _advanced_inventor = AdvancedSportInventor()
+    return _advanced_inventor
+
+
 __all__ = ['AdvancedSportInventor', 'get_advanced_inventor']
+

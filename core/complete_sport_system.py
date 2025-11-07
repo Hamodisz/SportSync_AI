@@ -2,12 +2,7 @@
 """
 Complete Sport Invention Integration
 =====================================
-النظام الكامل المتكامل:
-- Layer Z (النية الخفية)
-- Facts Layer (حقائق علمية)
-- 8000 Sports Database
-- Dual-Model AI (Discovery + Reasoning)
-- Advanced Sport Inventor
+النظام الكامل المتكامل - نسخة محسّنة ونظيفة
 """
 
 from typing import Dict, List, Any, Optional
@@ -35,25 +30,7 @@ def generate_complete_sport_recommendations(
     num_recommendations: int = 3
 ) -> List[Dict[str, Any]]:
     """
-    توليد التوصيات الكاملة باستخدام كل مكونات النظام
-    
-    الخطوات:
-    1. Discovery Model: تحليل سريع
-    2. Layer Z: استخراج النية الخفية
-    3. Facts Layer: تطبيق القواعد العلمية
-    4. Advanced Inventor: اختراع/دمج رياضات
-    5. Reasoning Model: صقل وتحسين
-    6. Final Output: 3 رياضات مخترعة/مخصصة
-    
-    Args:
-        user_answers: إجابات المستخدم على الأسئلة
-        user_traits: السمات النفسية (141+ trait)
-        user_identity: الهوية (warrior, explorer, etc.)
-        language: ar or en
-        num_recommendations: عدد التوصيات (default: 3)
-    
-    Returns:
-        List of invented/personalized sports
+    توليد التوصيات الكاملة - شخصية وعميقة
     """
     
     if not FULL_SYSTEM_AVAILABLE:
@@ -74,7 +51,6 @@ def generate_complete_sport_recommendations(
     print("[INTEGRATION] Step 2/6: Advanced Sport Invention...")
     inventor = get_advanced_inventor()
     
-    # Generate multiple inventions
     inventions = []
     for i in range(num_recommendations):
         try:
@@ -85,7 +61,6 @@ def generate_complete_sport_recommendations(
             )
             
             if invention:
-                # Add discovery insights
                 invention['discovery_insights'] = discovery_analysis.get('initial_insights', {})
                 invention['layer_z_drivers'] = discovery_analysis.get('hidden_drives', [])
                 inventions.append(invention)
@@ -96,18 +71,14 @@ def generate_complete_sport_recommendations(
     # Step 3: Reasoning Model Enhancement
     print("[INTEGRATION] Step 3/6: Reasoning Model enhancement...")
     if len(inventions) > 0:
-        inventions = _enhance_with_reasoning(inventions, discovery_analysis, language)
+        inventions = _enhance_with_reasoning(inventions, discovery_analysis, user_traits, language)
     
-    # Step 4: Add AI-generated descriptions
-    print("[INTEGRATION] Step 4/6: AI descriptions...")
-    inventions = _add_ai_descriptions(inventions, user_traits, language)
-    
-    # Step 5: Validate and score
-    print("[INTEGRATION] Step 5/6: Validation...")
+    # Step 4: Validate and score
+    print("[INTEGRATION] Step 4/6: Validation...")
     inventions = _validate_and_score(inventions, user_traits)
     
-    # Step 6: Sort and return top N
-    print("[INTEGRATION] Step 6/6: Finalization...")
+    # Step 5: Sort and return top N
+    print("[INTEGRATION] Step 5/6: Finalization...")
     inventions.sort(key=lambda x: x.get('match_score', 0), reverse=True)
     
     final_inventions = inventions[:num_recommendations]
@@ -120,10 +91,11 @@ def generate_complete_sport_recommendations(
 def _enhance_with_reasoning(
     inventions: List[Dict],
     discovery_analysis: Dict,
+    user_traits: Dict[str, float],
     language: str
 ) -> List[Dict]:
     """
-    تحسين الاختراعات باستخدام Reasoning Model
+    تحسين الاختراعات باستخدام Reasoning Model - مع تشخيص نفسي عميق
     """
     try:
         _init_dual_models()
@@ -132,7 +104,101 @@ def _enhance_with_reasoning(
         if not client:
             return inventions
         
-        # Prepare reasoning prompt
+        # بناء السياق الشخصي العميق
+        user_context = _build_personal_context(discovery_analysis, user_traits, language)
+        
+        if language == 'ar':
+            system_prompt = """أنت مستشار رياضي نفسي عميق. مهمتك: تشخيص الهوية الرياضية المخفية.
+
+**البنية الدقيقة (EXACTLY):**
+
+```json
+{
+  "sports": [
+    {
+      "sport_name": "[اسم مثير بالإنجليزية]",
+      "what_is_it": [
+        "جملة 1 - وصف التجربة",
+        "جملة 2 - عناصر الرياضة",
+        "جملة 3 - الإحساس العميق"
+      ],
+      "why_suits_you": [
+        "أنت [صفة نفسية] - [ربط بالرياضة]",
+        "[دافع خفي] - [كيف تلمسه الرياضة]",
+        "[متعة حقيقية] - [ليس مجرد حركة]"
+      ],
+      "how_it_looks": [
+        "تدخل [وصف البداية]",
+        "تستخدم [التجربة الحية]",
+        "[نتيجة نفسية] - داخلك تعرف إنك تنمو"
+      ],
+      "important_notes": [
+        "[جملة قوية تلامس الهوية]",
+        "[نصيحة عملية للبدء]"
+      ]
+    }
+  ]
+}
+```
+
+**مثال حقيقي:**
+"أنت تكره التكرار، ترفض السطحية، وتحب توصل لجوهر الشي الحقيقي"
+
+**CRITICAL:**
+- استخدم "أنت" في كل جملة بـ why_suits_you
+- الطول الكلي: 120-180 كلمة
+- لا تذكر VR إلا إذا كان مناسب للشخصية
+- التركيز على الهوية والشعور
+
+JSON format ONLY."""
+        else:
+            system_prompt = """You are a deep sports psychologist. Mission: Diagnose hidden athletic identity.
+
+**Exact Structure (EXACTLY):**
+
+```json
+{
+  "sports": [
+    {
+      "sport_name": "[Exciting English name]",
+      "what_is_it": [
+        "Sentence 1 - experience description",
+        "Sentence 2 - sport elements",
+        "Sentence 3 - deep feeling"
+      ],
+      "why_suits_you": [
+        "You [psychological trait] - [sport connection]",
+        "[Hidden driver] - [how sport touches it]",
+        "[True pleasure] - [not just movement]"
+      ],
+      "how_it_looks": [
+        "You enter [start description]",
+        "You use [live experience]",
+        "[Psychological result] - inside you know you're growing"
+      ],
+      "important_notes": [
+        "[One powerful identity-touching sentence]",
+        "[Practical advice to start]"
+      ]
+    }
+  ]
+}
+```
+
+**Real Example:**
+"You hate repetition, reject superficiality, and love reaching the true essence"
+
+**CRITICAL:**
+- Use "You" in every why_suits_you sentence
+- Total length: 120-180 words
+- Mention VR only if fits personality
+- Focus on identity and feeling
+
+JSON format ONLY."""
+        
+        import os
+        reasoning_model = os.getenv("CHAT_MODEL_REASONING", "gpt-4o")
+        
         reasoning_data = {
             'inventions': [
                 {
@@ -142,88 +208,8 @@ def _enhance_with_reasoning(
                 }
                 for inv in inventions
             ],
-            'discovery_analysis': discovery_analysis,
             'language': language
         }
-        
-        if language == 'ar':
-            system_prompt = """أنت مستشار رياضي نفسي عميق. مهمتك: تشخيص الهوية الرياضية المخفية للشخص.
-
-**القاعدة الذهبية:**
-- لا تصف الرياضة فقط - شخّص العلاقة بين الشخص والرياضة
-- استخدم لغة "أنت" المباشرة - المس الدوافع العميقة
-
-**البنية الدقيقة:**
-
-🎯 الرياضة المثالية لك: [اسم بالإنجليزية]
-
-💡 ما هي؟
-• [3-4 جمل قصيرة تصف التجربة والإحساس - ليس التاريخ]
-
-🎮 ليه تناسبك؟
-• أنت [صفة نفسية عميقة] - [ربط بالرياضة]
-• [جملة ثانية تشرح الدافع الخفي]
-• [جملة ثالثة تصف المتعة الحقيقية عندهم]
-
-🔍 شكلها الواقعي:
-• تدخل [وصف البداية]
-• تستخدم [وصف التجربة الحية]
-• [النتيجة النفسية] - "لكن داخلك تعرف إنك تنمو"
-
-👁️‍🗨️ ملاحظات مهمة:
-• [جملة واحدة قوية تلامس الهوية]
-• [نصيحة عملية للبدء]
-
-**مثال حقيقي:**
-"أنت تكره التكرار، ترفض السطحية، وتحب توصل لجوهر الشي الحقيقي"
-
-**الطول:** 120-180 كلمة فقط
-**التركيز:** الهوية والشعور، ليس الوصف التقني
-
-JSON format required.
-"""
-        else:
-            system_prompt = """You are a deep sports psychologist. Your mission: Diagnose the hidden athletic identity.
-
-**Golden Rule:**
-- Don't just describe the sport - diagnose the relationship between person and sport
-- Use direct "you" language - touch deep motivations
-
-**Exact Structure:**
-
-🎯 Your Perfect Sport: [English name]
-
-💡 What is it?
-• [3-4 short sentences describing EXPERIENCE and FEELING - not history]
-
-🎮 Why it suits you?
-• You [deep psychological trait] - [connection to sport]
-• [Second sentence explaining hidden driver]
-• [Third sentence describing their true pleasure]
-
-🔍 What it looks like:
-• You enter [describe start]
-• You use [describe live experience]
-• [Psychological result] - "but inside you know you're growing"
-
-👁️‍🗨️ Important notes:
-• [One powerful identity-touching sentence]
-• [Practical advice to start]
-
-**Real Example:**
-"You hate repetition, reject superficiality, and love reaching the true essence of things"
-
-**Length:** 120-180 words only
-**Focus:** Identity and feeling, not technical description
-
-JSON format required.
-"""
-        
-        import os
-        reasoning_model = os.getenv("CHAT_MODEL_REASONING", "gpt-4o")
-        
-        # إضافة السياق الشخصي العميق
-        user_context = _build_personal_context(discovery_analysis, language)
         
         enhanced_json = chat_once(
             client,
@@ -233,45 +219,27 @@ JSON format required.
             ],
             model=reasoning_model,
             temperature=0.7,
-            max_tokens=600  # REDUCED from 2000 for compact responses
+            max_tokens=800
         )
         
-        # Parse and merge enhancements
+        # Parse and merge
         try:
             enhanced_data = json.loads(enhanced_json)
             enhanced_sports = enhanced_data.get('sports', [])
             
             for i, sport in enumerate(enhanced_sports):
                 if i < len(inventions):
-                    inventions[i]['enhanced_label'] = sport.get('enhanced_name', inventions[i].get('sport_label'))
-                    inventions[i]['ai_description'] = sport.get('description', '')
-                    inventions[i]['ai_reasons'] = sport.get('reasons', [])
-        except:
-            pass
+                    inventions[i]['sport_name'] = sport.get('sport_name', inventions[i].get('sport_label'))
+                    inventions[i]['what_is_it'] = sport.get('what_is_it', [])
+                    inventions[i]['why_suits_you'] = sport.get('why_suits_you', [])
+                    inventions[i]['how_it_looks'] = sport.get('how_it_looks', [])
+                    inventions[i]['important_notes'] = sport.get('important_notes', [])
+                    
+        except Exception as e:
+            print(f"[REASONING] JSON parse failed: {e}")
         
     except Exception as e:
         print(f"[REASONING] Enhancement failed: {e}")
-    
-    return inventions
-
-
-def _add_ai_descriptions(
-    inventions: List[Dict],
-    traits: Dict[str, float],
-    language: str
-) -> List[Dict]:
-    """
-    إضافة أوصاف AI للرياضات
-    """
-    for invention in inventions:
-        if 'ai_description' not in invention:
-            # Generate basic description
-            label = invention.get('sport_label', 'رياضة مخصصة')
-            
-            if language == 'ar':
-                invention['ai_description'] = f"{label} - تجربة رياضية فريدة مصممة خصيصاً لك"
-            else:
-                invention['ai_description'] = f"{label} - A unique athletic experience designed specifically for you"
     
     return inventions
 
@@ -282,135 +250,176 @@ def _validate_and_score(
 ) -> List[Dict]:
     """
     التحقق من صحة الاختراعات وتقييمها
-    + التأكد من الإيجاز والوضوح
     """
     for invention in inventions:
-        # Validate description length (max 60 words)
-        desc = invention.get('ai_description', '')
-        if desc:
-            words = desc.split()
-            if len(words) > 60:
-                invention['ai_description'] = ' '.join(words[:60]) + '...'
+        # Map old fields to new structure if needed
+        if 'sport_label' in invention and 'sport_name' not in invention:
+            invention['sport_name'] = invention['sport_label']
         
-        # Validate reasons (max 3 points, each max 12 words)
-        reasons = invention.get('ai_reasons', [])
-        if len(reasons) > 3:
-            reasons = reasons[:3]
-        reasons = [' '.join(r.split()[:12]) for r in reasons]
-        invention['ai_reasons'] = reasons
+        if 'what_is_it' not in invention or not invention['what_is_it']:
+            # Generate from existing data
+            label = invention.get('sport_name', invention.get('sport_label', 'رياضة مخصصة'))
+            base = invention.get('base_sport', '')
+            if base:
+                invention['what_is_it'] = [
+                    f"تجربة رياضية مبتكرة تجمع عناصر {base}",
+                    "مصممة خصيصاً لتناسب شخصيتك",
+                    "تركز على المتعة والتطور المستمر"
+                ]
+            else:
+                invention['what_is_it'] = [
+                    f"{label} - تجربة فريدة",
+                    "مصممة لتلامس دوافعك العميقة",
+                    "كل جلسة فرصة جديدة للنمو"
+                ]
         
-        # Calculate match score
-        match_score = 0.85  # Base score
+        if 'why_suits_you' not in invention or not invention['why_suits_you']:
+            # Generate from traits
+            top_traits = sorted(traits.items(), key=lambda x: x[1], reverse=True)[:3]
+            invention['why_suits_you'] = [
+                f"أنت تمتلك {top_traits[0][0]} بنسبة عالية",
+                "تبحث عن تجربة تلامس شخصيتك الحقيقية",
+                "هذه الرياضة تفهم دوافعك الخفية"
+            ]
         
-        # Bonus for having all fields
-        if all(k in invention for k in ['sport_label', 'ai_description', 'ai_reasons']):
-            match_score += 0.10
+        if 'how_it_looks' not in invention or not invention['how_it_looks']:
+            first_week = invention.get('first_week', {})
+            if first_week:
+                steps = list(first_week.values())[:3]
+                invention['how_it_looks'] = steps if steps else [
+                    "تدخل التجربة بعقل منفتح",
+                    "تستخدم جسمك وعقلك معاً",
+                    "كل لحظة فرصة للنمو"
+                ]
+            else:
+                invention['how_it_looks'] = [
+                    "تبدأ بجلسة قصيرة 10-15 دقيقة",
+                    "تشعر بالاتصال بين العقل والجسد",
+                    "التقدم يأتي طبيعياً مع الممارسة"
+                ]
         
-        invention['match_score'] = min(match_score, 1.0)
+        if 'important_notes' not in invention or not invention['important_notes']:
+            where_start = invention.get('where_to_start', [])
+            invention['important_notes'] = where_start[:2] if where_start else [
+                "ابدأ بدون ضغط أو توقعات",
+                "استمتع بالرحلة أكثر من الوجهة"
+            ]
+        
+        # Validate word count
+        total_words = 0
+        for field in ['what_is_it', 'why_suits_you', 'how_it_looks', 'important_notes']:
+            items = invention.get(field, [])
+            if isinstance(items, list):
+                total_words += sum(len(str(item).split()) for item in items)
+        
+        # Validate "أنت" usage
+        why_suits = invention.get('why_suits_you', [])
+        you_count = sum(1 for item in why_suits if 'أنت' in str(item) or 'You' in str(item))
+        
+        # Calculate score
+        base_score = 85
+        if 120 <= total_words <= 180:
+            base_score += 5
+        if you_count >= 2:
+            base_score += 5
+        if all(k in invention for k in ['sport_name', 'what_is_it', 'why_suits_you']):
+            base_score += 5
+        
+        invention['match_score'] = min(base_score, 100)
+        invention['word_count'] = total_words
+        invention['you_count'] = you_count
     
     return inventions
-    التحقق من صحة الاختراعات وحساب الدرجات
-    """
-    for invention in inventions:
-        # Ensure match_score exists
-        if 'match_score' not in invention:
-            invention['match_score'] = 85  # Default for invented sports
-        
-        # Validate required fields
-        required_fields = ['sport_label']
-        for field in required_fields:
-            if field not in invention:
-                invention[field] = 'Unknown Sport'
-        
-        # Add confidence score
-        layer_z_confidence = invention.get('layer_z_drivers', [])
-        if len(layer_z_confidence) >= 3:
-            invention['confidence'] = 0.9
-        else:
-            invention['confidence'] = 0.7
-    
-    return inventions
 
 
-def _fallback_recommendations(language: str) -> List[Dict]:
+def _build_personal_context(
+    discovery_analysis: Dict, 
+    user_traits: Dict[str, float],
+    language: str
+) -> str:
     """
-    توصيات احتياطية في حالة فشل النظام
-    """
-    if language == 'ar':
-        return [
-            {
-                'sport_label': 'رياضة مخصصة - المرحلة 1',
-                'tagline': 'تجربة فريدة قيد التطوير',
-                'match_score': 75,
-                'fallback': True
-            }
-        ]
-    else:
-        return [
-            {
-                'sport_label': 'Custom Sport - Phase 1',
-                'tagline': 'Unique experience in development',
-                'match_score': 75,
-                'fallback': True
-            }
-        ]
-
-
-def _build_personal_context(discovery_analysis: Dict, language: str) -> str:
-    """
-    بناء السياق الشخصي العميق للمستخدم
+    بناء السياق الشخصي العميق
     """
     
-    # استخراج الهوية الأقوى
+    # Extract dominant identity
     identity_scores = discovery_analysis.get('identity_scores', {})
-    dominant_identity = max(identity_scores.items(), key=lambda x: x[1])[0] if identity_scores else 'explorer'
-    identity_strength = max(identity_scores.values()) if identity_scores else 0.5
+    if identity_scores:
+        dominant_identity = max(identity_scores.items(), key=lambda x: x[1])[0]
+        identity_strength = max(identity_scores.values())
+    else:
+        dominant_identity = 'explorer'
+        identity_strength = 0.5
     
-    # استخراج الدوافع الخفية
+    # Extract hidden drivers
     hidden_drivers = discovery_analysis.get('hidden_drives', [])[:3]
     
-    # استخراج السمات النفسية الأقوى
-    traits = discovery_analysis.get('traits_summary', {})
-    top_traits = sorted(traits.items(), key=lambda x: x[1], reverse=True)[:3]
+    # Extract top traits
+    top_traits = sorted(user_traits.items(), key=lambda x: x[1], reverse=True)[:3]
     
     if language == 'ar':
-        context = f"""
-**السياق الشخصي العميق:**
+        context = f"""**السياق الشخصي العميق:**
 
-🧬 **الهوية الأقوى:** {dominant_identity} ({identity_strength:.0%})
-- هذا الشخص يميل بقوة نحو الهوية: {dominant_identity}
+🧬 الهوية الأقوى: {dominant_identity} ({identity_strength:.0%})
 
-🔥 **الدوافع الخفية (Layer Z):**
-{chr(10).join([f'• {driver}' for driver in hidden_drivers])}
+🔥 الدوافع الخفية (Layer Z):
+{chr(10).join([f'• {driver}' for driver in hidden_drivers]) if hidden_drivers else '• بحث عن المعنى'}
 
-🧠 **السمات النفسية الأقوى:**
+🧠 السمات النفسية الأقوى:
 {chr(10).join([f'• {trait}: {score:.0%}' for trait, score in top_traits])}
 
 **مهمتك:**
-اخترع/اختر رياضة تلامس هذه الهوية والدوافع بعمق.
+اخترع رياضة تلامس هذه الهوية والدوافع بعمق.
 استخدم لغة "أنت" المباشرة.
 اجعلهم يشعرون "هذا أنا تماماً!".
 """
     else:
-        context = f"""
-**Deep Personal Context:**
+        context = f"""**Deep Personal Context:**
 
-🧬 **Dominant Identity:** {dominant_identity} ({identity_strength:.0%})
-- This person strongly leans toward identity: {dominant_identity}
+🧬 Dominant Identity: {dominant_identity} ({identity_strength:.0%})
 
-🔥 **Hidden Drivers (Layer Z):**
-{chr(10).join([f'• {driver}' for driver in hidden_drivers])}
+🔥 Hidden Drivers (Layer Z):
+{chr(10).join([f'• {driver}' for driver in hidden_drivers]) if hidden_drivers else '• Seeking meaning'}
 
-🧠 **Strongest Psychological Traits:**
+🧠 Strongest Traits:
 {chr(10).join([f'• {trait}: {score:.0%}' for trait, score in top_traits])}
 
 **Your Mission:**
-Invent/choose a sport touching this identity and drivers deeply.
+Invent a sport touching this identity and drivers deeply.
 Use direct "you" language.
 Make them feel "This is exactly ME!".
 """
     
     return context
+
+
+def _fallback_recommendations(language: str) -> List[Dict]:
+    """
+    توصيات احتياطية
+    """
+    if language == 'ar':
+        return [
+            {
+                'sport_name': 'رياضة مخصصة',
+                'what_is_it': ['تجربة فريدة قيد التطوير'],
+                'why_suits_you': ['تم تصميمها خصيصاً لك'],
+                'how_it_looks': ['ستكتشفها قريباً'],
+                'important_notes': ['جاري العمل على تخصيصها'],
+                'match_score': 75,
+                'fallback': True
+            }
+        ]
+    else:
+        return [
+            {
+                'sport_name': 'Custom Sport',
+                'what_is_it': ['Unique experience in development'],
+                'why_suits_you': ['Designed specifically for you'],
+                'how_it_looks': ['You will discover it soon'],
+                'important_notes': ['Currently being customized'],
+                'match_score': 75,
+                'fallback': True
+            }
+        ]
 
 
 __all__ = ['generate_complete_sport_recommendations']

@@ -19,7 +19,6 @@ The system combines:
 import json
 import random
 from typing import Dict, List, Any, Optional
-from core.dual_model_client import analyze_user_with_discovery, generate_deep_recommendations_with_reasoning
 
 
 class SportIdentityGenerator:
