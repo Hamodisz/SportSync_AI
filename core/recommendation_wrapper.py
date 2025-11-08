@@ -17,17 +17,63 @@ def generate_advanced_recommendations(
     lang: str
 ) -> Optional[List[Dict[str, Any]]]:
     """
-    توليد توصيات متقدمة باستخدام النظام الكامل
+    توليد توصيات متقدمة باستخدام Sport DNA Generator
     
     Returns:
         List of recommendation cards compatible with SportSync format
     """
     
-    # Try complete system first
+    # Use NEW Sport DNA Generator (الأولوية الأولى!)
+    try:
+        from core.sport_generator import SportDNAGenerator
+        import os
+        
+        print("[WRAPPER] 🧬 Using Sport DNA Generator (NEW SYSTEM)...")
+        
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        generator = SportDNAGenerator(api_key=api_key)
+        
+        # Generate 3 unique sports
+        inventions = []
+        for i in range(3):
+            try:
+                sport = generator.generate_unique_sport(identity)
+                
+                # Validate uniqueness
+                if generator.validate_uniqueness(sport):
+                    inventions.append(sport)
+                    print(f"[WRAPPER] ✅ Sport {i+1}: {sport.get('name_ar', 'Unknown')}")
+                else:
+                    print(f"[WRAPPER] ⚠️ Sport {i+1} failed uniqueness check, regenerating...")
+                    # Try one more time
+                    sport = generator.generate_unique_sport(identity)
+                    if generator.validate_uniqueness(sport):
+                        inventions.append(sport)
+            except Exception as e:
+                print(f"[WRAPPER] Error generating sport {i+1}: {e}")
+        
+        if len(inventions) > 0:
+            # Convert to SportSync card format
+            cards = []
+            for inv in inventions:
+                card = _convert_sport_dna_to_card(inv, identity, lang)
+                if card:
+                    cards.append(card)
+            
+            if len(cards) > 0:
+                print(f"[WRAPPER] 🎯 SUCCESS! Generated {len(cards)} UNIQUE sports")
+                return cards
+                
+    except Exception as e:
+        print(f"[WRAPPER] Sport DNA Generator failed: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    # Fallback: Try complete system
     try:
         from core.complete_sport_system import generate_complete_sport_recommendations
         
-        print("[WRAPPER] Using complete sport system...")
+        print("[WRAPPER] Fallback to complete sport system...")
         
         inventions = generate_complete_sport_recommendations(
             user_answers=answers,
@@ -38,7 +84,6 @@ def generate_advanced_recommendations(
         )
         
         if inventions and len(inventions) > 0:
-            # Convert to SportSync card format
             cards = []
             for inv in inventions:
                 card = _convert_to_card_format(inv, lang)
@@ -209,3 +254,67 @@ def _convert_to_card_format(invention: Dict, lang: str) -> Optional[Dict[str, An
 
 
 __all__ = ['generate_advanced_recommendations']
+
+
+def _convert_sport_dna_to_card(sport: Dict, identity: Dict, lang: str) -> Optional[Dict[str, Any]]:
+    """
+    تحويل Sport DNA إلى صيغة بطاقة SportSync
+    """
+    try:
+        card = {}
+        
+        # sport_label
+        card['sport_label'] = sport.get('name_ar', 'رياضة مخصصة')
+        
+        # what - الوصف
+        description = sport.get('description_ar', '')
+        tagline = sport.get('tagline_ar', '')
+        card['what'] = f"{tagline}\n\n{description}" if tagline else description
+        
+        # why - لماذا هذه الرياضة بالضبط؟
+        why_list = []
+        
+        if identity.get('technical_intuitive', 0) > 0.5:
+            why_list.append("✅ تناسب طبيعتك التقنية والدقيقة")
+        
+        if identity.get('solo_group', 0) > 0.3:
+            why_list.append("✅ مصممة للممارسة الفردية المركزة")
+        
+        if identity.get('calm_adrenaline', 0) > 0.3:
+            why_list.append("✅ توفر الهدوء والتركيز المطلوب")
+        
+        if len(why_list) < 2:
+            why_list.append("✅ رياضة فريدة مصممة خصيصاً لك")
+        
+        card['why'] = why_list[:3]
+        
+        # real - كيف تبدأ؟
+        how_to = sport.get('how_to_play', [])
+        if isinstance(how_to, list):
+            card['real'] = how_to[:3]
+        else:
+            card['real'] = ["ابدأ بخطوات بسيطة", "تدرّج في الصعوبة", "استمتع بالتجربة"]
+        
+        # notes - معلومات إضافية
+        notes = []
+        
+        equipment = sport.get('equipment', [])
+        if equipment:
+            notes.append(f"الأدوات: {', '.join(equipment[:2])}")
+        
+        locations = sport.get('locations', [])
+        if locations:
+            notes.append(f"الأماكن: {', '.join(locations[:2])}")
+        
+        notes.append(f"مستوى الابتكار: {sport.get('innovation_level', 9)}/10")
+        
+        card['notes'] = notes
+        
+        # DNA hash
+        card['dna_hash'] = sport.get('dna_hash', '')
+        
+        return card
+        
+    except Exception as e:
+        print(f"[WRAPPER] Error converting sport DNA to card: {e}")
+        return None
