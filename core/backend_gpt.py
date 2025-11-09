@@ -1276,9 +1276,9 @@ def _parse_llm_response(raw: str) -> Optional[List[Dict[str, str]]]:
             parsed.append({
                 'title': title.strip(),
                 'what': what.strip(),
-                'why': why.strip() or 'تناسب شخصيتك' if lang in ('العربية', 'ar') else 'Fits your personality',
-                'real': real.strip() or 'جرّب بطريقتك' if lang in ('العربية', 'ar') else 'Try it your way',
-                'notes': notes.strip() or 'ابدأ بسيط' if lang in ('العربية', 'ar') else 'Start simple',
+                'why': why.strip() or 'Fits your style',
+                'real': real.strip() or 'Try it your way',
+                'notes': notes.strip() or 'Start simple',
             })
     return parsed if len(parsed) >= 2 else None  # نقبل 2+ بطاقات (بدل 3)
 
