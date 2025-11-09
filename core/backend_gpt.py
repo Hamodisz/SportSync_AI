@@ -20,16 +20,16 @@ from typing import Any, Dict, List, Sequence, Optional, Tuple
 try:  # Optional LLM client; fallback works without it.
     from core.llm_client import make_llm_client, pick_models, chat_once  # type: ignore
     from core.dual_model_client import (  # type: ignore
-        analyze_user_with_reasoning,
-        generate_recommendations_with_intelligence
+        analyze_user_with_discovery,
+        invent_sport_identities_with_reasoning
     )
     DUAL_MODEL_ENABLED = True
 except Exception:  # pragma: no cover - LLM unavailable
     make_llm_client = None
     pick_models = None
     chat_once = None
-    analyze_user_with_reasoning = None
-    generate_recommendations_with_intelligence = None
+    analyze_user_with_discovery = None
+    invent_sport_identities_with_reasoning = None
     DUAL_MODEL_ENABLED = False
 from core.user_logger import log_event, log_recommendation_result
 
@@ -1319,34 +1319,34 @@ def _llm_cards_dual_model(
     
     print("[DUAL_MODEL] Starting dual-model recommendation pipeline...")
     
-    # Step 1: Deep analysis with Reasoning Model
-    print("[DUAL_MODEL] Phase 1: Analyzing user with Reasoning Model...")
-    analysis = analyze_user_with_reasoning(answers, identity, traits or {}, lang)
+    # Step 1: Quick discovery analysis with Discovery Model
+    print("[DUAL_MODEL] Phase 1: Analyzing user with Discovery Model...")
+    analysis = analyze_user_with_discovery(answers, identity, traits or {}, lang)
     
     if not analysis:
-        print("[DUAL_MODEL] Reasoning analysis failed, falling back...")
+        print("[DUAL_MODEL] Discovery analysis failed, falling back...")
         return None
     
-    # Step 2: Creative generation with Intelligence Model
-    print("[DUAL_MODEL] Phase 2: Generating recommendations with Intelligence Model...")
-    cards_raw = generate_recommendations_with_intelligence(analysis, drivers, lang)
+    # Step 2: Invent unique sports with Reasoning Model
+    print("[DUAL_MODEL] Phase 2: Inventing unique sports with Reasoning Model...")
+    inventions = invent_sport_identities_with_reasoning(analysis, traits or {}, drivers, lang, num_inventions=3)
     
-    if not cards_raw:
-        print("[DUAL_MODEL] Intelligence generation failed, falling back...")
+    if not inventions:
+        print("[DUAL_MODEL] Sport invention failed, falling back...")
         return None
     
-    # Step 3: Format and validate cards
+    # Step 3: Format invented sports as cards
     cards: List[Dict[str, Any]] = []
-    for item in cards_raw[:3]:
-        if not isinstance(item, dict):
+    for invention in (inventions or [])[:3]:
+        if not isinstance(invention, dict):
             continue
         
         card_struct = _format_llm_card({
-            'title': str(item.get('sport_label') or item.get('title') or ''),
-            'what': str(item.get('what') or item.get('description') or ''),
-            'why': str(item.get('why') or item.get('fit') or ''),
-            'real': str(item.get('real') or item.get('experience') or ''),
-            'notes': str(item.get('notes') or item.get('tips') or ''),
+            'title': str(invention.get('sport_label') or invention.get('title') or ''),
+            'what': str(invention.get('what') or invention.get('description') or ''),
+            'why': str(invention.get('why_you') or invention.get('why') or ''),
+            'real': str(invention.get('first_week') or invention.get('real') or invention.get('experience') or ''),
+            'notes': str(invention.get('reality_mode') or invention.get('notes') or ''),
         }, lang)
         
         if not _quality_filter(card_struct, lang):
