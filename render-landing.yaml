@@ -1,0 +1,40 @@
+# Render Configuration for Landing Page
+# ===========================================
+
+services:
+  # Landing Page (Static Site)
+  - type: web
+    name: sportsync-landing
+    runtime: static
+    buildCommand: echo "Static site - no build needed"
+    staticPublishPath: ./web-landing
+    envVars:
+      - key: NODE_VERSION
+        value: 18
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+  # Quiz Backend (موجود - Python/Streamlit)
+  - type: web
+    name: sportsync-ai-quiz
+    runtime: python
+    plan: free
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: streamlit run app_streamlit.py --server.port=$PORT --server.address=0.0.0.0
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: OPENAI_API_KEY
+        sync: false

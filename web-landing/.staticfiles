@@ -1,0 +1,7 @@
+# Render Static Site Configuration
+# Files to serve from web-landing directory
+
+/*
+  /*.html
+  /*.css
+  /*.js

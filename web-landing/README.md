@@ -67,3 +67,80 @@ window.location.href = 'https://sportsync-ai-quiz.onrender.com';
 ---
 
 تم التصميم بواسطة Claude 💚
+
+---
+
+## 🔷 النشر على Render:
+
+### **الطريقة 1: Static Site (موصى بها)**
+
+1. **افتح** [render.com](https://render.com)
+2. **New** → **Static Site**
+3. **Connect GitHub** → اختر `SportSync_AI-1`
+4. **Settings:**
+   ```
+   Name: sportsync-landing
+   Branch: main
+   Root Directory: web-landing
+   Build Command: (leave empty)
+   Publish Directory: .
+   ```
+5. **Create Static Site** 🚀
+
+#### الرابط:
+```
+https://sportsync-landing.onrender.com
+```
+
+---
+
+### **الطريقة 2: Web Service (إذا تبي server-side)**
+
+1. **New** → **Web Service**
+2. **Connect Repository**: `SportSync_AI-1`
+3. **Settings:**
+   ```
+   Name: sportsync-landing-web
+   Runtime: Static
+   Build Command: echo "Ready"
+   Start Command: (leave empty)
+   ```
+4. استخدم `render-landing.yaml` (موجود في الجذر)
+
+---
+
+## 🔗 الربط بين المواقع:
+
+### **على Vercel:**
+```
+https://sportsync-ai.vercel.app (Landing)
+```
+
+### **على Render:**
+```
+https://sportsync-landing.onrender.com (Landing)
+https://sportsync-ai-quiz.onrender.com (Quiz/Backend)
+```
+
+### **تحديث الروابط:**
+في `app.js` السطر 84، غيّر:
+```javascript
+// للـ Render:
+window.location.href = 'https://sportsync-ai-quiz.onrender.com';
+
+// أو للـ Vercel إذا نشرت الـ Quiz هناك:
+window.location.href = 'https://sportsync-quiz.vercel.app';
+```
+
+---
+
+## 🎯 التوصية:
+
+**الأفضل:**
+- **Landing Page**: Vercel (أسرع + أفضل performance)
+- **Quiz Backend**: Render (Python/Streamlit يشتغل أحسن)
+
+**البديل:**
+- كل شي على Render (أسهل في الإدارة)
+
+---
