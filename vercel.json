@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "name": "sportsync-landing",
   "builds": [
     {
       "src": "web-landing/**",
@@ -27,8 +28,15 @@
         {
           "key": "X-XSS-Protection",
           "value": "1; mode=block"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
         }
       ]
     }
-  ]
+  ],
+  "github": {
+    "silent": true
+  }
 }

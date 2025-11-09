@@ -1,0 +1,56 @@
+# Vercel Ignore - تخفيف حجم المشروع
+# ==========================================
+
+# Ignore all except web-landing
+*
+!web-landing/
+!web-landing/**
+
+# Ignore heavy files
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.mp3
+*.wav
+*.pdf
+*.zip
+*.tar.gz
+
+# Ignore Python/Data
+*.pyc
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Ignore Node modules
+node_modules/
+.npm/
+.yarn/
+
+# Ignore data directories
+data/
+outputs/
+logs/
+database/
+ai_avatars/
+content_studio/
+remotion/
+external/
+vendor/
+
+# Ignore git
+.git/
+.gitignore
+
+# Keep only landing page files
+!web-landing/index.html
+!web-landing/styles.css
+!web-landing/app.js
+!web-landing/README.md
+!vercel.json
