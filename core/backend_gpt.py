@@ -1600,35 +1600,37 @@ def _generate_cards(
 
 def _format_kb_card(card: Dict[str, Any], lang: str, index: int = 0) -> str:
     """
-    تنسيق خاص لبطاقات KB التي تحتوي على سرد قصصي كامل
-    يحترم النصوص الطويلة ولا يقصها
+    تنسيق مختصر لبطاقات KB - نص أقصر وأوضح
     """
     is_ar = lang in ('العربية', 'ar')
     
+    # Helper function لتقصير النصوص
+    def _shorten(text: str, max_words: int = 40) -> str:
+        if not text:
+            return ""
+        words = text.split()
+        if len(words) <= max_words:
+            return text
+        return " ".join(words[:max_words]) + "..."
+    
     # العناوين حسب الترتيب
-    headers_ar = ["🟢 التوصية رقم 1", "🌿 التوصية رقم 2", "🔮 التوصية رقم 3 (ابتكارية)"]
-    headers_en = ["🟢 Recommendation #1", "🌿 Recommendation #2", "🔮 Recommendation #3 (Innovative)"]
+    headers_ar = ["🟢 التوصية رقم 1", "🌿 التوصية رقم 2", "🔮 التوصية رقم 3"]
+    headers_en = ["🟢 Recommendation #1", "🌿 Recommendation #2", "🔮 Recommendation #3"]
     header = (headers_ar if is_ar else headers_en)[min(index, 2)]
     
     # استخراج البيانات
     sport_label = card.get('sport_label', '')
-    what = card.get('what_it_looks_like', '')
-    why = card.get('why_you', '')
-    first_week = card.get('first_week', '')
-    progress = card.get('progress_markers', '')
-    win = card.get('win_condition', '')
+    what = _shorten(card.get('what_it_looks_like', ''), 35)
+    why = _shorten(card.get('why_you', ''), 35)
+    first_week = _shorten(card.get('first_week', ''), 30)
     skills = card.get('core_skills', [])
     mode = card.get('mode', '')
-    vr = card.get('variant_vr', '')
-    no_vr = card.get('variant_no_vr', '')
-    real_examples = card.get('real_world_examples', '')
-    psych_hook = card.get('psychological_hook', '')
     
-    # بناء البطاقة
+    # بناء البطاقة (مختصرة)
     sections = [header, ""]
     
     if sport_label:
-        sections.append(f"🎯 {'الرياضة المثالية لك' if is_ar else 'Your Ideal Sport'}: **{sport_label}**")
+        sections.append(f"🎯 **{sport_label}**")
         sections.append("")
     
     if what:
@@ -1637,55 +1639,20 @@ def _format_kb_card(card: Dict[str, Any], lang: str, index: int = 0) -> str:
         sections.append("")
     
     if why:
-        sections.append(f"🎮 {'ليه تناسبك؟' if is_ar else 'Why does it fit you?'}")
+        sections.append(f"🎮 {'ليه تناسبك؟' if is_ar else 'Why you?'}")
         sections.append(why)
         sections.append("")
     
-    if skills:
-        sections.append(f"🧩 {'مهارات أساسية' if is_ar else 'Core Skills'}:")
-        for skill in skills[:6]:  # نحد عند 6 مهارات
-            sections.append(f"• {skill}")
-        sections.append("")
-    
-    if win:
-        sections.append(f"🏁 {'كيف تفوز؟' if is_ar else 'How to win?'}")
-        sections.append(win)
+    if skills and len(skills) > 0:
+        sections.append(f"🧩 {'مهارات' if is_ar else 'Skills'}: {', '.join(skills[:3])}")
         sections.append("")
     
     if first_week:
-        sections.append(f"🚀 {'أول أسبوع' if is_ar else 'First Week'}:")
-        sections.append(first_week)
+        sections.append(f"🚀 {'ابدأ' if is_ar else 'Start'}: {first_week}")
         sections.append("")
     
-    if progress:
-        sections.append(f"✅ {'علامات التقدم' if is_ar else 'Progress Markers'}:")
-        sections.append(progress)
-        sections.append("")
-    
-    # ملاحظات إضافية
-    notes = []
     if mode:
-        notes.append(f"{'وضع اللعب' if is_ar else 'Mode'}: {mode}")
-    if no_vr:
-        notes.append(f"{'بدون VR' if is_ar else 'Non-VR'}: {no_vr}")
-    if vr:
-        notes.append(f"VR: {vr}")
-    
-    if notes:
-        sections.append(f"👁️‍🗨️ {'ملاحظات' if is_ar else 'Notes'}:")
-        sections.append("\n".join(notes))
-        sections.append("")
-    
-    if real_examples:
-        sections.append(f"📍 {'أماكن حقيقية' if is_ar else 'Real Places'}:")
-        sections.append(real_examples)
-        sections.append("")
-    
-    if psych_hook:
-        hook_title = 'ليش راح تدمن عليها' if is_ar else "Why You'll Get Hooked"
-        sections.append(f"🧠 {hook_title}:")
-        sections.append(psych_hook)
-        sections.append("")
+        sections.append(f"👁️ {mode}")
     
     return "\n".join(sections).strip()
 
