@@ -478,12 +478,20 @@ if st.session_state.get("chat_open", False):
             )
         except Exception:
             pass
-        typewriter_chat("user", user_text, TYPE_SPEED_MS)
+        
+        # عرض رسالة المستخدم مباشرة (بدون typewriter)
+        with st.chat_message("user"):
+            st.markdown(user_text)
 
         # حضّر معطيات المكالمة
         recs_for_chat = [ _safe_str(r) for r in st.session_state.get("recs", [])[:3] ]
         ratings = [st.session_state.get(f"rating_{i}", st.session_state["ratings"][i]) for i in range(3)]
 
+        # عرض thinking indicator
+        with st.chat_message("assistant"):
+            thinking_placeholder = st.empty()
+            thinking_placeholder.markdown("_🤔 يفكّر..._" if is_ar else "_🤔 Thinking..._")
+        
         # ردّ المساعد — ستريم حقيقي إن توفر، وإلا كتابة حيّة للناتج النهائي
         if start_dynamic_chat_stream is not None:
             with st.chat_message("assistant"):
