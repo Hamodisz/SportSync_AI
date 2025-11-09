@@ -818,20 +818,23 @@ def _quality_filter(card: Dict[str, Any], lang: str) -> bool:
         what_text = " ".join(what)
     else:
         what_text = str(what)
-    # خففنا من 220 إلى 100 حرف
-    if len(_scrub_forbidden(what_text, lang)) < 100:
+    # خففنا من 220 إلى 50 حرف فقط
+    if len(_scrub_forbidden(what_text, lang)) < 50:
         return False
+    
+    # تحقق من الكلمات الممنوعة بس ما نرفض - warning فقط
     for section in ("why_you", "real_world", "notes"):
         values = card.get(section, [])
         if isinstance(values, list):
             cleaned = [str(item).strip() for item in values if str(item).strip()]
         else:
             cleaned = [seg.strip() for seg in str(values).splitlines() if seg.strip()]
-        # خففنا من 2 إلى 1 عنصر
+        # خففنا: نقبل حتى لو ما فيه عناصر
         if len(cleaned) < 1:
-            return False
+            continue  # ما نرفض، نكمّل
         joined = " ".join(cleaned).lower()
-        for term in ("minute", "hour", "week", "cost", "price", "equipment", "location", "stadium", "gear", "ball", "court", "مكان", "موقع", "ساعة", "دقيقة", "معدات", "ملعب", "صالة", "تكلفة", "سعر", "وقت"):
+        # فقط نرفض لو فيه كلمات تكلفة/وقت واضحة جداً
+        for term in ("cost", "price", "تكلفة", "سعر", "رسوم", "مجان"):
             if term in joined:
                 return False
     return True
