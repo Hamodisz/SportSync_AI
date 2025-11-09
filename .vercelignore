@@ -1,56 +1,48 @@
-# Vercel Ignore - تخفيف حجم المشروع
+# Vercel Ignore - Static Site Only
 # ==========================================
 
-# Ignore all except web-landing
-*
-!web-landing/
-!web-landing/**
-
-# Ignore heavy files
-*.mp4
-*.mov
-*.avi
-*.mkv
-*.mp3
-*.wav
-*.pdf
-*.zip
-*.tar.gz
-
-# Ignore Python/Data
+# Ignore ALL Python
+*.py
 *.pyc
 __pycache__/
-*.py[cod]
-*.so
-*.egg
-*.egg-info/
-.pytest_cache/
-htmlcov/
-.coverage
+requirements.txt
+Dockerfile
 
-# Ignore Node modules
-node_modules/
-.npm/
-.yarn/
-
-# Ignore data directories
+# Ignore data/models
 data/
 outputs/
-logs/
-database/
 ai_avatars/
 content_studio/
 remotion/
 external/
 vendor/
+analysis/
+core/
+logic/
+ml/
+publishers/
+quiz_service/
+tests/
+tools/
+users/
+video_pipeline/
 
-# Ignore git
-.git/
-.gitignore
+# Ignore configs
+render.yaml
+render-landing.yaml
+*.toml
+*.ini
+Makefile
 
-# Keep only landing page files
-!web-landing/index.html
-!web-landing/styles.css
-!web-landing/app.js
-!web-landing/README.md
+# Ignore media
+*.mp4
+*.mov
+*.mp3
+*.wav
+*.pdf
+
+# Keep ONLY web-landing
+!web-landing/
+!web-landing/**
+!package.json
 !vercel.json
