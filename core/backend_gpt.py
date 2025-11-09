@@ -1577,15 +1577,6 @@ def _generate_cards(
     except Exception as e:
         print(f"[WARN] KB Ranker failed: {e}, using fallback blueprints")
     
-        if len(cards) >= 3:
-            print(f"[REC] Using KB Ranker (identities files) - {len(cards)} cards")
-            return cards[:3]
-        else:
-            print(f"[WARN] KB Ranker returned only {len(cards)} cards, falling back to blueprints")
-            
-    except Exception as e:
-        print(f"[WARN] KB Ranker failed: {e}, using fallback blueprints")
-    
     # Fallback: استخدام الكود القديم (blueprints)
     print("[REC] Using fallback blueprints")
     session_id = _session_id_from_answers(answers)
