@@ -1271,15 +1271,16 @@ def _parse_llm_response(raw: str) -> Optional[List[Dict[str, str]]]:
         why = lower.get('why') or lower.get('fit') or lower.get('reason') or ''
         real = lower.get('real') or lower.get('realistic') or lower.get('experience') or ''
         notes = lower.get('notes') or lower.get('tips') or lower.get('remarks') or ''
-        if all(p.strip() for p in (title, what, why, real, notes)):
+        # نقبل البطاقة لو فيها على الأقل title و what (الباقي optional)
+        if title.strip() and what.strip():
             parsed.append({
                 'title': title.strip(),
                 'what': what.strip(),
-                'why': why.strip(),
-                'real': real.strip(),
-                'notes': notes.strip(),
+                'why': why.strip() or 'تناسب شخصيتك' if lang in ('العربية', 'ar') else 'Fits your personality',
+                'real': real.strip() or 'جرّب بطريقتك' if lang in ('العربية', 'ar') else 'Try it your way',
+                'notes': notes.strip() or 'ابدأ بسيط' if lang in ('العربية', 'ar') else 'Start simple',
             })
-    return parsed if len(parsed) >= 3 else None
+    return parsed if len(parsed) >= 2 else None  # نقبل 2+ بطاقات (بدل 3)
 
 
 def _format_llm_card(data: Dict[str, str], lang: str) -> Dict[str, Any]:
@@ -1444,9 +1445,15 @@ def _llm_cards(
     except Exception:
         return None
 
+    # Debug: شوف الرد من OpenAI
+    print(f"[DEBUG] LLM raw response (first 500 chars): {raw[:500] if raw else 'EMPTY'}")
+    
     parsed = _parse_llm_response(raw)
     if not parsed:
+        print(f"[DEBUG] Parsing failed - raw response length: {len(raw) if raw else 0}")
         return None
+    
+    print(f"[DEBUG] Successfully parsed {len(parsed)} cards from LLM")
 
     cards: List[Dict[str, Any]] = []
     for item in parsed[:3]:
