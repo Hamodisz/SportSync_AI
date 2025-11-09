@@ -818,7 +818,8 @@ def _quality_filter(card: Dict[str, Any], lang: str) -> bool:
         what_text = " ".join(what)
     else:
         what_text = str(what)
-    if len(_scrub_forbidden(what_text, lang)) < 220:
+    # خففنا من 220 إلى 100 حرف
+    if len(_scrub_forbidden(what_text, lang)) < 100:
         return False
     for section in ("why_you", "real_world", "notes"):
         values = card.get(section, [])
@@ -826,7 +827,8 @@ def _quality_filter(card: Dict[str, Any], lang: str) -> bool:
             cleaned = [str(item).strip() for item in values if str(item).strip()]
         else:
             cleaned = [seg.strip() for seg in str(values).splitlines() if seg.strip()]
-        if len(cleaned) < 2:
+        # خففنا من 2 إلى 1 عنصر
+        if len(cleaned) < 1:
             return False
         joined = " ".join(cleaned).lower()
         for term in ("minute", "hour", "week", "cost", "price", "equipment", "location", "stadium", "gear", "ball", "court", "مكان", "موقع", "ساعة", "دقيقة", "معدات", "ملعب", "صالة", "تكلفة", "سعر", "وقت"):
@@ -1456,21 +1458,39 @@ def _llm_cards(
     print(f"[DEBUG] Successfully parsed {len(parsed)} cards from LLM")
 
     cards: List[Dict[str, Any]] = []
-    for item in parsed[:3]:
+    for idx, item in enumerate(parsed[:3]):
+        print(f"[DEBUG] Processing card {idx+1}: keys={list(item.keys())}")
+        
         if not isinstance(item, dict):
+            print(f"[DEBUG] Card {idx+1} REJECTED: not a dict")
             return None
+        
+        # Helper: تحويل arrays أو strings لـ string
+        def _to_str(val):
+            if isinstance(val, list):
+                return '\n'.join(str(v) for v in val if v)
+            return str(val) if val else ''
+            
         card_struct = _format_llm_card({
-            'title': str(item.get('sport_label') or item.get('title') or ''),
-            'what': str(item.get('what') or item.get('description') or ''),
-            'why': str(item.get('why') or item.get('fit') or ''),
-            'real': str(item.get('real') or item.get('experience') or ''),
-            'notes': str(item.get('notes') or item.get('tips') or ''),
+            'title': _to_str(item.get('sport_label') or item.get('title')),
+            'what': _to_str(item.get('what') or item.get('description')),
+            'why': _to_str(item.get('why') or item.get('fit')),
+            'real': _to_str(item.get('real') or item.get('experience')),
+            'notes': _to_str(item.get('notes') or item.get('tips')),
         }, lang)
+        
         if not _quality_filter(card_struct, lang):
+            print(f"[DEBUG] Card {idx+1} REJECTED: failed quality filter")
             return None
+            
         if any(_jaccard(_card_signature_text(existing), _card_signature_text(card_struct)) > 0.6 for existing in cards):
+            print(f"[DEBUG] Card {idx+1} REJECTED: too similar to existing card")
             return None
+            
+        print(f"[DEBUG] Card {idx+1} ACCEPTED")
         cards.append(card_struct)
+        
+    print(f"[DEBUG] Final: {len(cards)} cards accepted")
     return cards
 
 
