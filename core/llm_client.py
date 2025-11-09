@@ -312,9 +312,37 @@ def chat_once(
     مكالمة دردشة واحدة مع دوران تلقائي على سلسلة موديلات (لو تم تمريرها).
     - عند 400/رفض باراميترات: نحاول نفس الموديل بإزالة penalties وضبط top_p=1
     - عند "model not found"/"decommissioned"/404: ننتقل للمرشح التالي
+    - عند فشل المصادقة: رسائل واضحة مع روابط مفيدة
     """
     if client is None:
-        raise RuntimeError("لا يوجد عميل LLM (المفتاح غير مضبوط أو فشل التهيئة)")
+        error_msg = (
+            "\n❌ خطأ: لا يوجد عميل LLM - المفتاح غير مضبوط!\n"
+            "\n📋 خطوات الحل:\n"
+            "1. احصل على مفتاح API مجاني من:\n"
+            "   • Groq (مجاني): https://console.groq.com/keys\n"
+            "   • أو OpenAI (مدفوع): https://platform.openai.com/api-keys\n"
+            "\n2. ضعه في ملف .env:\n"
+            "   GROQ_API_KEY=gsk_your_key_here\n"
+            "   أو\n"
+            "   OPENAI_API_KEY=sk-proj-your_key_here\n"
+            "\n3. احفظ الملف وأعد تشغيل التطبيق\n"
+            "\n💡 بديل: فعّل وضع KB فقط في .env:\n"
+            "   ENABLE_KB_FALLBACK=true\n"
+            "\n"
+            "ERROR: No LLM client - API key not configured!\n"
+            "\nSOLUTIONS:\n"
+            "1. Get FREE API key from:\n"
+            "   • Groq: https://console.groq.com/keys\n"
+            "   • Or OpenAI: https://platform.openai.com/api-keys\n"
+            "\n2. Add to .env file:\n"
+            "   GROQ_API_KEY=gsk_your_key_here\n"
+            "   or\n"
+            "   OPENAI_API_KEY=sk-proj-your_key_here\n"
+            "\n3. Save and restart app\n"
+            "\nALTERNATIVE: Enable KB-only mode in .env:\n"
+            "   ENABLE_KB_FALLBACK=true\n"
+        )
+        raise RuntimeError(error_msg)
 
     # ابنِ قائمة المرشحين
     candidate_models = [_remap_model(x) for x in _split_models_csv(model)]
@@ -375,6 +403,33 @@ def chat_once(
             except Exception as e:
                 last_err = e
                 emsg = str(e).lower()
+                
+                # معالجة خاصة لأخطاء المصادقة
+                if any(k in emsg for k in ["authentication", "unauthorized", "invalid api key", "incorrect api key", "401"]):
+                    error_msg = (
+                        "\n❌ خطأ في المصادقة: مفتاح API غير صحيح أو منتهي الصلاحية!\n"
+                        "\n📋 خطوات الحل:\n"
+                        "1. تحقق من مفتاح API في ملف .env\n"
+                        "2. مفاتيح Groq تبدأ بـ: gsk_\n"
+                        "3. مفاتيح OpenAI تبدأ بـ: sk-proj- أو sk-\n"
+                        "4. لا توجد مسافات أو علامات تنصيص حول المفتاح\n"
+                        "\n🔑 احصل على مفتاح جديد:\n"
+                        "   • Groq (مجاني): https://console.groq.com/keys\n"
+                        "   • OpenAI (مدفوع): https://platform.openai.com/api-keys\n"
+                        "\n"
+                        "ERROR: Authentication failed - Invalid or expired API key!\n"
+                        "\nSOLUTIONS:\n"
+                        "1. Check your API key in .env file\n"
+                        "2. Groq keys start with: gsk_\n"
+                        "3. OpenAI keys start with: sk-proj- or sk-\n"
+                        "4. No spaces or quotes around the key\n"
+                        "\nGET NEW KEY:\n"
+                        "   • Groq (free): https://console.groq.com/keys\n"
+                        "   • OpenAI: https://platform.openai.com/api-keys\n"
+                    )
+                    _log(error_msg)
+                    raise RuntimeError(error_msg) from e
+                
                 _maybe_log_once(f"chat attempt#{attempt} failed on {model_id}: {e!r}")
 
                 # الموديل متوقف/غير موجود → انتقل للمرشح التالي فورًا
