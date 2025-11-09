@@ -45,12 +45,14 @@ def _init_dual_models():
     DISCOVERY_MODEL = (
         os.getenv("CHAT_MODEL_DISCOVERY") or 
         os.getenv("INTELLIGENCE_MODEL") or 
-        "o4-mini"
+        os.getenv("AI_INTELLIGENCE_MODEL") or
+        "gpt-4o-mini"  # Default: OpenAI fast model
     )
     REASONING_MODEL = (
         os.getenv("CHAT_MODEL_REASONING") or 
         os.getenv("REASONING_MODEL") or 
-        "gpt-5"
+        os.getenv("AI_REASONING_MODEL") or
+        "gpt-4o"  # Default: OpenAI reasoning model
     )
     
     print(f"[DUAL_MODEL] Initialized:")

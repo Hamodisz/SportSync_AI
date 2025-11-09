@@ -33,14 +33,28 @@ services:
       - key: DEEPSEEK_API_KEY
         sync: false
       
-      # Model Configuration
+      # Model Configuration (Dual Model System)
       - key: AI_FAST_MODEL
         value: gpt-3.5-turbo
       
       - key: AI_REASONING_MODEL
-        value: gpt-4o-mini
+        value: gpt-4o
       
       - key: AI_INTELLIGENCE_MODEL
+        value: gpt-4o-mini
+      
+      # Dual Model: Discovery (Fast Intelligence)
+      - key: CHAT_MODEL_DISCOVERY
+        value: gpt-4o-mini
+      
+      - key: INTELLIGENCE_MODEL
+        value: gpt-4o-mini
+      
+      # Dual Model: Reasoning (Deep Thinking)
+      - key: CHAT_MODEL_REASONING
+        value: gpt-4o
+      
+      - key: REASONING_MODEL
         value: gpt-4o
       
       - key: CHAT_MODEL
