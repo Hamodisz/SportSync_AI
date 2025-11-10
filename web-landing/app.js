@@ -153,12 +153,9 @@ window.onclick = function(event) {
 
 function loginWithGoogle() {
     // TODO: Replace with actual Supabase OAuth
-    alert('🚧 Google Sign-In قيد التطوير!\n\nسيتم إضافته قريباً مع:\n✅ Supabase Auth\n✅ Session Management\n✅ User Dashboard');
-    
-    // Temporary: Redirect to quiz
-    setTimeout(() => {
-        window.location.href = 'https://sportsync-ai-quiz.onrender.com';
-    }, 2000);
+    // For now: Redirect directly to quiz
+    closeAuthModal();
+    window.location.href = '/quiz.html';
 }
 
 // ==========================================
