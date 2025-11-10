@@ -144,3 +144,77 @@ window.location.href = 'https://sportsync-quiz.vercel.app';
 - كل شي على Render (أسهل في الإدارة)
 
 ---
+
+---
+
+## 🔷 تحديث: النشر على Render (الطريقة الصحيحة)
+
+### **⚠️ مهم: Render مختلف عن Vercel!**
+
+Render يحتاج إعدادات خاصة. اتبع هذه الخطوات بالضبط:
+
+---
+
+### **الطريقة الموصى بها: Static Site**
+
+1. **افتح** https://dashboard.render.com
+2. **New** → **Static Site**
+3. **Connect Repository**: `SportSync_AI-1`
+
+4. **⚡ الإعدادات الصحيحة (مهمة جداً!):**
+   ```
+   Name: sportsync-landing
+   Branch: main
+   Root Directory: web-landing
+   Build Command: (leave empty أو: echo "Ready")
+   Publish Directory: .
+   Auto-Deploy: Yes
+   ```
+
+5. **Create Static Site** ✅
+
+---
+
+### **الطريقة البديلة: Blueprint (أوتوماتيك)**
+
+استخدم `render-landing.yaml`:
+
+1. **New** → **Blueprint**
+2. **Connect Repository**: `SportSync_AI-1`
+3. اختر `render-landing.yaml`
+4. **Apply**
+
+---
+
+### **التحقق من عمل الموقع:**
+
+بعد النشر، تأكد إن الملفات ظاهرة:
+```
+https://your-app.onrender.com/
+https://your-app.onrender.com/styles.css
+https://your-app.onrender.com/app.js
+```
+
+لو ما طلعوا، راجع:
+- ✅ Root Directory = `web-landing`
+- ✅ Publish Directory = `.`
+- ✅ الملفات موجودة في `/web-landing/`
+
+---
+
+### **📊 المقارنة: Vercel vs Render**
+
+| الميزة | Vercel | Render |
+|--------|--------|--------|
+| **Deploy Time** | ~30 ثانية ⚡ | ~2 دقيقة |
+| **Auto-Deploy** | ✅ فوري | ✅ فوري |
+| **Custom Domain** | ✅ مجاني | ✅ مجاني |
+| **SSL** | ✅ تلقائي | ✅ تلقائي |
+| **Config** | `vercel.json` | `render.yaml` أو UI |
+| **SPA Support** | ✅ ممتاز | ✅ يحتاج `_redirects` |
+
+**التوصية:**
+- **Landing Page**: Vercel (أسرع وأسهل) ✅
+- **Backend/API**: Render (Python/Streamlit)
+
+---
