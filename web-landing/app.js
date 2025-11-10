@@ -115,3 +115,128 @@ window.addEventListener('scroll', () => {
 });
 
 console.log('🚀 SportSync AI Loaded Successfully!');
+// ==========================================
+// Modal Functions
+// ==========================================
+
+function showAuthModal() {
+    document.getElementById('authModal').style.display = 'block';
+}
+
+function closeAuthModal() {
+    document.getElementById('authModal').style.display = 'none';
+}
+
+function openFeedback() {
+    document.getElementById('feedbackModal').style.display = 'block';
+}
+
+function closeFeedbackModal() {
+    document.getElementById('feedbackModal').style.display = 'none';
+}
+
+// Close modal on outside click
+window.onclick = function(event) {
+    const authModal = document.getElementById('authModal');
+    const feedbackModal = document.getElementById('feedbackModal');
+    if (event.target == authModal) {
+        closeAuthModal();
+    }
+    if (event.target == feedbackModal) {
+        closeFeedbackModal();
+    }
+}
+
+// ==========================================
+// Google OAuth (Placeholder - needs Supabase)
+// ==========================================
+
+function loginWithGoogle() {
+    // TODO: Replace with actual Supabase OAuth
+    alert('🚧 Google Sign-In قيد التطوير!\n\nسيتم إضافته قريباً مع:\n✅ Supabase Auth\n✅ Session Management\n✅ User Dashboard');
+    
+    // Temporary: Redirect to quiz
+    setTimeout(() => {
+        window.location.href = 'https://sportsync-ai-quiz.onrender.com';
+    }, 2000);
+}
+
+// ==========================================
+// Feedback Submission
+// ==========================================
+
+function submitFeedback(event) {
+    event.preventDefault();
+    
+    const feedbackText = document.getElementById('feedbackText').value;
+    const feedbackEmail = document.getElementById('feedbackEmail').value;
+    
+    // TODO: Send to backend
+    console.log('Feedback:', { text: feedbackText, email: feedbackEmail });
+    
+    // Show success message
+    alert('✅ شكراً لمشاركة رأيك!\n\nسنراجع ملاحظاتك ونحسّن التجربة.');
+    
+    // Reset form and close
+    document.getElementById('feedbackForm').reset();
+    closeFeedbackModal();
+}
+
+console.log('🚀 SportSync AI - Auth & Feedback Ready!');
+// ==========================================
+// Language Switcher
+// ==========================================
+
+const translations = {
+    ar: {
+        mission: 'نخترع لك رياضتك الخاصة',
+        title: 'اكتشف رياضتك المثالية',
+        subtitle: 'بذكاء اصطناعي متقدم',
+        vision: 'الرؤية: كل شخص يستحق رياضة تناسب DNA شخصيته الفريدة',
+        goal: 'الهدف: نحلل 141 طبقة نفسية لنخترع لك تجربة رياضية لا تتكرر',
+        cta: '🚀 ابدأ الآن - سجّل دخول مجاناً',
+        liveUsers: 'اكتشفوا رياضتهم اليوم'
+    },
+    en: {
+        mission: 'We invent your unique sport',
+        title: 'Discover Your Perfect Sport',
+        subtitle: 'With Advanced AI',
+        vision: 'Vision: Everyone deserves a sport that matches their unique personality DNA',
+        goal: 'Goal: We analyze 141 psychological layers to invent a unique sports experience for you',
+        cta: '🚀 Start Now - Sign In Free',
+        liveUsers: 'discovered their sport today'
+    }
+};
+
+let currentLang = 'ar';
+
+function switchLanguage(lang) {
+    currentLang = lang;
+    
+    // Update active button
+    document.querySelectorAll('.lang-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.getAttribute('data-lang') === lang) {
+            btn.classList.add('active');
+        }
+    });
+    
+    // Update direction
+    document.documentElement.setAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
+    document.documentElement.setAttribute('lang', lang);
+    
+    // TODO: Update all text content
+    // For now, just show alert
+    if (lang === 'en') {
+        alert('🚧 English version coming soon!\n\nCurrently in development.');
+    }
+}
+
+// Event listeners
+document.querySelectorAll('.lang-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        switchLanguage(btn.getAttribute('data-lang'));
+    });
+});
+
+console.log('🌐 Language Switcher Ready!');
