@@ -1,374 +1,354 @@
-# 🎯 SportSync AI - Intelligent Sport Discovery System
+# SportSync AI — نظام اكتشاف الهوية الرياضية
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
-![Python](https://img.shields.io/badge/python-3.11+-green.svg)
-![License](https://img.shields.io/badge/license-MIT-orange.svg)
-![Status](https://img.shields.io/badge/status-active-success.svg)
+**نحن لا نوصي برياضة... نحن نكتشف جزءاً من هويتك** 🎯
 
-**Discover Your Perfect Sport Through AI-Powered Deep Analysis**
-
-[Features](#-features) • [Quick Start](#-quick-start) • [Documentation](#-documentation) • [API](#-api) • [Roadmap](#-roadmap)
+[![GitHub](https://img.shields.io/badge/GitHub-SportSync__AI-blue?logo=github)](https://github.com/Hamodisz/SportSync_AI)
+[![Python](https://img.shields.io/badge/Python-3.10+-green?logo=python)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
 </div>
 
 ---
 
-## 🌟 What is SportSync?
+## 🌟 ما هو SportSync AI؟
 
-SportSync is an **intelligent sport recommendation system** that combines:
-- 🧠 **Dual-Model AI** (o4-mini + gpt-5) for deep psychological analysis
-- 🤝 **Collaborative Filtering** to learn from similar users
-- 📊 **141+ Psychological Traits** for comprehensive profiling
-- 🎯 **Personalized Video Content** for each recommendation
+**SportSync AI** هو نظام ذكاء اصطناعي متقدم يحلل شخصيتك النفسية عبر **141 طبقة تحليلية** ليكتشف رياضتك المثالية - ليست رياضة شائعة، بل **هوية رياضية فريدة** تعبر عن كيانك الداخلي.
 
-### The Problem We Solve
+### 💡 لماذا نحن مختلفون؟
 
-> **"You're not inactive because you're lazy... you just haven't met your true sport yet."**
-
-Most people try sports based on trends, friend suggestions, or what "everyone does." SportSync uses advanced AI to discover the sport that truly matches **your** personality, preferences, and lifestyle.
+- 🧠 **تحليل Layer-Z العميق** - نكتشف الدوافع الصامتة والنوايا الخفية
+- 🎨 **توليد ديناميكي** - نخترع رياضات هجينة فريدة عند الحاجة
+- 🔬 **15 نظام تحليل نفسي** - MBTI, Big Five, Enneagram وأكثر
+- 🪞 **بصمة الإصبع** - كل توصية فريدة 100% لصاحبها
 
 ---
 
-## ✨ Features
+## 🎯 الفكرة الأساسية
 
-### 🧠 Dual-Model Intelligence System
-```
-[User Completes Quiz]
-        ↓
-[Discovery Model (o4-mini)]
-   • Quick pattern recognition
-   • Initial insights (< 2s)
-        ↓
-[Reasoning Model (gpt-5)]
-   • Deep psychological analysis
-   • Strategic recommendations
-        ↓
-[Collaborative Filtering]
-   • Learn from similar users
-   • Hybrid scoring
-        ↓
-[3 Personalized Recommendations]
-```
+> **"أنت لست خاملاً لأنك كسول... أنت فقط لم تلتقِ برياضتك الحقيقية بعد."**
 
-### 🤝 Collaborative Filtering
-- **User Similarity**: Find users with similar preferences
-- **Implicit Ratings**: Learn from interactions (clicks, likes, time spent)
-- **Hybrid Recommendations**: Combine content-based + collaborative filtering
-- **Real-time Learning**: System improves with every interaction
-
-### 📊 Advanced Analytics
-- 141+ psychological traits analysis
-- User behavior tracking
-- Popular sports insights
-- Similar user discovery
-
-### 🎬 Video Generation
-- Automatic script generation
-- AI-powered image creation
-- Voice-over synthesis (gTTS/ElevenLabs)
-- YouTube integration ready
+النظام لا يسألك "ما هي الرياضة التي تحبها؟"  
+بل يسأل: **"من أنت؟ وما الذي يحركك من الداخل؟"**
 
 ---
 
-## 🚀 Quick Start
+## ✨ الميزات الرئيسية
 
-### Prerequisites
-- Python 3.11+
-- OpenAI API Key
-- Supabase Account (optional, for CF)
+### 🧩 **التحليل العميق**
+- **Layer-Z Engine** - 7 محاور نفسية أساسية
+- **141 طبقة** تحليلية (شخصية، دوافع، معرفية، عاطفية، اجتماعية)
+- **الدوافع الصامتة** - نكتشف ما لا تستطيع التعبير عنه
 
-### Installation
+### 🎨 **التوليد الذكي**
+- **Dynamic Sports AI** - يولّد رياضات فريدة من معرفة GPT-4
+- **8000+ رياضة** في قاعدة المعرفة
+- **رياضات هجينة** - نخترع رياضة جديدة إذا لم نجد مطابقة مثالية
+
+### 🔬 **التحقق المتعدد**
+- **15 نظام تحليل** للشخصية (MBTI, Big Five, Enneagram, ...)
+- **Cross-validation** بين الأنظمة للوصول لإجماع
+- **Confidence scoring** - نعرف متى نكون واثقين
+
+### 🎭 **التجربة الكاملة**
+- **3 بطاقات رياضية** مخصصة لك
+- **تحليل نفسي مُفصّل** لكل توصية
+- **خطة الأسبوع الأول** (نوعية، ليست أرقام)
+- **VR & Non-VR variants** لكل رياضة
+
+---
+
+## 🚀 كيف يعمل؟
+
+```
+1. الأسئلة (20-24 سؤال ذكي)
+         ↓
+2. Layer-Z Analysis (التحليل العميق)
+         ↓
+3. 141 طبقة نفسية + 15 نظام شخصية
+         ↓
+4. حساب Confidence Score
+         ↓
+   ├─→ Confidence عالي → Knowledge Base
+   └─→ Confidence منخفض → Dynamic Sports AI
+         ↓
+5. توليد 3 بطاقات رياضية فريدة
+         ↓
+6. كتابة إنسانية عميقة (backend_gpt)
+         ↓
+7. "هذا أنا فعلاً!" 💫
+```
+
+---
+
+## 📊 البنية التقنية
+
+### المكونات الأساسية:
+
+```
+SportSync_AI/
+├── core/                      # المحرك الأساسي
+│   ├── backend_gpt.py        # الكتابة الإنسانية (1,620 سطر)
+│   ├── layer_z_engine.py     # التحليل النفسي (263 سطر)
+│   ├── dynamic_sports_ai.py  # توليد الرياضات (227 سطر)
+│   └── kb_ranker.py          # اختيار من KB
+│
+├── analysis/                  # التحليل المتقدم
+│   ├── layer_z_enhanced.py   # Confidence + Flow + Risk (692 سطر)
+│   ├── analysis_layers_*.py  # الـ 141 طبقة
+│   └── systems/              # الأنظمة الـ 15
+│       ├── mbti.py
+│       ├── big_five.py
+│       ├── enneagram.py
+│       └── quick_systems.py
+│
+├── questions/                 # الأسئلة الذكية
+│   ├── arabic_questions.json
+│   └── english_questions.json
+│
+├── data/                      # قواعد البيانات
+│   ├── sports_catalog.json   # الرياضات
+│   ├── sportsync_knowledge.json
+│   └── z_intent_keywords.json
+│
+├── app_v2/                    # الواجهة المحسّنة
+├── improvements/              # خطة التطوير
+└── tests/                     # الاختبارات
+```
+
+---
+
+## 🛠️ التثبيت والتشغيل
+
+### المتطلبات:
+- Python 3.10+
+- OpenAI API key (أو Groq)
+
+### خطوات التثبيت:
 
 ```bash
-# 1. Clone repository
+# 1. استنساخ المشروع
 git clone https://github.com/Hamodisz/SportSync_AI.git
 cd SportSync_AI
 
-# 2. Install dependencies
+# 2. إنشاء بيئة افتراضية
+python -m venv .venv
+source .venv/bin/activate  # macOS/Linux
+# أو: .venv\Scripts\activate  # Windows
+
+# 3. تثبيت المكتبات
 pip install -r requirements.txt
 
-# 3. Setup environment
+# 4. إعداد API Key
 cp .env.example .env
-# Edit .env with your API keys
-
-# 4. Run Streamlit UI
-streamlit run app_streamlit.py
-
-# OR Run FastAPI server
-uvicorn api.main:app --reload
+# ثم عدّل .env وأضف مفتاح API
 ```
 
-### Environment Configuration
+### التشغيل:
 
 ```bash
-# OpenAI (Required)
-OPENAI_API_KEY=sk-your-key-here
-CHAT_MODEL_DISCOVERY=o4-mini
-CHAT_MODEL_REASONING=gpt-5
+# الطريقة الأساسية
+python app_streamlit.py
 
-# Supabase (Optional - for Collaborative Filtering)
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your-anon-key
+# أو الواجهة المحسّنة
+cd app_v2
+./start.sh
 ```
+
+ثم افتح المتصفح على: `http://localhost:8501`
 
 ---
 
-## 📖 Documentation
+## 🎯 أمثلة الاستخدام
 
-### System Architecture
+### مثال برمجي:
 
-```
-┌─────────────────────────────────────────────────┐
-│              Streamlit UI / FastAPI              │
-└─────────────────┬───────────────────────────────┘
-                  │
-    ┌─────────────┼─────────────┐
-    │             │             │
-    v             v             v
-┌────────┐  ┌──────────┐  ┌────────────┐
-│  Quiz  │  │   Dual   │  │    CF      │
-│ Engine │  │  Model   │  │  Engine    │
-│        │  │   AI     │  │            │
-└────────┘  └──────────┘  └────────────┘
-                  │             │
-                  v             v
-            ┌──────────────────────┐
-            │  Supabase Database   │
-            └──────────────────────┘
-```
+```python
+from core.backend_gpt import generate_sport_recommendation
 
-### Key Components
-
-1. **Discovery Model (o4-mini)**: Fast pattern analysis (1-2s)
-2. **Reasoning Model (gpt-5)**: Deep analysis and recommendations (3-5s)
-3. **Collaborative Filtering**: User-based recommendations
-4. **Supabase Database**: User data, ratings, analytics
-5. **FastAPI Backend**: RESTful API for integrations
-
----
-
-## 🔌 API Reference
-
-### Base URL
-```
-http://localhost:8000
-```
-
-### Endpoints
-
-#### 1. Submit Quiz
-```http
-POST /api/v1/quiz/submit
-Content-Type: application/json
-
-{
-  "user_identifier": "user@example.com",
-  "language": "ar",
-  "answers": [...],
-  "identity_scores": {...},
-  "trait_scores": {...}
+answers = {
+    "q1": "تركيز هادئ على تفصيلة واحدة",
+    "q2": "لوحدي أفضل",
+    "q3": "أحب الدقة والتحكم",
+    "q4": "أفهم وأخطط أولاً"
 }
+
+# توليد التوصيات
+cards = generate_sport_recommendation(
+    answers=answers,
+    lang="العربية",
+    user_id="user_123"
+)
+
+# cards = [card1, card2, card3]
+print(cards[0])  # البطاقة الأولى
 ```
 
-**Response:**
-```json
-{
-  "session_id": "uuid",
-  "user_id": "uuid",
-  "recommendations": [
-    {
-      "sport_label": "كرة القدم",
-      "match_percentage": 92,
-      "hybrid_score": 4.3
-    }
-  ],
-  "cf_enabled": true,
-  "hybrid_mode": true
-}
+### الناتج:
+
 ```
+🧩 الشخصية الرياضية باختصار:
+تميل إلى فضول تحليلي هادئ؛ تحتاج لمساحة تحترم ذكاءك العاطفي
 
-#### 2. Submit Rating
-```http
-POST /api/v1/rating/submit
+🏅 الرياضة المثالية لك:
+دائرة الدقة والمدى
 
-{
-  "user_identifier": "user@example.com",
-  "sport_label": "كرة القدم",
-  "rating": 4.5,
-  "was_liked": true
-}
-```
+💡 ما هي؟
+تجربة حركية تتطلب تركيزاً هادئاً ودقة عالية...
 
-#### 3. Get Recommendations
-```http
-GET /api/v1/recommendations/{user_identifier}?n=10
-```
+🎮 لماذا تناسبك؟
+- تحترم حاجتك للهدوء والتركيز
+- تكافئ التفكير التحليلي والتخطيط
+- تمنحك مساحة فردية للنمو
 
-#### 4. Similar Users
-```http
-GET /api/v1/similar-users/{user_identifier}?top_k=10
-```
-
-#### 5. Popular Sports
-```http
-GET /api/v1/analytics/popular-sports?limit=20
-```
-
-📚 **[Full API Documentation](./SETUP_GUIDE.md)**
-
----
-
-## 🎓 How It Works
-
-### Step 1: Psychological Analysis
-User answers 20 carefully designed questions covering:
-- Risk tolerance
-- Social preferences  
-- Energy levels
-- Stress response
-- Motivation factors
-
-### Step 2: Dual-Model Processing
-- **Discovery Model**: Quick pattern recognition
-- **Reasoning Model**: Deep psychological insights
-
-### Step 3: Collaborative Filtering
-- Find users with similar profiles
-- Analyze their sport preferences
-- Generate hybrid recommendations
-
-### Step 4: Personalized Results
-- 3 sport recommendations
-- Match percentages
-- Reasons why they fit
-- Expected benefits
-- Practical next steps
-
----
-
-## 🗄️ Database Schema
-
-<details>
-<summary>Click to expand</summary>
-
-### Main Tables:
-- `users` - User profiles and sessions
-- `quiz_responses` - Quiz answers
-- `user_traits` - Psychological profiles (141+ traits)
-- `recommendations` - Generated recommendations
-- `sport_ratings` - User ratings for CF
-- `similar_users` - Precomputed similarities
-- `analytics_events` - User activity tracking
-
-### Views:
-- `popular_sports` - Most popular sports analytics
-- `user_engagement` - User engagement metrics
-
-</details>
-
----
-
-## 🛠️ Development
-
-### Project Structure
-```
-SportSync_AI/
-├── api/                    # FastAPI server
-│   └── main.py
-├── core/                   # Core logic
-│   ├── dual_model_client.py
-│   ├── llm_client.py
-│   └── layer_z_engine.py
-├── database/               # Database layer
-│   ├── schema.sql
-│   └── supabase_client.py
-├── ml/                     # Machine learning
-│   └── collaborative_filtering.py
-├── analysis/               # Psychological analysis
-├── content_studio/         # Video generation
-├── app_streamlit.py        # Main UI
-└── requirements.txt
-```
-
-### Running Tests
-```bash
-# Run API tests
-pytest tests/test_api.py
-
-# Run CF tests  
-pytest tests/test_cf.py
-
-# Run integration tests
-pytest tests/test_integration.py
+⚙️ كيف تبدأ؟
+- ابدأ بجلسات قصيرة (15 دقيقة)
+- راقب الإشارات الصغيرة في جسدك
+- دوّن إحساسك بعد كل جلسة
 ```
 
 ---
 
-## 📊 Performance
+## 📚 الوثائق
 
-| Metric | Target | Current |
-|--------|--------|---------|
-| Quiz Completion Time | < 3 min | ~2.5 min |
-| Discovery Analysis | < 2s | ~1.5s |
-| Deep Reasoning | < 5s | ~3.5s |
-| Recommendation Accuracy | > 90% | ~92% |
-| User Satisfaction | > 85% | ~88% |
+### الأدلة الرئيسية:
+- [📖 دليل البداية السريعة](QUICK_START.md)
+- [🔧 دليل التكامل](INTEGRATION_GUIDE.md)
+- [🎯 نظام التحسينات](improvements/README.md)
+- [🧪 العلم العميق](DEEP_SCIENCE.md)
 
----
-
-## 🗺️ Roadmap
-
-- [x] **Phase 1**: Dual-Model AI System
-- [x] **Phase 2**: Collaborative Filtering + API
-- [ ] **Phase 3**: Matrix Factorization (SVD)
-- [ ] **Phase 4**: Real-time Recommendations
-- [ ] **Phase 5**: Mobile App Integration
-- [ ] **Phase 6**: Video Chat with AI Coach
-- [ ] **Phase 7**: VR Sport Experiences
+### للمطورين:
+- [improvements/TASKS.md](improvements/TASKS.md) - خطة التطوير
+- [improvements/detailed/](improvements/detailed/) - التفاصيل التقنية
 
 ---
 
-## 🤝 Contributing
+## 🔬 العلم وراء النظام
 
-We welcome contributions! Please see our [Contributing Guide](./CONTRIBUTING.md).
+### Layer-Z: المحرك الصامت
 
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/amazing`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing`)
-5. Open Pull Request
+**7 محاور نفسية أساسية:**
 
----
+1. **Technical ↔️ Intuitive** - كيف تتعامل مع التحديات؟
+2. **Control ↔️ Freedom** - هل تحب القواعد أم الحرية؟
+3. **Repetition ↔️ Variety** - هل الروتين يريحك أم يملّك؟
+4. **Compete ↔️ Enjoy** - هل تلعب لتفوز أم لتستمتع؟
+5. **Calm ↔️ Adrenaline** - هل تبحث عن هدوء أم إثارة؟
+6. **Solo ↔️ Group** - هل تفضل الفردية أم الجماعية؟
+7. **Sensory Sensitivity** - ما مدى حساسيتك للضوضاء والزحام؟
 
-## 📝 License
+### الـ 141 طبقة:
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 🙏 Acknowledgments
-
-- OpenAI for GPT models
-- Supabase for database infrastructure
-- Streamlit for amazing UI framework
-- The open-source community
+موزعة على:
+- 20 Personality Traits
+- 25 Motivational Drivers
+- 18 Cognitive Style
+- 22 Emotional Patterns
+- 56+ Social & Physical Preferences
 
 ---
 
-## 📞 Contact & Support
+## 🎨 الأنماط الأربعة الأساسية
 
-- **GitHub**: [@Hamodisz](https://github.com/Hamodisz)
-- **Issues**: [Report bugs](https://github.com/Hamodisz/SportSync_AI/issues)
-- **Discussions**: [Join community](https://github.com/Hamodisz/SportSync_AI/discussions)
+### 1️⃣ القتال التكتيكي الغامر
+**النمط النفسي:** المواجهة، التنفيس، الحضور الكامل  
+**مناسب لـ:** من يحتاج تفريغ طاقة، غضب صحي، رغبة في السيطرة
+
+### 2️⃣ دائرة الدقة والمدى
+**النمط النفسي:** التحكم، الانضباط الداخلي، الهدوء  
+**مناسب لـ:** الكماليين، المحللين، من يبحث عن صفاء ذهني
+
+### 3️⃣ مهمات التدفق الخفي
+**النمط النفسي:** الذوبان، الهروب الإيجابي، اللاوعي  
+**مناسب لـ:** من ينفر من الضجيج، يحب الغياب والتركيز العميق
+
+### 4️⃣ صعود القبضة والتوازن
+**النمط النفسي:** التحدي، إثبات الذات، الإنجاز  
+**مناسب لـ:** من يريد قهر الخوف، نمو شخصي، انتصار داخلي
+
+---
+
+## 🌐 اللغات المدعومة
+
+- 🇸🇦 **العربية** - دعم كامل
+- 🇬🇧 **English** - Full support
+
+---
+
+## 🔄 حالة المشروع
+
+### ✅ ما يعمل الآن:
+- ✅ Layer-Z Engine (التحليل الأساسي)
+- ✅ الـ 141 طبقة النفسية
+- ✅ KB Ranker (اختيار من الكتالوج)
+- ✅ الكتابة الإنسانية العميقة
+- ✅ واجهة Streamlit كاملة
+
+### 🔄 قيد التطوير:
+- 🔄 ربط Dynamic Sports AI (Priority 1)
+- 🔄 ربط Layer-Z Enhanced (Priority 2)
+- 🔄 ربط الأنظمة الـ 15 (Priority 3)
+
+**راجع:** [improvements/TASKS.md](improvements/TASKS.md) للتفاصيل الكاملة
+
+---
+
+## 🤝 المساهمة
+
+نرحب بالمساهمات! إذا كنت تريد المساهمة:
+
+1. Fork المشروع
+2. أنشئ فرع للميزة الجديدة: `git checkout -b feature/AmazingFeature`
+3. Commit التغييرات: `git commit -m 'Add some AmazingFeature'`
+4. Push للفرع: `git push origin feature/AmazingFeature`
+5. افتح Pull Request
+
+**للمطورين الجدد:** راجع [improvements/README.md](improvements/README.md)
+
+---
+
+## 📄 الترخيص
+
+هذا المشروع مرخص تحت MIT License - راجع ملف [LICENSE](LICENSE) للتفاصيل.
+
+---
+
+## 🙏 شكر وتقدير
+
+- **OpenAI** - GPT-4 API
+- **Anthropic** - Claude API
+- **Streamlit** - الواجهة الرائعة
+- **جميع المساهمين** في المشروع
+
+---
+
+## 📞 التواصل
+
+- **GitHub Issues** - للمشاكل التقنية والاقتراحات
+- **Discussions** - للأسئلة والنقاشات
+
+---
+
+## 🎯 الرؤية المستقبلية
+
+### المرحلة القادمة:
+1. ✅ إكمال ربط Dynamic AI (أسبوع واحد)
+2. ✅ توسيع Knowledge Base (50-100 هوية)
+3. ✅ دعم Video Generation
+4. ✅ تطبيق Mobile
+
+### الحلم الكبير:
+> **"نظام عالمي يساعد الملايين على اكتشاف رياضاتهم الحقيقية"**
 
 ---
 
 <div align="center">
 
-**Built with ❤️ to help people discover their perfect sport**
+**نحن لا نوصي برياضة... نحن نكتشف جزءاً من هويتك** 💫
 
-[⬆ Back to Top](#-sportsync-ai---intelligent-sport-discovery-system)
+**مصنوع بـ ❤️ في السعودية**
+
+[⭐ Star](https://github.com/Hamodisz/SportSync_AI) | [🐛 Report Bug](https://github.com/Hamodisz/SportSync_AI/issues) | [✨ Request Feature](https://github.com/Hamodisz/SportSync_AI/issues)
 
 </div>
