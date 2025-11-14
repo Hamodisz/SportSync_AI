@@ -1,3 +1,0 @@
-# GPU-accelerated environment (RunPod/V100/A10 etc.)
--r external/AI-Youtube-Shorts-Generator/requirements.txt
--r external/text2youtube/requirements.txt

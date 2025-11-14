@@ -1,9 +1,0 @@
-{
-  "version": 2,
-  "name": "sportsync-landing",
-  "buildCommand": "",
-  "devCommand": "",
-  "installCommand": "",
-  "framework": null,
-  "outputDirectory": "web-landing"
-}
