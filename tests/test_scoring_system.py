@@ -22,14 +22,14 @@ def test_basic_scoring():
 
     # Sample answers
     answers = {
-        "q1": {"answer": ["تركيز هادئ على تفصيلة واحدة"]},  # Calm focus
+        "q1": {"answer": ["عندما أدخل في تفصيلة واحدة بعمق شديد"]},  # Deep focus
         "_session_id": "test-1"
     }
 
-    # Use sample file
+    # Use v2 file (10 questions)
     scores = calculate_z_scores_from_questions(
         answers,
-        questions_file="arabic_questions_v2_sample.json",
+        questions_file="arabic_questions_v2.json",
         lang="العربية"
     )
 
@@ -53,30 +53,32 @@ def test_expected_scores():
     """Test 2: Verify expected scores for known answer"""
     print("\n🧪 Test 2: Expected Scores for Known Answer")
 
-    # Q1, Option 1: "تركيز هادئ على تفصيلة واحدة"
-    # Expected scores from JSON:
-    # calm_adrenaline: -0.8 (very calm)
-    # solo_group: -0.6 (solo)
-    # sensory_sensitivity: 0.7 (high sensitivity)
-    # control_freedom: -0.5 (controlled)
+    # Q1, Option 1: "عندما أدخل في تفصيلة واحدة بعمق شديد"
+    # Expected scores from JSON (weight=4):
+    # calm_adrenaline: -0.9 (very calm)
+    # solo_group: -0.7 (solo)
+    # sensory_sensitivity: 0.8 (high sensitivity)
+    # control_freedom: -0.6 (controlled)
+    # technical_intuitive: -0.7 (technical)
 
     answers = {
-        "q1": {"answer": ["تركيز هادئ على تفصيلة واحدة"]},
+        "q1": {"answer": ["عندما أدخل في تفصيلة واحدة بعمق شديد"]},
         "_session_id": "test-2"
     }
 
     scores = calculate_z_scores_from_questions(
         answers,
-        questions_file="arabic_questions_v2_sample.json",
+        questions_file="arabic_questions_v2.json",
         lang="العربية"
     )
 
-    # Q1 has weight=3, but only one answer, so scores should match JSON exactly
+    # Q1 has weight=4, but only one answer, so scores should match JSON exactly
     expected = {
-        "calm_adrenaline": -0.8,
-        "solo_group": -0.6,
-        "sensory_sensitivity": 0.7,
-        "control_freedom": -0.5
+        "calm_adrenaline": -0.9,
+        "solo_group": -0.7,
+        "sensory_sensitivity": 0.8,
+        "control_freedom": -0.6,
+        "technical_intuitive": -0.7
     }
 
     for axis, expected_score in expected.items():
@@ -96,14 +98,14 @@ def test_weighted_average():
 
     # Two answers with different weights
     answers = {
-        "q1": {"answer": ["تركيز هادئ على تفصيلة واحدة"]},  # weight=3, calm=-0.8
-        "q2": {"answer": ["الملل"]},  # weight=2, different scores
+        "q1": {"answer": ["عندما أدخل في تفصيلة واحدة بعمق شديد"]},  # weight=4, calm=-0.9
+        "q2": {"answer": ["التكرار الممل والروتين الثابت"]},  # weight=3, different scores
         "_session_id": "test-3"
     }
 
     scores = calculate_z_scores_from_questions(
         answers,
-        questions_file="arabic_questions_v2_sample.json",
+        questions_file="arabic_questions_v2.json",
         lang="العربية"
     )
 
@@ -111,20 +113,20 @@ def test_weighted_average():
     assert len(scores) > 0, "Should calculate scores"
 
     # Weighted average should be calculated correctly
-    # Q1 (weight=3): calm_adrenaline=-0.8
-    # Q2 (weight=2): has no calm_adrenaline score (only repeat_variety, sensory_sensitivity, compete_enjoy)
-    # So calm_adrenaline should still be -0.8
+    # Q1 (weight=4): calm_adrenaline=-0.9
+    # Q2 (weight=3): has no calm_adrenaline score (only repeat_variety, sensory, compete, control)
+    # So calm_adrenaline should still be -0.9
 
     if "calm_adrenaline" in scores:
-        assert abs(scores["calm_adrenaline"] - (-0.8)) < 0.01, \
-            f"calm_adrenaline should be -0.8, got {scores['calm_adrenaline']}"
+        assert abs(scores["calm_adrenaline"] - (-0.9)) < 0.01, \
+            f"calm_adrenaline should be -0.9, got {scores['calm_adrenaline']}"
         print(f"✅ calm_adrenaline: {scores['calm_adrenaline']:+.2f}")
 
-    # repeat_variety should come only from Q2 (weight=2)
-    # Q2, Option 1 "الملل": repeat_variety=0.7
+    # repeat_variety should come only from Q2 (weight=3)
+    # Q2, Option 1 "التكرار الممل": repeat_variety=0.9
     if "repeat_variety" in scores:
-        assert abs(scores["repeat_variety"] - 0.7) < 0.01, \
-            f"repeat_variety should be 0.7, got {scores['repeat_variety']}"
+        assert abs(scores["repeat_variety"] - 0.9) < 0.01, \
+            f"repeat_variety should be 0.9, got {scores['repeat_variety']}"
         print(f"✅ repeat_variety: {scores['repeat_variety']:+.2f}")
 
     print("✅ Test 3 PASSED\n")
@@ -134,56 +136,63 @@ def test_multiple_answers_same_axis():
     """Test 4: Multiple answers affecting same axis"""
     print("\n🧪 Test 4: Multiple Answers on Same Axis")
 
-    # Q1, Option 1: calm_adrenaline=-0.8 (weight=3)
-    # Q6, Option 4: calm_adrenaline=+0.8 (weight=2)
-    # Weighted average: (-0.8*3 + 0.8*2) / (3+2) = (-2.4+1.6)/5 = -0.8/5 = -0.16
+    # Q1, Option 1: calm_adrenaline=-0.9 (weight=4)
+    # Q8, Option 4: calm_adrenaline=+0.9 (weight=3)
+    # Weighted average: (-0.9*4 + 0.9*3) / (4+3) = (-3.6+2.7)/7 ≈ -0.129
 
     answers = {
-        "q1": {"answer": ["تركيز هادئ على تفصيلة واحدة"]},  # calm=-0.8, w=3
-        "q6": {"answer": ["أماكن فيها تحدي"]},  # calm=+0.8, w=2
+        "q1": {"answer": ["عندما أدخل في تفصيلة واحدة بعمق شديد"]},  # calm=-0.9, w=4
+        "q8": {"answer": ["أماكن فيها تحدي وخطورة محسوبة"]},  # calm=+0.9, w=3
         "_session_id": "test-4"
     }
 
     scores = calculate_z_scores_from_questions(
         answers,
-        questions_file="arabic_questions_v2_sample.json",
+        questions_file="arabic_questions_v2.json",
         lang="العربية"
     )
 
-    # Check calm_adrenaline weighted average
+    # Should calculate scores including weighted average for calm_adrenaline
+    assert len(scores) > 0, "Should have scores"
+
     if "calm_adrenaline" in scores:
-        expected = (-0.8 * 3 + 0.8 * 2) / 5
+        expected = (-0.9 * 4 + 0.9 * 3) / 7
         actual = scores["calm_adrenaline"]
         assert abs(actual - expected) < 0.01, \
             f"calm_adrenaline: expected {expected:.2f}, got {actual:.2f}"
-        print(f"✅ calm_adrenaline: {actual:+.2f} (expected {expected:+.2f})")
+        print(f"✅ Weighted average calculated: {actual:+.2f} (expected {expected:+.2f})")
 
+    print(f"✅ Calculated {len(scores)} Z-axis scores")
     print("✅ Test 4 PASSED\n")
 
 
-def test_all_sample_questions():
-    """Test 5: Answer all 6 sample questions"""
-    print("\n🧪 Test 5: All Sample Questions")
+def test_all_10_questions():
+    """Test 5: Answer all 10 questions"""
+    print("\n🧪 Test 5: All 10 Questions")
 
     answers = {
-        "q1": {"answer": ["تفاعل وسرعة"]},  # Speed and interaction
-        "q2": {"answer": ["غياب نتيجة"]},  # Lack of results
-        "q3": {"answer": ["أجرب مباشرة"]},  # Try immediately
-        "q4": {"answer": ["مع مجموعة"]},  # With group
-        "q5": {"answer": ["منافسة مباشرة"]},  # Direct competition
-        "q6": {"answer": ["أماكن فيها تحدي"]},  # Challenging places
+        "q1": {"answer": ["في لحظات السرعة والتفاعل المباشر"]},  # Speed
+        "q2": {"answer": ["غياب التقدم الملموس والإنجازات"]},  # Progress
+        "q3": {"answer": ["أتحرك بحرية كاملة بدون قيود أو خطط"]},  # Freedom
+        "q4": {"answer": ["أقفز مباشرة وأتعلم أثناء التجربة"]},  # Intuitive
+        "q5": {"answer": ["في التنافس المباشر مع آخرين أقوياء"]},  # Competition
+        "q6": {"answer": ["التحدي الصعب والمستحيل"]},  # Challenge
+        "q7": {"answer": ["أن أكون الأفضل أو أفوز"]},  # Win
+        "q8": {"answer": ["أماكن فيها تحدي وخطورة محسوبة"]},  # Risk
+        "q9": {"answer": ["أتحمس أكثر وأندمج في التحدي"]},  # Adrenaline
+        "q10": {"answer": ["تحدي مستمر وأهداف واضحة"]},  # Challenge
         "_session_id": "test-5"
     }
 
     scores = calculate_z_scores_from_questions(
         answers,
-        questions_file="arabic_questions_v2_sample.json",
+        questions_file="arabic_questions_v2.json",
         lang="العربية"
     )
 
     # Should have calculated scores for all relevant axes
     assert len(scores) > 0, "Should have scores"
-    print(f"✅ Calculated {len(scores)} Z-axis scores from 6 questions")
+    print(f"✅ Calculated {len(scores)} Z-axis scores from 10 questions")
 
     # All scores should be in valid range
     for axis, score in sorted(scores.items()):
@@ -193,23 +202,22 @@ def test_all_sample_questions():
             assert -1.0 <= score <= 1.0, f"{axis} out of range: {score}"
         print(f"   {axis}: {score:+.2f}")
 
-    # Based on the answers, we expect:
-    # - High adrenaline (speed, direct competition, challenging places)
-    # - Group preference (مع مجموعة)
-    # - High competition (direct competition)
-    # - Intuitive approach (try immediately)
+    # Based on the answers (all competitive, high-energy answers), we expect:
+    # - High adrenaline (speed, challenge, competition)
+    # - High competition (win-focused answers)
+    # - Intuitive/spontaneous approach
+    # - High challenge-seeking
 
     if "calm_adrenaline" in scores:
-        assert scores["calm_adrenaline"] > 0, "Should favor adrenaline"
+        assert scores["calm_adrenaline"] > 0.3, "Should favor adrenaline"
         print(f"✅ Adrenaline preference detected: {scores['calm_adrenaline']:+.2f}")
 
-    if "solo_group" in scores:
-        assert scores["solo_group"] > 0, "Should favor group"
-        print(f"✅ Group preference detected: {scores['solo_group']:+.2f}")
-
     if "compete_enjoy" in scores:
-        assert scores["compete_enjoy"] > 0, "Should favor competition"
+        assert scores["compete_enjoy"] > 0.5, "Should strongly favor competition"
         print(f"✅ Competition preference detected: {scores['compete_enjoy']:+.2f}")
+
+    if "control_freedom" in scores:
+        print(f"✅ Freedom vs Control: {scores['control_freedom']:+.2f}")
 
     print("✅ Test 5 PASSED\n")
 
@@ -239,13 +247,13 @@ def test_partial_match():
 
     # User might type partial answer or it might be truncated
     answers = {
-        "q1": {"answer": ["تركيز هادئ"]},  # Partial match of "تركيز هادئ على تفصيلة واحدة"
+        "q1": {"answer": ["تفصيلة واحدة"]},  # Partial match
         "_session_id": "test-7"
     }
 
     scores = calculate_z_scores_from_questions(
         answers,
-        questions_file="arabic_questions_v2_sample.json",
+        questions_file="arabic_questions_v2.json",
         lang="العربية"
     )
 
@@ -261,13 +269,13 @@ def test_english_answers():
     print("\n🧪 Test 8: English Language Support")
 
     answers = {
-        "q1": {"answer": ["Calm focus on a single detail"]},
+        "q1": {"answer": ["When I dive deeply into a single detail"]},
         "_session_id": "test-8"
     }
 
     scores = calculate_z_scores_from_questions(
         answers,
-        questions_file="arabic_questions_v2_sample.json",  # Same file has both ar/en
+        questions_file="arabic_questions_v2.json",  # Same file has both ar/en
         lang="English"
     )
 
@@ -275,7 +283,7 @@ def test_english_answers():
     assert len(scores) > 0, "Should match English text"
     assert "calm_adrenaline" in scores, "Should find scores from English option"
 
-    expected_calm = -0.8  # Same as Arabic version
+    expected_calm = -0.9  # Same as Arabic version
     assert abs(scores["calm_adrenaline"] - expected_calm) < 0.01, \
         f"Expected {expected_calm}, got {scores['calm_adrenaline']}"
 
@@ -288,11 +296,11 @@ def test_json_structure():
     print("\n🧪 Test 9: JSON Structure Validation")
 
     # Load and validate JSON structure
-    with open("arabic_questions_v2_sample.json", "r", encoding="utf-8") as f:
+    with open("arabic_questions_v2.json", "r", encoding="utf-8") as f:
         questions = json.load(f)
 
     assert isinstance(questions, list), "Questions should be a list"
-    assert len(questions) == 6, f"Should have 6 questions, got {len(questions)}"
+    assert len(questions) == 10, f"Should have 10 questions, got {len(questions)}"
     print(f"✅ Found {len(questions)} questions")
 
     # Validate each question
@@ -365,7 +373,7 @@ if __name__ == "__main__":
     test_expected_scores()
     test_weighted_average()
     test_multiple_answers_same_axis()
-    test_all_sample_questions()
+    test_all_10_questions()
     test_empty_answers()
     test_partial_match()
     test_english_answers()
