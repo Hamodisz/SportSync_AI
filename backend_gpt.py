@@ -23,6 +23,10 @@ try:  # Optional LLM client; fallback works without it.
         analyze_user_with_discovery,
         invent_sport_identities_with_reasoning
     )
+    from dynamic_sports_ai import DynamicSportsAI  # NEW: Dynamic AI integration
+    from layer_z_enhanced import EnhancedLayerZ  # NEW: Task 1.2 - Enhanced Layer-Z
+    from systems import analyze_all_systems  # NEW: Task 1.3 - Multi-system analysis
+    from core.user_logger import log_event, log_recommendation_result  # type: ignore
     DUAL_MODEL_ENABLED = True
 except Exception:  # pragma: no cover - LLM unavailable
     make_llm_client = None
@@ -30,8 +34,12 @@ except Exception:  # pragma: no cover - LLM unavailable
     chat_once = None
     analyze_user_with_discovery = None
     invent_sport_identities_with_reasoning = None
+    DynamicSportsAI = None  # NEW
+    EnhancedLayerZ = None  # NEW: Task 1.2
+    analyze_all_systems = None  # NEW: Task 1.3
+    log_event = lambda *args, **kwargs: None  # fallback
+    log_recommendation_result = lambda *args, **kwargs: None  # fallback
     DUAL_MODEL_ENABLED = False
-from core.user_logger import log_event, log_recommendation_result
 
 
 LLM_CLIENT: Optional[Any]
@@ -1769,7 +1777,212 @@ def _format_card_strict(card: Dict[str, Any], lang: str) -> str:
 
     return recommendation_output.strip()
 
-def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العربية") -> List[str]:
+
+def calculate_confidence(z_scores: Dict[str, float], traits: Dict[str, float]) -> float:
+    """
+    حساب درجة الثقة من z_scores و traits
+    
+    عوامل الثقة:
+    - قوة الإشارات (مدى وضوح الميول)
+    - التناقضات (إذا كان solo عالي وteam عالي معاً)
+    - الاكتمال (هل جميع المحاور لها قيم واضحة)
+    
+    Returns:
+        float: 0.0 (ثقة منخفضة جداً) إلى 1.0 (ثقة عالية جداً)
+    """
+    confidence = 0.0
+    
+    # 1. قوة الإشارات من z_scores (30%)
+    if z_scores:
+        signals_strength = sum(abs(score) for score in z_scores.values()) / len(z_scores)
+        confidence += min(signals_strength, 1.0) * 0.3
+    
+    # 2. التناقضات في traits (30%)
+    contradictions = 0.0
+    if traits:
+        # مثال: solo عالي + team عالي = تناقض
+        solo_score = traits.get("solo", 0.5)
+        team_score = traits.get("team", 0.5)
+        if solo_score > 0.7 and team_score > 0.7:
+            contradictions += 0.5
+        
+        # calm عالي + adrenaline عالي = تناقض
+        calm_score = traits.get("calm", 0.5)
+        adrenaline_score = traits.get("adrenaline", 0.5)
+        if calm_score > 0.7 and adrenaline_score > 0.7:
+            contradictions += 0.5
+    
+    confidence += (1.0 - min(contradictions, 1.0)) * 0.3
+    
+    # 3. الاكتمال من traits (40%)
+    if traits:
+        # نحسب كم trait واضح (> 0.6)
+        clear_traits = sum(1 for score in traits.values() if score > 0.6)
+        completeness = clear_traits / len(traits)
+        confidence += completeness * 0.4
+    
+    return min(1.0, max(0.0, confidence))
+
+
+def _parse_bullets(text: str) -> List[str]:
+    """تحويل نص إلى قائمة نقاط"""
+    if not text:
+        return []
+    # إذا كان النص يحتوي bullets بالفعل
+    if "\n-" in text or "\n•" in text:
+        return [line.strip("- •").strip() for line in text.split("\n") if line.strip()]
+    # إذا كان جملة واحدة طويلة، قسّمها
+    sentences = [s.strip() for s in text.split(".") if s.strip()]
+    return [s + "." for s in sentences] if sentences else [text]
+
+
+def _convert_dynamic_to_cards(
+    sports: List[Dict[str, Any]],
+    lang: str
+) -> List[Dict[str, Any]]:
+    """
+    تحويل output Dynamic AI إلى format البطاقات المعتاد
+    
+    Dynamic AI يرجع:
+    {
+        "sport_name": "اسم الرياضة",
+        "category": "هجين",
+        "match_score": 0.95,
+        "why_perfect": "...",
+        "inner_sensation": "...",
+        "first_week": "..."
+    }
+    
+    البطاقات تحتاج:
+    {
+        "sport_label": "...",
+        "what_it_looks_like": [...],
+        "why_you": [...],
+        "real_world": [...],
+        ...
+    }
+    """
+    cards = []
+    
+    for sport in sports:
+        card = {
+            "sport_label": sport.get("sport_name", "رياضة مخصصة" if lang == "العربية" else "Custom Sport"),
+            "what_it_looks_like": [sport.get("inner_sensation", "")],
+            "why_you": _parse_bullets(sport.get("why_perfect", "")),
+            "real_world": _parse_bullets(sport.get("first_week", "")),
+            "notes": [f"Match Score: {sport.get('match_score', 0.0):.0%}"],
+            "mode": "dynamic",  # علامة أنها من Dynamic AI
+            "category": sport.get("category", "custom"),
+            # إضافة enhanced info إذا كان متوفراً
+            "flow_potential": sport.get("flow_potential"),
+            "risk_level": sport.get("risk_level")
+        }
+        cards.append(card)
+    
+    return cards
+
+
+def _add_consensus_to_notes(
+    cards: List[Dict[str, Any]],
+    consensus_info: Optional[Dict[str, Any]],
+    systems_summary: Optional[Dict[str, Any]],
+    lang: str
+) -> List[Dict[str, Any]]:
+    """
+    إضافة معلومات Consensus من الأنظمة المتعددة إلى notes البطاقات
+
+    Args:
+        cards: البطاقات الأصلية
+        consensus_info: معلومات الإجماع من analyze_all_systems
+        systems_summary: ملخص الأنظمة
+        lang: اللغة
+
+    Returns:
+        البطاقات مع notes محدثة
+    """
+    is_ar = (lang == "العربية")
+
+    if not consensus_info or not consensus_info.get("top_sports"):
+        return cards
+
+    for card in cards:
+        notes = card.get("notes", [])
+
+        # إضافة معلومات الأنظمة
+        if systems_summary:
+            total_systems = systems_summary.get("total_systems", 0)
+            avg_conf = systems_summary.get("avg_confidence", 0.0)
+
+            systems_text = (
+                f"🔬 تحليل {total_systems} أنظمة نفسية | ثقة: {avg_conf:.0%}" if is_ar
+                else f"🔬 {total_systems} psychological systems | Confidence: {avg_conf:.0%}"
+            )
+            notes.append(systems_text)
+
+        # إضافة أعلى رياضات بالإجماع
+        top_sports = consensus_info.get("top_sports", [])[:3]
+        if top_sports:
+            consensus_text = (
+                f"🎯 إجماع الأنظمة: {', '.join(top_sports)}" if is_ar
+                else f"🎯 Systems consensus: {', '.join(top_sports)}"
+            )
+            notes.append(consensus_text)
+
+        # إضافة معلومات الاتفاق
+        sport_votes = consensus_info.get("sport_votes", {})
+        if sport_votes:
+            agreements = len(sport_votes)
+            agreements_text = (
+                f"📊 {agreements} رياضة فريدة من التحليل" if is_ar
+                else f"📊 {agreements} unique sports from analysis"
+            )
+            notes.append(agreements_text)
+
+        card["notes"] = notes
+
+    return cards
+
+
+def _add_enhanced_insights_to_notes(
+    cards: List[Dict[str, Any]],
+    flow_indicators: Optional[Any],
+    risk_assessment: Optional[Any],
+    lang: str
+) -> List[Dict[str, Any]]:
+    """إضافة معلومات Flow & Risk إلى notes البطاقات"""
+    is_ar = (lang == "العربية")
+    
+    for card in cards:
+        notes = card.get("notes", [])
+        
+        # إضافة Flow info
+        if flow_indicators:
+            flow_text = (
+                f"🌊 قدرة التدفق: {flow_indicators.flow_potential:.0%}" if is_ar
+                else f"🌊 Flow Potential: {flow_indicators.flow_potential:.0%}"
+            )
+            notes.append(flow_text)
+            
+            depth_text = (
+                f"🎯 عمق التركيز: {flow_indicators.focus_depth}" if is_ar
+                else f"🎯 Focus Depth: {flow_indicators.focus_depth}"
+            )
+            notes.append(depth_text)
+        
+        # إضافة Risk info
+        if risk_assessment:
+            risk_text = (
+                f"⚡ ملف المخاطرة: {risk_assessment.category}" if is_ar
+                else f"⚡ Risk Profile: {risk_assessment.category}"
+            )
+            notes.append(risk_text)
+        
+        card["notes"] = notes
+    
+    return cards
+
+
+def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العربية", force_dynamic: bool = False) -> List[str]:
     """Return three recommendation cards formatted with the strict SportSync layout."""
     global LAST_RECOMMENDER_SOURCE
 
@@ -1784,13 +1997,114 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     drivers = _drivers(identity, lang)
     traits = _derive_binary_traits(answers_copy)
 
+    # NEW Task 1.2: استخدام Layer-Z Enhanced الحقيقي
+    enhanced_analysis = None
+    flow_indicators = None
+    risk_assessment = None
+    
+    if EnhancedLayerZ is not None:
+        try:
+            analyzer = EnhancedLayerZ()
+            enhanced_analysis = analyzer.analyze_complete(
+                text="",  # سيتم استخراج النص من answers تلقائياً
+                lang=lang,
+                answers=answers_copy
+            )
+            
+            # استخراج المكونات
+            z_scores_enhanced = enhanced_analysis["z_scores"]
+            z_drivers_enhanced = enhanced_analysis["z_drivers"]
+            flow_indicators = enhanced_analysis["flow_indicators"]
+            risk_assessment = enhanced_analysis["risk_assessment"]
+            
+            # تحويل ZAxisScore إلى dict بسيط للـ confidence calculation
+            z_scores = {
+                axis: score.score 
+                for axis, score in z_scores_enhanced.items()
+            }
+            
+            # استخدام drivers من Enhanced إذا كان متوفراً
+            if z_drivers_enhanced:
+                drivers = z_drivers_enhanced
+            
+            print(f"[REC] ✅ Enhanced Layer-Z analysis complete")
+            print(f"[REC]    Flow potential: {flow_indicators.flow_potential:.2f}")
+            print(f"[REC]    Risk category: {risk_assessment.category}")
+            
+        except Exception as e:
+            print(f"[REC] ⚠️ Enhanced Layer-Z failed, using fallback: {e}")
+            # استخدام placeholder القديم
+            z_scores = {
+                "technical_intuitive": identity.get("tactical", 0.5) - 0.5,
+                "solo_group": identity.get("solo", 0.5) - identity.get("social", 0.5),
+                "calm_adrenaline": traits.get("calm", 0.5) - traits.get("adrenaline", 0.5),
+            }
+    else:
+        # Fallback إذا لم يكن Enhanced متوفراً
+        z_scores = {
+            "technical_intuitive": identity.get("tactical", 0.5) - 0.5,
+            "solo_group": identity.get("solo", 0.5) - identity.get("social", 0.5),
+            "calm_adrenaline": traits.get("calm", 0.5) - traits.get("adrenaline", 0.5),
+        }
+
+    # NEW Task 1.3: تحليل متعدد الأنظمة
+    systems_analysis = None
+    consensus_info = None
+
+    if analyze_all_systems is not None:
+        try:
+            systems_analysis = analyze_all_systems(answers_copy, lang)
+            consensus_info = systems_analysis.get("consensus")
+
+            print(f"[REC] ✅ Multi-system analysis complete")
+            print(f"[REC]    {systems_analysis['summary']['total_systems']} systems analyzed")
+            if consensus_info and consensus_info.get("top_sports"):
+                print(f"[REC]    Consensus: {', '.join(consensus_info['top_sports'][:3])}")
+        except Exception as e:
+            print(f"[REC] ⚠️ Multi-system analysis failed: {e}")
+            systems_analysis = None
+
+    confidence = calculate_confidence(z_scores, traits)
+    print(f"[REC] Confidence score: {confidence:.2f}")
+
     cards_struct: Optional[List[Dict[str, Any]]] = None
     source = "fallback"
 
     llm_possible = bool(LLM_CLIENT and CHAT_MODEL)
     llm_attempted = False
+    
+    # NEW: قرار Dynamic AI vs LLM vs KB
+    use_dynamic = (force_dynamic or confidence < 0.75) and DynamicSportsAI is not None and llm_possible
 
-    if not disable_flag and not force_flag and not env_force and llm_possible:
+    if use_dynamic:
+        print(f"[REC] 🚀 Using Dynamic AI (confidence={confidence:.2f})")
+        try:
+            dynamic_ai = DynamicSportsAI(LLM_CLIENT)
+            
+            # إعداد z_scores مع المعلومات الإضافية من Enhanced
+            z_scores_with_enhanced = dict(z_scores)
+            if flow_indicators:
+                z_scores_with_enhanced["flow_potential"] = flow_indicators.flow_potential
+                z_scores_with_enhanced["flow_state"] = flow_indicators.immersion_likelihood
+            if risk_assessment:
+                z_scores_with_enhanced["risk_level"] = risk_assessment.risk_level
+                z_scores_with_enhanced["risk_category"] = risk_assessment.category
+            
+            sports = dynamic_ai.recommend_sports(
+                user_profile=answers_copy,
+                z_scores=z_scores_with_enhanced,
+                systems_analysis=systems_analysis,  # NEW: Task 1.3 - Multi-system analysis
+                lang=lang,
+                count=3
+            )
+            cards_struct = _convert_dynamic_to_cards(sports, lang)
+            source = "dynamic_ai"
+            print(f"[REC] ✅ Dynamic AI generated {len(cards_struct)} cards")
+        except Exception as e:
+            print(f"[REC] ❌ Dynamic AI failed: {e}")
+            cards_struct = None
+
+    if not cards_struct and not disable_flag and not force_flag and not env_force and llm_possible:
         print(f"[REC] llm_path=ON model={CHAT_MODEL} fb={CHAT_MODEL_FALLBACK or 'none'}")
         try:
             cards_struct = _llm_cards(answers_copy, identity, drivers, lang, traits)
@@ -1815,6 +2129,26 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
             traits=traits,
         )
         source = "fallback"
+
+    # NEW Task 1.2: إضافة معلومات Enhanced إلى البطاقات
+    if flow_indicators or risk_assessment:
+        cards_struct = _add_enhanced_insights_to_notes(
+            cards_struct,
+            flow_indicators,
+            risk_assessment,
+            lang
+        )
+        print(f"[REC] ✅ Enhanced insights added to cards")
+
+    # NEW Task 1.3: إضافة معلومات Consensus إلى البطاقات
+    if consensus_info and systems_analysis:
+        cards_struct = _add_consensus_to_notes(
+            cards_struct,
+            consensus_info,
+            systems_analysis.get("summary"),
+            lang
+        )
+        print(f"[REC] ✅ Multi-system consensus added to cards")
 
     # اختيار الـ formatter المناسب حسب المصدر
     # KB cards تحتوي على 'psychological_hook' بينما blueprint cards لا تحتوي عليها
