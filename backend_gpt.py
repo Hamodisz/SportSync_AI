@@ -26,6 +26,7 @@ try:  # Optional LLM client; fallback works without it.
     from dynamic_sports_ai import DynamicSportsAI  # NEW: Dynamic AI integration
     from layer_z_enhanced import EnhancedLayerZ  # NEW: Task 1.2 - Enhanced Layer-Z
     from systems import analyze_all_systems  # NEW: Task 1.3 - Multi-system analysis
+    from layer_z_engine import calculate_z_scores_from_questions  # NEW: Task 2.1 - Explicit scoring
     from core.user_logger import log_event, log_recommendation_result  # type: ignore
     DUAL_MODEL_ENABLED = True
 except Exception:  # pragma: no cover - LLM unavailable
@@ -37,6 +38,7 @@ except Exception:  # pragma: no cover - LLM unavailable
     DynamicSportsAI = None  # NEW
     EnhancedLayerZ = None  # NEW: Task 1.2
     analyze_all_systems = None  # NEW: Task 1.3
+    calculate_z_scores_from_questions = None  # NEW: Task 2.1
     log_event = lambda *args, **kwargs: None  # fallback
     log_recommendation_result = lambda *args, **kwargs: None  # fallback
     DUAL_MODEL_ENABLED = False
@@ -1997,11 +1999,25 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
     drivers = _drivers(identity, lang)
     traits = _derive_binary_traits(answers_copy)
 
-    # NEW Task 1.2: استخدام Layer-Z Enhanced الحقيقي
+    # NEW Task 2.1: استخدام Explicit Scoring من الأسئلة الجديدة (أولوية أولى)
+    z_scores_explicit = None
+    if calculate_z_scores_from_questions is not None:
+        try:
+            z_scores_explicit = calculate_z_scores_from_questions(answers_copy, lang=lang)
+            if z_scores_explicit and len(z_scores_explicit) > 0:
+                print(f"[REC] ✅ Explicit Z-scores calculated from questions")
+                print(f"[REC]    {len(z_scores_explicit)} axes scored")
+                for axis, score in sorted(z_scores_explicit.items()):
+                    print(f"[REC]    {axis}: {score:+.2f}")
+        except Exception as e:
+            print(f"[REC] ⚠️ Explicit scoring failed: {e}")
+            z_scores_explicit = None
+
+    # NEW Task 1.2: استخدام Layer-Z Enhanced الحقيقي (fallback أو تكملة)
     enhanced_analysis = None
     flow_indicators = None
     risk_assessment = None
-    
+
     if EnhancedLayerZ is not None:
         try:
             analyzer = EnhancedLayerZ()
@@ -2018,34 +2034,51 @@ def generate_sport_recommendation(answers: Dict[str, Any], lang: str = "العر
             risk_assessment = enhanced_analysis["risk_assessment"]
             
             # تحويل ZAxisScore إلى dict بسيط للـ confidence calculation
-            z_scores = {
-                axis: score.score 
+            z_scores_enhanced_dict = {
+                axis: score.score
                 for axis, score in z_scores_enhanced.items()
             }
-            
+
             # استخدام drivers من Enhanced إذا كان متوفراً
             if z_drivers_enhanced:
                 drivers = z_drivers_enhanced
-            
+
             print(f"[REC] ✅ Enhanced Layer-Z analysis complete")
             print(f"[REC]    Flow potential: {flow_indicators.flow_potential:.2f}")
             print(f"[REC]    Risk category: {risk_assessment.category}")
-            
+
         except Exception as e:
             print(f"[REC] ⚠️ Enhanced Layer-Z failed, using fallback: {e}")
             # استخدام placeholder القديم
-            z_scores = {
+            z_scores_enhanced_dict = {
                 "technical_intuitive": identity.get("tactical", 0.5) - 0.5,
                 "solo_group": identity.get("solo", 0.5) - identity.get("social", 0.5),
                 "calm_adrenaline": traits.get("calm", 0.5) - traits.get("adrenaline", 0.5),
             }
     else:
         # Fallback إذا لم يكن Enhanced متوفراً
-        z_scores = {
+        z_scores_enhanced_dict = {
             "technical_intuitive": identity.get("tactical", 0.5) - 0.5,
             "solo_group": identity.get("solo", 0.5) - identity.get("social", 0.5),
             "calm_adrenaline": traits.get("calm", 0.5) - traits.get("adrenaline", 0.5),
         }
+
+    # NEW Task 2.1: دمج Explicit Scores مع Enhanced (الأولوية للـ Explicit)
+    if z_scores_explicit and len(z_scores_explicit) > 0:
+        # استخدام Explicit scores كأساس
+        z_scores = dict(z_scores_explicit)
+
+        # إضافة أي محاور ناقصة من Enhanced
+        for axis, score in z_scores_enhanced_dict.items():
+            if axis not in z_scores:
+                z_scores[axis] = score
+
+        print(f"[REC] 🎯 Using EXPLICIT scores as primary ({len(z_scores_explicit)} axes)")
+        print(f"[REC]    + {len(z_scores_enhanced_dict) - len(z_scores_explicit)} axes from Enhanced Layer-Z")
+    else:
+        # استخدام Enhanced فقط (النظام القديم)
+        z_scores = z_scores_enhanced_dict
+        print(f"[REC] Using Enhanced Layer-Z scores (fallback)")
 
     # NEW Task 1.3: تحليل متعدد الأنظمة
     systems_analysis = None

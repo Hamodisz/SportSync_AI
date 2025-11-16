@@ -18,14 +18,29 @@ from app_v2.components import session_manager, ui_components
 def load_questions():
     """تحميل الأسئلة"""
     lang = st.session_state.get('language', 'ar')
-    file_name = 'arabic_questions.json' if lang == 'ar' else 'english_questions.json'
-    questions_file = project_root / 'questions' / file_name
-    
+
+    # Try v2 questions first (10 deep questions with explicit scoring)
+    file_name_v2 = 'arabic_questions_v2.json' if lang == 'ar' else 'english_questions_v2.json'
+    questions_file_v2 = project_root / file_name_v2
+
+    # Fallback to old questions if v2 not found
+    file_name_old = 'arabic_questions.json' if lang == 'ar' else 'english_questions.json'
+    questions_file_old = project_root / 'questions' / file_name_old
+
     try:
-        with open(questions_file, 'r', encoding='utf-8') as f:
-            questions = json.load(f)
-            # Take first 20 questions
-            return questions[:20]
+        # Try v2 first (in root directory)
+        if questions_file_v2.exists():
+            with open(questions_file_v2, 'r', encoding='utf-8') as f:
+                questions = json.load(f)
+                print(f"[QUESTIONS] ✅ Loaded v2 questions: {len(questions)} questions")
+                return questions  # v2 has exactly 10 questions
+        else:
+            # Fallback to old format
+            with open(questions_file_old, 'r', encoding='utf-8') as f:
+                questions = json.load(f)
+                print(f"[QUESTIONS] ⚠️ Using old format questions (fallback)")
+                # Take first 20 questions
+                return questions[:20]
     except Exception as e:
         st.error(f"خطأ في تحميل الأسئلة: {e}")
         return []
@@ -91,9 +106,16 @@ def show():
     
     # Choices
     st.markdown("### اختر إجابتك:")
-    
-    choices = q.get('multiple_choices', [])
-    
+
+    # Handle both v2 format (options with text_ar/text_en) and old format (multiple_choices)
+    if 'options' in q:
+        # V2 format: extract text based on language
+        lang_key = 'text_ar' if lang == 'ar' else 'text_en'
+        choices = [opt.get(lang_key, opt.get('text_ar', '')) for opt in q['options']]
+    else:
+        # Old format: direct array of strings
+        choices = q.get('multiple_choices', [])
+
     # Display choices as buttons
     cols = st.columns(1)
     for i, choice in enumerate(choices):
