@@ -26,7 +26,8 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Tuple, Optional
 
 # ========= Utilities: Arabic normalization & safe text extraction =========
 
@@ -256,7 +257,163 @@ def analyze_silent_drivers_combined(answers: Dict[str, Any], lang: str = "الع
     return ordered
 
 
+
+# ========= NEW: Structured scoring from JSON with explicit scores =========
+
+def calculate_z_scores_from_questions(
+    answers: Dict[str, Any],
+    questions_file: Optional[str] = None,
+    lang: str = "العربية"
+) -> Dict[str, float]:
+    """
+    Calculate Z-axis scores from user answers using explicit scores in questions JSON.
+
+    Args:
+        answers: User answers dict like {q1: {answer: ["option text"]}, q2: ...}
+        questions_file: Path to questions JSON file. If None, auto-detect based on lang
+        lang: Language (العربية or English)
+
+    Returns:
+        Dict of Z-axis scores like {
+            "calm_adrenaline": 0.5,
+            "solo_group": -0.3,
+            "sensory_sensitivity": 0.7,
+            ...
+        }
+    """
+    # Auto-detect questions file
+    if questions_file is None:
+        script_dir = Path(__file__).parent
+        # Try v2 format first, then fallback to old format
+        if lang.startswith("العربية") or lang == "ar":
+            v2_file = script_dir / "arabic_questions_v2.json"
+            sample_file = script_dir / "arabic_questions_v2_sample.json"
+            old_file = script_dir / "arabic_questions.json"
+
+            if v2_file.exists():
+                questions_file = str(v2_file)
+            elif sample_file.exists():
+                questions_file = str(sample_file)
+            else:
+                questions_file = str(old_file)
+        else:
+            v2_file = script_dir / "english_questions_v2.json"
+            old_file = script_dir / "english_questions.json"
+
+            if v2_file.exists():
+                questions_file = str(v2_file)
+            else:
+                questions_file = str(old_file)
+
+    # Load questions
+    try:
+        with open(questions_file, 'r', encoding='utf-8') as f:
+            questions = json.load(f)
+    except Exception as e:
+        print(f"[Z-ENGINE] ⚠️ Failed to load questions from {questions_file}: {e}")
+        return {}
+
+    # Check format (v2 vs old)
+    if not questions:
+        return {}
+
+    first_q = questions[0]
+    is_v2_format = "options" in first_q  # v2 has "options" array with scores
+
+    if not is_v2_format:
+        # Old format - return empty dict (fallback to keyword-based analysis)
+        print(f"[Z-ENGINE] ℹ️ Old format detected, use keyword-based analysis instead")
+        return {}
+
+    # Initialize Z-axis accumulators
+    z_totals: Dict[str, float] = {}
+    z_weights: Dict[str, float] = {}
+
+    # Process each answer
+    for q_key, answer_data in answers.items():
+        if q_key.startswith("_"):
+            continue  # Skip metadata
+
+        # Find matching question
+        question = None
+        for q in questions:
+            if q.get("key") == q_key:
+                question = q
+                break
+
+        if not question:
+            continue
+
+        # Extract user's selected option(s)
+        selected_texts = []
+        if isinstance(answer_data, dict):
+            answer_val = answer_data.get("answer", [])
+            if isinstance(answer_val, list):
+                selected_texts = answer_val
+            elif isinstance(answer_val, str):
+                selected_texts = [answer_val]
+        elif isinstance(answer_data, str):
+            selected_texts = [answer_data]
+        elif isinstance(answer_data, list):
+            selected_texts = answer_data
+
+        if not selected_texts:
+            continue
+
+        # Get question weight
+        q_weight = question.get("weight", 1)
+
+        # Match selected text to options and accumulate scores
+        options = question.get("options", [])
+        for option in options:
+            text_ar = option.get("text_ar", "")
+            text_en = option.get("text_en", "")
+            scores = option.get("scores", {})
+
+            # Check if this option was selected
+            is_selected = False
+            for selected in selected_texts:
+                selected_normalized = _normalize_ar(str(selected).lower())
+                ar_normalized = _normalize_ar(text_ar.lower())
+                en_normalized = text_en.lower()
+
+                if (selected_normalized in ar_normalized or
+                    ar_normalized in selected_normalized or
+                    selected.lower() in en_normalized or
+                    en_normalized in selected.lower()):
+                    is_selected = True
+                    break
+
+            if is_selected:
+                # Add scores to totals
+                for axis, score in scores.items():
+                    if axis not in z_totals:
+                        z_totals[axis] = 0.0
+                        z_weights[axis] = 0.0
+
+                    z_totals[axis] += score * q_weight
+                    z_weights[axis] += q_weight
+
+    # Calculate weighted averages
+    z_scores: Dict[str, float] = {}
+    for axis in z_totals:
+        if z_weights[axis] > 0:
+            avg = z_totals[axis] / z_weights[axis]
+            # Clamp to valid range
+            if axis in ["sensory_sensitivity"]:  # Unipolar axes (0.0 to 1.0)
+                z_scores[axis] = max(0.0, min(1.0, avg))
+            else:  # Bipolar axes (-1.0 to 1.0)
+                z_scores[axis] = max(-1.0, min(1.0, avg))
+
+    print(f"[Z-ENGINE] ✅ Calculated {len(z_scores)} Z-axis scores from {len(answers)} answers")
+    for axis, score in sorted(z_scores.items()):
+        print(f"[Z-ENGINE]    {axis}: {score:+.2f}")
+
+    return z_scores
+
+
 __all__ = [
     "analyze_silent_drivers_combined",
     "analyze_user_intent",
+    "calculate_z_scores_from_questions",
 ]
