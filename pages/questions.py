@@ -13,7 +13,7 @@ import sys
 project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from app_v2.components import session_manager, ui_components
+from components import session_manager, ui_components
 
 def load_questions():
     """تحميل الأسئلة"""

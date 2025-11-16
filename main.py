@@ -259,98 +259,6 @@ def init_session_state():
         if key not in st.session_state:
             st.session_state[key] = value
 
-# ══════════════════════════════════════════════════════════════
-# MAIN APP
-# ══════════════════════════════════════════════════════════════
-
-def main():
-    """التطبيق الرئيسي"""
-    
-    # تحميل CSS
-    inject_custom_css()
-    
-    # تهيئة Session State
-    init_session_state()
-    
-    # Sidebar Navigation
-    with st.sidebar:
-        st.markdown("# 🚀 SportSync AI v2")
-        st.markdown("---")
-        
-        # Language Switcher
-        lang = st.radio(
-            "🌐 اللغة / Language",
-            options=['ar', 'en'],
-            format_func=lambda x: "🇸🇦 العربية" if x == 'ar' else "🇬🇧 English",
-            key='language'
-        )
-        
-        st.markdown("---")
-        
-        # Navigation
-        pages = {
-            'welcome': '🏠 الرئيسية',
-            'questions': '📝 الأسئلة',
-            'analysis': '🧠 التحليل',
-            'results': '🎯 النتائج'
-        }
-        
-        st.markdown("### 📍 التنقل")
-        for page_key, page_name in pages.items():
-            if st.button(page_name, key=f"nav_{page_key}", use_container_width=True):
-                st.session_state.current_page = page_key
-                st.rerun()
-        
-        st.markdown("---")
-        
-        # Progress
-        if st.session_state.started:
-            st.markdown("### 📊 التقدم")
-            progress = st.session_state.current_question / st.session_state.total_questions
-            st.progress(progress)
-            st.caption(f"{st.session_state.current_question}/{st.session_state.total_questions} أسئلة")
-        
-        # Footer
-        st.markdown("---")
-        st.markdown("### 💡 معلومات")
-        st.info("""
-        **SportSync AI v2**
-        
-        الجيل الثاني من نظام اكتشاف الهوية الرياضية
-        
-        🧠 141 طبقة تحليل
-        🎯 8000+ رياضة
-        ⚡ AI-Powered
-        """)
-    
-    # ══════════════════════════════════════════════════════════
-    # PAGE ROUTING
-    # ══════════════════════════════════════════════════════════
-    
-    page = st.session_state.current_page
-    
-    if page == 'welcome':
-        from pages import welcome
-        welcome.show()
-    
-    elif page == 'questions':
-        from pages import questions
-        questions.show()
-    
-    elif page == 'analysis':
-        from pages import analysis
-        analysis.show()
-    
-    elif page == 'results':
-        from pages import results
-        results.show()
-    
-    else:
-        st.error("صفحة غير موجودة!")
-
-if __name__ == "__main__":
-    main()
-
 # Import components
 from components import session_manager
 
@@ -360,18 +268,18 @@ from components import session_manager
 
 def main():
     """التطبيق الرئيسي"""
-    
+
     # تحميل CSS
     inject_custom_css()
-    
+
     # تهيئة Session State
     session_manager.init_session()
-    
+
     # Sidebar Navigation
     with st.sidebar:
         st.markdown("# 🚀 SportSync AI v2")
         st.markdown("---")
-        
+
         # Language Switcher
         lang = st.radio(
             "🌐 اللغة / Language",
@@ -379,9 +287,9 @@ def main():
             format_func=lambda x: "🇸🇦 العربية" if x == 'ar' else "🇬🇧 English",
             key='language'
         )
-        
+
         st.markdown("---")
-        
+
         # Navigation
         pages = {
             'welcome': '🏠 الرئيسية',
@@ -389,15 +297,15 @@ def main():
             'analysis': '🧠 التحليل',
             'results': '🎯 النتائج'
         }
-        
+
         st.markdown("### 📍 التنقل")
         for page_key, page_name in pages.items():
             if st.button(page_name, key=f"nav_{page_key}", use_container_width=True):
                 st.session_state.current_page = page_key
                 st.rerun()
-        
+
         st.markdown("---")
-        
+
         # Progress
         if st.session_state.get('started', False):
             progress_info = session_manager.get_progress()
@@ -405,46 +313,46 @@ def main():
             st.progress(progress_info['percentage'] / 100)
             st.caption(f"{progress_info['answered']}/{progress_info['total']} أسئلة")
             st.caption(f"{progress_info['percentage']}% مكتمل")
-        
+
         # Session Info
         st.markdown("---")
         st.markdown("### 💡 معلومات الجلسة")
         session_info = session_manager.get_session_info()
         st.caption(f"👤 User: {session_info['user_id'][:8]}...")
         st.caption(f"📝 Answered: {session_info['answers_count']}")
-        
+
         # Footer
         st.markdown("---")
         st.info("""
         **SportSync AI v2**
-        
+
         🧠 141 طبقة تحليل
         🎯 8000+ رياضة
         ⚡ AI-Powered
         """)
-    
+
     # ══════════════════════════════════════════════════════════
     # PAGE ROUTING
     # ══════════════════════════════════════════════════════════
-    
+
     page = st.session_state.current_page
-    
+
     if page == 'welcome':
         from pages import welcome
         welcome.show()
-    
+
     elif page == 'questions':
         from pages import questions
         questions.show()
-    
+
     elif page == 'analysis':
         from pages import analysis
         analysis.show()
-    
+
     elif page == 'results':
         from pages import results
         results.show()
-    
+
     else:
         st.error("صفحة غير موجودة!")
 
