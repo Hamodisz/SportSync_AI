@@ -3,12 +3,15 @@ import csv
 import json
 from datetime import datetime
 
-from analysis.analysis_layers_1_40 import apply_layers_1_40
-from analysis.analysis_layers_41_80 import apply_layers_41_80
-from analysis.analysis_layers_81_100 import apply_layers_81_100
-from analysis.analysis_layers_101_141 import apply_layers_101_141
-from analysis.layer_z_engine import analyze_silent_drivers_combined as analyze_silent_drivers
-from core.chat_personality_static import BASE_PERSONALITY
+from src.analysis.analysis_layers_1_40 import apply_layers_1_40
+from src.analysis.analysis_layers_41_80 import apply_layers_41_80
+from src.analysis.analysis_layers_81_100 import apply_layers_81_100
+from src.analysis.analysis_layers_101_141 import apply_layers_101_141
+from src.analysis.layer_z_engine import analyze_silent_drivers_combined as analyze_silent_drivers
+from src.utils.chat_personality import get_chat_personality
+
+# Define BASE_PERSONALITY if needed
+BASE_PERSONALITY = get_chat_personality()
 
 CSV_PATH = "data/user_sessions.csv"
 OUTPUT_PATH = "data/weekly_analysis.json"

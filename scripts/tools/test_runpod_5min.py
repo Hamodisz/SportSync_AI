@@ -16,7 +16,7 @@ import io
 import base64
 
 # استيراد RunPod client
-from core.runpod_flux_client import RunPodFluxClient, enhance_prompt_for_sport
+from src.core.runpod_flux_client import RunPodFluxClient, enhance_prompt_for_sport
 
 # =====================================================
 # السكربت الكامل - محتوى غني لـ 5 دقائق

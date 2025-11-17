@@ -14,7 +14,7 @@ load_dotenv()
 project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, project_root)
 
-from core.sport_generator import SportDNAGenerator
+from src.core.sport_generator import SportDNAGenerator
 
 
 def test_sport_generator():

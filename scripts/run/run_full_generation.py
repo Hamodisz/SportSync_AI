@@ -16,7 +16,7 @@ from pathlib import Path
 # اجعل جذر المشروع على مسار الاستيراد (من جذر هذا الملف)
 sys.path.append(str(Path(__file__).parent.resolve()))
 
-from core.core_engine import run_full_generation, quick_diagnose
+from src.core.core_engine import run_full_generation, quick_diagnose
 
 # -----------------------------
 # إعداد المسارات الأساسية

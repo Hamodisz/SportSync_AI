@@ -21,11 +21,11 @@ def load_questions():
 
     # Try v2 questions first (10 deep questions with explicit scoring)
     file_name_v2 = 'arabic_questions_v2.json' if lang == 'ar' else 'english_questions_v2.json'
-    questions_file_v2 = project_root / file_name_v2
+    questions_file_v2 = project_root / 'data' / 'questions' / file_name_v2
 
     # Fallback to old questions if v2 not found
     file_name_old = 'arabic_questions.json' if lang == 'ar' else 'english_questions.json'
-    questions_file_old = project_root / 'questions' / file_name_old
+    questions_file_old = project_root / 'data' / 'questions' / file_name_old
 
     try:
         # Try v2 first (in root directory)

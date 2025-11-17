@@ -4,9 +4,9 @@ import os
 import json
 import openai
 
-from core.user_analysis import load_user_analysis
-from core.chat_personality import get_chat_personality
-from core.layer_z_engine import analyze_silent_drivers_combined as analyze_silent_drivers
+from src.utils.user_analysis import load_user_analysis
+from src.utils.chat_personality import get_chat_personality
+from src.analysis.layer_z_engine import analyze_silent_drivers_combined as analyze_silent_drivers
 
 client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 

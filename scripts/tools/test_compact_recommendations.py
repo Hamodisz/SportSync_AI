@@ -8,7 +8,7 @@ Test Compact Recommendations
 import sys
 sys.path.append('/Users/mohammadal-saati/SportSync_AI-1')
 
-from core.complete_sport_system import generate_complete_sport_recommendations
+from src.core.complete_sport_system import generate_complete_sport_recommendations
 
 # Sample user data
 sample_user = {

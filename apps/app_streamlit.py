@@ -5,14 +5,14 @@ import uuid
 from typing import List
 import streamlit as st
 from pathlib import Path
-from core.core_engine import run_full_generation, quick_diagnose
-from core.backend_gpt import generate_sport_recommendation, get_last_rec_source
-from core.llm_client import make_llm_client, pick_models
-from core.user_logger import get_log_stats
+from src.core.core_engine import run_full_generation, quick_diagnose
+from src.core.backend_gpt import generate_sport_recommendation, get_last_rec_source
+from src.core.llm_client import make_llm_client, pick_models
+from src.utils.user_logger import get_log_stats
 
 # Apply v2.2 Complete Sport System integration
 try:
-    from core.backend_gpt_integration import patch_backend_gpt
+    from src.core.backend_gpt_integration import patch_backend_gpt
     patch_backend_gpt()
 except Exception as e:
     print(f"[PATCH] Warning: {e}")

@@ -1,5 +1,5 @@
 # smoke_test_backend_gpt.py
-from core.backend_gpt import generate_sport_recommendation
+from src.core.backend_gpt import generate_sport_recommendation
 
 answers = {
     "aim": {"answer": "أبغى هدوء وتنفس وتركيز أكثر من الأدرينالين"},

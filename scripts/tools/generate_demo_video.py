@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.resolve()))
 
-from core.core_engine import run_full_generation
+from src.core.core_engine import run_full_generation
 
 # سكربت تجريبي مقنع عن SportSync
 demo_script = """عنوان: اكتشف رياضتك الحقيقية

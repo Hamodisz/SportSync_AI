@@ -283,12 +283,14 @@ def calculate_z_scores_from_questions(
     """
     # Auto-detect questions file
     if questions_file is None:
-        script_dir = Path(__file__).parent
+        # Navigate to project root, then to data/questions
+        project_root = Path(__file__).parent.parent.parent
+        questions_dir = project_root / "data" / "questions"
         # Try v2 format first, then fallback to old format
         if lang.startswith("العربية") or lang == "ar":
-            v2_file = script_dir / "arabic_questions_v2.json"
-            sample_file = script_dir / "arabic_questions_v2_sample.json"
-            old_file = script_dir / "arabic_questions.json"
+            v2_file = questions_dir / "arabic_questions_v2.json"
+            sample_file = questions_dir / "arabic_questions_v2_sample.json"
+            old_file = questions_dir / "arabic_questions.json"
 
             if v2_file.exists():
                 questions_file = str(v2_file)
@@ -297,8 +299,8 @@ def calculate_z_scores_from_questions(
             else:
                 questions_file = str(old_file)
         else:
-            v2_file = script_dir / "english_questions_v2.json"
-            old_file = script_dir / "english_questions.json"
+            v2_file = questions_dir / "english_questions_v2.json"
+            old_file = questions_dir / "english_questions.json"
 
             if v2_file.exists():
                 questions_file = str(v2_file)

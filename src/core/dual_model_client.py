@@ -17,8 +17,8 @@ from __future__ import annotations
 import os
 import json
 from typing import Dict, List, Optional, Any
-from core.llm_client import make_llm_client_singleton, chat_once, _bootstrap_env
-from core.sport_identity_generator import get_sport_identity_generator
+from src.core.llm_client import make_llm_client_singleton, chat_once, _bootstrap_env
+from src.core.sport_identity_generator import get_sport_identity_generator
 
 # Bootstrap environment
 _bootstrap_env()

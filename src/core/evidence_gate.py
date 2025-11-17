@@ -1,14 +1,14 @@
 # -- coding: utf-8 --
 """
-core/evidence_gate.py
----------------------
+src/core/evidence_gate.py
+-------------------------
 بوابة أدلة قبل التوصيات:
 - تحسب evidence score من جودة/تنوع الإجابات.
 - ترجع: status in {pass, borderline, fail} + أسئلة متابعة قصيرة حسب النقص.
 - العتبات/الإعدادات تُقرأ من app_config.json (analysis.egate و ui.followup_batch).
 
 الاستخدام:
-from core.evidence_gate import evaluate
+from src.core.evidence_gate import evaluate
 res = evaluate(answers, lang="العربية", cfg=get_config())
 """
 

@@ -49,7 +49,7 @@ except Exception:
     _PIPE = None
 
 # منطق التحليل
-from core.backend_gpt import generate_sport_recommendation  # type: ignore
+from src.core.backend_gpt import generate_sport_recommendation  # type: ignore
 
 # حالة الـ Jobs بالذاكرة + قفل
 _LOCK = threading.RLock()

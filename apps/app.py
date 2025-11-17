@@ -7,8 +7,8 @@ import streamlit as st
 import qrcode
 from PIL import Image  # noqa: F401  (مطلوبة لـ qrcode.save)
 
-from core.submit_answers_to_queue import submit_to_queue
-from core.check_result_ready import check_result
+from src.utils.submit_answers_to_queue import submit_to_queue
+from src.utils.check_result_ready import check_result
 
 # ===================== إعداد عام =====================
 # لو عندك دومين/رندر حطه هنا أو في secrets كـ PUBLIC_BASE، وإلا بيستخدم رابط نسبي

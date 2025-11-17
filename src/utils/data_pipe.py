@@ -17,7 +17,7 @@ from __future__ import annotations
 import os, json, uuid, pathlib, datetime, logging
 from typing import Any, Dict, Optional, List
 
-from core.app_config import get_config
+from apps.app_config import get_config
 
 UTC = datetime.timezone.utc
 

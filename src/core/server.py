@@ -15,7 +15,7 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Any, Dict, Optional
-from core.deferred_analysis import create_job, get_status, get_result
+from src.analysis.deferred_analysis import create_job, get_status, get_result
 
 app = FastAPI(title="SportSync API", version="1.0")
 

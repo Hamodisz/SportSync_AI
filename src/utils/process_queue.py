@@ -1,7 +1,7 @@
 import os
 import json
 import time
-from core.backend_gpt import analyze_user_from_answers
+from src.core.backend_gpt import analyze_user_from_answers
 
 PENDING_DIR = "data/pending_requests"
 RESULTS_DIR = "data/ready_results"
