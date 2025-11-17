@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SportSync AI - اكتشف رياضتك المثالية</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            direction: rtl;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        h1 {
+            text-align: center;
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 2.5rem;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 40px;
+            font-size: 1.2rem;
+        }
+
+        .progress-section {
+            margin-bottom: 30px;
+        }
+
+        .progress-text {
+            text-align: center;
+            font-size: 1.1rem;
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.5s ease;
+            border-radius: 15px;
+        }
+
+        .progress-percentage {
+            position: absolute;
+            width: 100%;
+            text-align: center;
+            line-height: 30px;
+            color: #333;
+            font-weight: bold;
+            mix-blend-mode: difference;
+        }
+
+        .question-container {
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+        }
+
+        .question-number {
+            color: #667eea;
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+
+        .question-text {
+            font-size: 1.4rem;
+            color: #333;
+            margin-bottom: 25px;
+            font-weight: 600;
+            line-height: 1.6;
+        }
+
+        .options {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .option {
+            padding: 18px 20px;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 1.05rem;
+        }
+
+        .option:hover {
+            border-color: #667eea;
+            background: #f0f4ff;
+            transform: translateX(-3px);
+        }
+
+        .option.selected {
+            border-color: #667eea;
+            background: #667eea;
+            color: white;
+            transform: translateX(-5px);
+        }
+
+        .navigation {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+            justify-content: space-between;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            padding: 15px 35px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+        }
+
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        button.secondary {
+            background: #6c757d;
+        }
+
+        button.secondary:hover {
+            background: #5a6268;
+        }
+
+        .results {
+            padding: 20px;
+        }
+
+        .result-card {
+            background: linear-gradient(135deg, #667eea10 0%, #764ba210 100%);
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 25px;
+            border-right: 5px solid #667eea;
+        }
+
+        .result-card h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.5rem;
+        }
+
+        .result-card p {
+            line-height: 1.8;
+            color: #333;
+            font-size: 1.05rem;
+        }
+
+        .match-score {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            margin-top: 10px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .personality-summary {
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .personality-summary h2 {
+            margin-bottom: 15px;
+            font-size: 1.8rem;
+        }
+
+        .personality-summary p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 25px;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+
+            .question-text {
+                font-size: 1.2rem;
+            }
+
+            .navigation {
+                flex-direction: column;
+            }
+
+            button {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 SportSync AI</h1>
+        <p class="subtitle">اكتشف رياضتك المثالية من خلال الذكاء الاصطناعي</p>
+
+        <!-- Progress -->
+        <div id="progressSection" class="progress-section hidden">
+            <p class="progress-text">السؤال <span id="currentQ">1</span> من <span id="totalQ">10</span></p>
+            <div class="progress-bar">
+                <div id="progressFill" class="progress-fill"></div>
+                <div id="progressPercentage" class="progress-percentage">0%</div>
+            </div>
+        </div>
+
+        <!-- Questions Section -->
+        <div id="questionsSection">
+            <div id="questionContainer"></div>
+
+            <div class="navigation">
+                <button id="prevBtn" class="secondary" onclick="previousQuestion()">السابق</button>
+                <button id="nextBtn" onclick="nextQuestion()">التالي</button>
+                <button id="submitBtn" class="hidden" onclick="submitAnswers()">🧠 احصل على توصياتك</button>
+            </div>
+        </div>
+
+        <!-- Loading -->
+        <div id="loadingSection" class="loading hidden">
+            <div class="spinner"></div>
+            <p>جاري تحليل شخصيتك...</p>
+            <p style="color: #666; margin-top: 10px;">قد يستغرق الأمر بضع ثوانٍ</p>
+        </div>
+
+        <!-- Results -->
+        <div id="resultsSection" class="results hidden">
+            <div id="personalitySummary" class="personality-summary"></div>
+            <h2 style="text-align: center; margin-bottom: 30px;">✨ توصياتك الرياضية</h2>
+            <div id="recommendations"></div>
+        </div>
+    </div>
+
+    <script>
+        let questions = [];
+        let currentQuestionIndex = 0;
+        let answers = [];
+
+        // Load questions on page load
+        async function loadQuestions() {
+            try {
+                const response = await fetch('/api/questions?lang=ar');
+                const data = await response.json();
+
+                if (data.success && data.questions) {
+                    questions = data.questions;
+                    document.getElementById('totalQ').textContent = questions.length;
+                    document.getElementById('progressSection').classList.remove('hidden');
+                    showQuestion(0);
+                } else {
+                    alert('فشل تحميل الأسئلة');
+                }
+            } catch (error) {
+                console.error('Error loading questions:', error);
+                alert('خطأ في الاتصال بالخادم');
+            }
+        }
+
+        function showQuestion(index) {
+            if (index < 0 || index >= questions.length) return;
+
+            currentQuestionIndex = index;
+            const question = questions[index];
+
+            // Update progress
+            updateProgress();
+
+            // Render question
+            const container = document.getElementById('questionContainer');
+            container.innerHTML = `
+                <div class="question-container">
+                    <div class="question-number">السؤال ${index + 1} من ${questions.length}</div>
+                    <div class="question-text">${question.question_ar}</div>
+                    <div class="options">
+                        ${question.options.map((option, optIndex) => `
+                            <div class="option" onclick="selectOption(${index}, ${optIndex}, '${option.text_ar}')" id="option-${index}-${optIndex}">
+                                ${option.text_ar}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+
+            // Restore previous selection if any
+            const previousAnswer = answers.find(a => a.question_key === question.key);
+            if (previousAnswer) {
+                const optionIndex = question.options.findIndex(opt => opt.text_ar === previousAnswer.answer_text);
+                if (optionIndex >= 0) {
+                    document.getElementById(`option-${index}-${optionIndex}`).classList.add('selected');
+                }
+            }
+
+            // Update button visibility
+            document.getElementById('prevBtn').disabled = index === 0;
+            document.getElementById('nextBtn').classList.toggle('hidden', index === questions.length - 1);
+            document.getElementById('submitBtn').classList.toggle('hidden', index !== questions.length - 1);
+        }
+
+        function selectOption(questionIndex, optionIndex, answerText) {
+            const question = questions[questionIndex];
+
+            // Remove previous selection
+            document.querySelectorAll(`#questionContainer .option`).forEach(opt => {
+                opt.classList.remove('selected');
+            });
+
+            // Add selection to clicked option
+            document.getElementById(`option-${questionIndex}-${optionIndex}`).classList.add('selected');
+
+            // Save answer
+            const existingAnswerIndex = answers.findIndex(a => a.question_key === question.key);
+            const newAnswer = {
+                question_key: question.key,
+                answer_text: answerText
+            };
+
+            if (existingAnswerIndex >= 0) {
+                answers[existingAnswerIndex] = newAnswer;
+            } else {
+                answers.push(newAnswer);
+            }
+
+            updateProgress();
+        }
+
+        function updateProgress() {
+            const answered = answers.length;
+            const total = questions.length;
+            const percentage = (answered / total) * 100;
+
+            document.getElementById('currentQ').textContent = currentQuestionIndex + 1;
+            document.getElementById('progressFill').style.width = percentage + '%';
+            document.getElementById('progressPercentage').textContent = Math.round(percentage) + '%';
+        }
+
+        function nextQuestion() {
+            if (currentQuestionIndex < questions.length - 1) {
+                showQuestion(currentQuestionIndex + 1);
+            }
+        }
+
+        function previousQuestion() {
+            if (currentQuestionIndex > 0) {
+                showQuestion(currentQuestionIndex - 1);
+            }
+        }
+
+        async function submitAnswers() {
+            if (answers.length < questions.length) {
+                alert(`الرجاء الإجابة على جميع الأسئلة (${answers.length}/${questions.length})`);
+                return;
+            }
+
+            // Show loading
+            document.getElementById('questionsSection').classList.add('hidden');
+            document.getElementById('loadingSection').classList.remove('hidden');
+
+            try {
+                const response = await fetch('/api/analyze', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        answers: answers,
+                        language: 'ar'
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showResults(data);
+                } else {
+                    throw new Error(data.error || 'فشل التحليل');
+                }
+            } catch (error) {
+                alert('حدث خطأ: ' + error.message);
+                document.getElementById('questionsSection').classList.remove('hidden');
+                document.getElementById('loadingSection').classList.add('hidden');
+            }
+        }
+
+        function showResults(data) {
+            // Hide loading
+            document.getElementById('loadingSection').classList.add('hidden');
+
+            // Show personality summary
+            const summaryEl = document.getElementById('personalitySummary');
+            summaryEl.innerHTML = `
+                <h2>🎯 شخصيتك الرياضية</h2>
+                <p style="font-size: 1.3rem; font-weight: 600;">${data.analysis_summary.profile_type}</p>
+            `;
+
+            // Show recommendations
+            const recsEl = document.getElementById('recommendations');
+            recsEl.innerHTML = '';
+
+            data.recommendations.forEach((rec, index) => {
+                const card = document.createElement('div');
+                card.className = 'result-card';
+                card.innerHTML = `
+                    <h3>${index + 1}. ${rec.sport}</h3>
+                    <p>${rec.description}</p>
+                    <span class="match-score">نسبة التطابق: ${Math.round(rec.match_score * 100)}%</span>
+                `;
+                recsEl.appendChild(card);
+            });
+
+            // Show results section
+            document.getElementById('resultsSection').classList.remove('hidden');
+        }
+
+        // Initialize
+        loadQuestions();
+    </script>
+</body>
+</html>
