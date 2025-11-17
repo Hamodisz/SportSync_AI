@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SportSync AI - اكتشف رياضتك المثالية</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            direction: rtl;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        h1 {
+            text-align: center;
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 2.5rem;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 40px;
+            font-size: 1.2rem;
+        }
+
+        .status {
+            text-align: center;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            font-weight: bold;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status.loading {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .question {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .question h3 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .options {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .option {
+            padding: 15px;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .option:hover {
+            border-color: #667eea;
+            background: #f0f4ff;
+        }
+
+        .option.selected {
+            border-color: #667eea;
+            background: #667eea;
+            color: white;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            padding: 15px 40px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+            margin-top: 20px;
+        }
+
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .recommendation {
+            background: linear-gradient(135deg, #667eea10 0%, #764ba210 100%);
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            border-right: 5px solid #667eea;
+        }
+
+        .recommendation h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .recommendation p {
+            line-height: 1.8;
+            color: #333;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .progress {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #e0e0e0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 20px;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 SportSync AI</h1>
+        <p class="subtitle">اكتشف رياضتك المثالية من خلال الذكاء الاصطناعي</p>
+
+        <!-- API Status -->
+        <div id="apiStatus" class="status loading">
+            ⏳ جاري الاتصال بالخادم...
+        </div>
+
+        <!-- Progress -->
+        <div id="progressSection" class="progress hidden">
+            <p>السؤال <span id="currentQ">1</span> من <span id="totalQ">3</span></p>
+            <div class="progress-bar">
+                <div id="progressFill" class="progress-fill"></div>
+            </div>
+        </div>
+
+        <!-- Questions -->
+        <div id="questionsSection" class="hidden">
+            <div class="question">
+                <h3>في أي لحظات تحس الوقت يطير وأنت تمارس نشاط؟</h3>
+                <div class="options">
+                    <div class="option" onclick="selectOption(0, 0, 'تركيز هادئ على تفصيلة واحدة')">
+                        تركيز هادئ على تفصيلة واحدة
+                    </div>
+                    <div class="option" onclick="selectOption(0, 1, 'أدرينالين وحركة سريعة')">
+                        أدرينالين وحركة سريعة
+                    </div>
+                    <div class="option" onclick="selectOption(0, 2, 'عمل جماعي متناغم')">
+                        عمل جماعي متناغم
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Submit Button -->
+        <button id="submitBtn" class="hidden" onclick="submitAnswers()">
+            🧠 احصل على توصياتك
+        </button>
+
+        <!-- Results -->
+        <div id="resultsSection" class="hidden">
+            <h2 style="text-align: center; margin-bottom: 30px;">✨ توصياتك الرياضية</h2>
+            <div id="recommendations"></div>
+        </div>
+    </div>
+
+    <script>
+        let answers = [];
+        let currentQuestion = 0;
+        const totalQuestions = 3;
+
+        // Check API status
+        async function checkAPI() {
+            try {
+                const response = await fetch('/api/health');
+                const data = await response.json();
+
+                const statusEl = document.getElementById('apiStatus');
+                if (data.status === 'healthy') {
+                    statusEl.className = 'status success';
+                    statusEl.innerHTML = '✅ الخادم جاهز! ابدأ بالإجابة على الأسئلة';
+
+                    // Show questions
+                    document.getElementById('questionsSection').classList.remove('hidden');
+                    document.getElementById('progressSection').classList.remove('hidden');
+                    document.getElementById('submitBtn').classList.remove('hidden');
+
+                    // Hide status after 2 seconds
+                    setTimeout(() => {
+                        statusEl.style.display = 'none';
+                    }, 2000);
+                } else {
+                    statusEl.className = 'status error';
+                    statusEl.innerHTML = '❌ خطأ في الاتصال بالخادم';
+                }
+            } catch (error) {
+                const statusEl = document.getElementById('apiStatus');
+                statusEl.className = 'status error';
+                statusEl.innerHTML = '❌ فشل الاتصال بالخادم: ' + error.message;
+            }
+        }
+
+        function selectOption(questionIndex, optionIndex, text) {
+            // Remove selection from all options
+            const options = document.querySelectorAll('.option');
+            options.forEach(opt => opt.classList.remove('selected'));
+
+            // Add selection to clicked option
+            event.target.classList.add('selected');
+
+            // Save answer
+            answers[questionIndex] = {
+                question_key: 'q' + (questionIndex + 1),
+                answer_text: text
+            };
+
+            // Update progress
+            updateProgress();
+        }
+
+        function updateProgress() {
+            const answered = answers.filter(a => a).length;
+            const percentage = (answered / totalQuestions) * 100;
+
+            document.getElementById('currentQ').textContent = answered;
+            document.getElementById('totalQ').textContent = totalQuestions;
+            document.getElementById('progressFill').style.width = percentage + '%';
+        }
+
+        async function submitAnswers() {
+            const submitBtn = document.getElementById('submitBtn');
+
+            // Check if all questions answered
+            if (answers.filter(a => a).length < 1) {
+                alert('الرجاء الإجابة على سؤال واحد على الأقل');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = '⏳ جاري التحليل...';
+
+            try {
+                const response = await fetch('/api/simple-recommend', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        answers: answers.filter(a => a),
+                        language: 'ar'
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showRecommendations(data.recommendations);
+                } else {
+                    throw new Error(data.error || 'فشل التحليل');
+                }
+            } catch (error) {
+                alert('حدث خطأ: ' + error.message);
+                submitBtn.disabled = false;
+                submitBtn.textContent = '🧠 احصل على توصياتك';
+            }
+        }
+
+        function showRecommendations(recs) {
+            // Hide questions
+            document.getElementById('questionsSection').classList.add('hidden');
+            document.getElementById('submitBtn').classList.add('hidden');
+            document.getElementById('progressSection').classList.add('hidden');
+
+            // Show results
+            const resultsSection = document.getElementById('resultsSection');
+            const recsContainer = document.getElementById('recommendations');
+
+            resultsSection.classList.remove('hidden');
+
+            recs.forEach((rec, index) => {
+                const recEl = document.createElement('div');
+                recEl.className = 'recommendation';
+                recEl.innerHTML = `
+                    <h3>${index + 1}. ${rec}</h3>
+                    <p>هذه التوصية مصممة خصيصاً لشخصيتك الفريدة!</p>
+                `;
+                recsContainer.appendChild(recEl);
+            });
+        }
+
+        // Initialize
+        checkAPI();
+        updateProgress();
+    </script>
+</body>
+</html>

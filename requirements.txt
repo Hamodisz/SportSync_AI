@@ -2,14 +2,18 @@
 # SportSync AI - Production Dependencies
 # ========================================
 
-# Core Web Framework
-streamlit>=1.50.0
+# API Server (Required for Vercel)
+fastapi>=0.104.0
+pydantic>=2.4.0
 
 # AI/LLM
 openai>=1.54.0
 
 # Environment Management
 python-dotenv>=1.0.0
+
+# Core Web Framework (for local Streamlit testing)
+streamlit>=1.50.0
 
 # Data Processing
 pandas>=2.0.0
@@ -19,10 +23,8 @@ pandas>=2.0.0
 # gTTS>=2.5.0
 # pillow>=10.0.0
 
-# Optional: API Server (FastAPI - if deploying API separately)
-# fastapi>=0.104.0
+# Optional: Local dev server
 # uvicorn>=0.24.0
-# pydantic>=2.4.0
 
 # Development/Testing (optional for production)
 # pytest>=7.4.3
