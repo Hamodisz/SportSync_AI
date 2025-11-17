@@ -11,10 +11,10 @@ import json
 from datetime import datetime
 
 # Add project root
-project_root = Path(__file__).resolve().parent.parent.parent
+project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
-from app_v2.components import session_manager, ui_components
+from components import session_manager, ui_components
 
 def show():
     """صفحة النتائج"""

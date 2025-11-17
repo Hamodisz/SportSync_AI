@@ -11,18 +11,18 @@ import time
 import json
 
 # Add project root
-project_root = Path(__file__).resolve().parent.parent.parent
+project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
-from app_v2.components import session_manager, ui_components
+from components import session_manager, ui_components
 
 def run_analysis():
     """تشغيل التحليل الفعلي"""
     
     try:
         # Import analysis modules
-        from analysis.layer_z_enhanced import LayerZEnhanced
-        from analysis.user_analysis import analyze_user
+        from src.analysis.layer_z_enhanced import LayerZEnhanced
+        from src.analysis.user_analysis import analyze_user
         
         # Get answers
         answers = st.session_state.get('answers', {})
@@ -51,7 +51,7 @@ def run_analysis():
         # Step 3: Generate Recommendations
         st.session_state.analysis_step = "Generating Recommendations"
         
-        from core.backend_gpt import generate_sport_recommendation
+        from src.core.backend_gpt import generate_sport_recommendation
         
         recommendations = generate_sport_recommendation(
             answers=answers,
