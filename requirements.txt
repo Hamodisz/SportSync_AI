@@ -1,4 +1,12 @@
-# Minimal dependencies for Vercel deployment
-# Only what's needed for api/index.py
+# SportSync AI - Universal Dependencies
+# Works for both Vercel (public app) and Streamlit Cloud (admin interface)
 
+# For Vercel public app (api/index.py)
 fastapi>=0.104.0
+
+# For Streamlit admin interface (streamlit_app.py → apps/main.py)
+streamlit>=1.28.0
+openai>=1.3.0
+
+# Common dependencies
+python-dotenv>=1.0.0
