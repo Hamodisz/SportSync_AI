@@ -365,7 +365,10 @@
             if (previousAnswer) {
                 const optionIndex = question.options.findIndex(opt => opt.text_ar === previousAnswer.answer_text);
                 if (optionIndex >= 0) {
-                    document.getElementById(`option-${index}-${optionIndex}`).classList.add('selected');
+                    const optionElement = document.getElementById(`option-${index}-${optionIndex}`);
+                    if (optionElement) {
+                        optionElement.classList.add('selected');
+                    }
                 }
             }
 
@@ -384,7 +387,10 @@
             });
 
             // Add selection to clicked option
-            document.getElementById(`option-${questionIndex}-${optionIndex}`).classList.add('selected');
+            const selectedOption = document.getElementById(`option-${questionIndex}-${optionIndex}`);
+            if (selectedOption) {
+                selectedOption.classList.add('selected');
+            }
 
             // Save answer
             const existingAnswerIndex = answers.findIndex(a => a.question_key === question.key);
