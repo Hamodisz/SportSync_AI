@@ -40,6 +40,48 @@ Streamlit Cloud deployment cancelled - not needed since local works perfectly!
 
 ---
 
+## 🌐 NEW FEATURE: Bilingual Interface (Arabic + English)
+
+### ✨ Language Toggle Added!
+**Location:** Top-right corner of the interface
+**Default Language:** Arabic (العربية)
+
+### 🔄 How It Works:
+1. **Beautiful Toggle Button**
+   - Shows "English" when in Arabic mode
+   - Shows "العربية" when in English mode
+   - Gradient design matching app theme
+   - Smooth hover animations
+
+2. **Complete Translation Coverage**
+   - ✅ All buttons (Previous, Next, Submit)
+   - ✅ All messages (Loading, Errors, Alerts)
+   - ✅ Progress indicators
+   - ✅ Question text and options
+   - ✅ Results and recommendations
+   - ✅ Match score labels
+
+3. **Smart Language Switching**
+   - Automatic RTL ↔ LTR direction change
+   - Questions reload in selected language
+   - API calls update with language parameter
+   - No page reload needed
+   - Smooth transitions
+
+### 📊 What Changes When You Switch:
+- **Text Direction:** RTL (Arabic) ↔ LTR (English)
+- **All UI Text:** Fully translated
+- **Questions & Answers:** Load from bilingual database
+- **Sport Recommendations:** Display in selected language
+
+### 🎯 Technical Details:
+- Translation object with 15+ UI strings per language
+- Dynamic field selection (question_ar vs question_en)
+- Maintains user progress when switching
+- API supports lang parameter (ar/en)
+
+---
+
 ## 🚨 CRITICAL FIX: Vercel 250MB Serverless Function Limit
 
 ### 🔥 The Problem:
@@ -240,7 +282,8 @@ Then visit: http://localhost:8501
 ---
 
 **Latest Update:** 2025-11-18
-**Total Commits:** 10 (added 1 critical fix)
-**Lines Changed:** 550+
+**Total Commits:** 12 (added critical fixes + bilingual support)
+**Lines Changed:** 750+
 **Success Rate:** 100% ✅
 **Critical Fixes:** Vercel 250MB error + classList error
+**New Features:** 🌐 Bilingual Interface (Arabic + English)
