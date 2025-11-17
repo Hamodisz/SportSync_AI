@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pytest
-from backend_gpt import generate_sport_recommendation, calculate_confidence
+from src.core.backend_gpt import generate_sport_recommendation, calculate_confidence
 
 
 def test_confidence_high():

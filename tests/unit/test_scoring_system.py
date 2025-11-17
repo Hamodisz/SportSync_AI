@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from layer_z_engine import calculate_z_scores_from_questions
+from src.analysis.layer_z_engine import calculate_z_scores_from_questions
 import json
 
 

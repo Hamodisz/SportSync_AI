@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from systems import analyze_all_systems
+from src.systems import analyze_all_systems
 
 
 def test_analyze_all_systems_basic():
@@ -128,7 +128,7 @@ def test_backend_gpt_integration():
     print("\n🧪 Test 4: Backend GPT Integration")
 
     try:
-        from backend_gpt import generate_sport_recommendation
+        from src.core.backend_gpt import generate_sport_recommendation
 
         answers = {
             "q1": {"answer": ["تحليل واستراتيجية"]},

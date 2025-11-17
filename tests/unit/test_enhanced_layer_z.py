@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from layer_z_enhanced import (
+from src.analysis.layer_z_enhanced import (
     EnhancedLayerZ,
     analyze_silent_drivers_enhanced,
     FlowIndicators,
@@ -97,7 +97,7 @@ def test_backend_gpt_integration():
     print("\n🧪 Test 3: Backend GPT Integration")
     
     try:
-        from backend_gpt import generate_sport_recommendation
+        from src.core.backend_gpt import generate_sport_recommendation
         
         sample_answers = {
             "q1": {"answer": ["أحب الذكاء والتخطيط"]},
@@ -134,7 +134,7 @@ def test_confidence_calculation():
     print("\n🧪 Test 4: Confidence Score Calculation")
     
     try:
-        from backend_gpt import calculate_confidence
+        from src.core.backend_gpt import calculate_confidence
         
         # z_scores قوية (درجات واضحة)
         strong_z_scores = {
@@ -179,8 +179,8 @@ def test_flow_and_risk_in_cards():
     print("\n🧪 Test 5: Flow & Risk in Cards")
     
     try:
-        from backend_gpt import _add_enhanced_insights_to_notes
-        from layer_z_enhanced import FlowIndicators, RiskAssessment
+        from src.core.backend_gpt import _add_enhanced_insights_to_notes
+        from src.analysis.layer_z_enhanced import FlowIndicators, RiskAssessment
         
         # بطاقات اختبار
         cards = [
@@ -233,7 +233,7 @@ def test_full_pipeline():
     print("\n🧪 Test 6: Full Pipeline (Enhanced → Cards)")
     
     try:
-        from backend_gpt import generate_sport_recommendation
+        from src.core.backend_gpt import generate_sport_recommendation
         
         # إجابات اختبار شاملة
         answers = {

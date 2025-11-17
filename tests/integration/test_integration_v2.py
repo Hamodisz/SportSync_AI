@@ -8,9 +8,9 @@ Quick test of the new 10-question system integration
 
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from layer_z_engine import calculate_z_scores_from_questions
+from src.analysis.layer_z_engine import calculate_z_scores_from_questions
 
 def test_competitive_profile():
     """Test 1: Competitive athlete profile"""
