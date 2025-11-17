@@ -402,4 +402,76 @@ def determine_profile_type(z_scores: Dict[str, float]) -> str:
     else:
         return "Balanced All-Rounder"
 
+# ═══════════════════════════════════════════════════════════════
+# TRACKING & LEARNING SYSTEM
+# ═══════════════════════════════════════════════════════════════
+
+import hashlib
+from datetime import datetime
+
+def anonymize_tracking_data(data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Anonymize user data - NO personal info stored
+    Only patterns for system learning
+    """
+    timestamp = str(datetime.utcnow().timestamp())
+    session_id = hashlib.md5(timestamp.encode()).hexdigest()[:12]
+
+    return {
+        "session_id": session_id,
+        "timestamp": datetime.utcnow().isoformat(),
+        "language": data.get("language", "unknown"),
+        "answers_count": len(data.get("answers", [])),
+        "has_additional_info": bool(data.get("additional_info", "")),
+        "z_scores": data.get("personality_scores", {}),
+        "recommended_sports": [rec.get("sport", "") for rec in data.get("recommendations", [])[:3]],
+        "profile_type": data.get("analysis_summary", {}).get("profile_type", ""),
+        # Hash answer patterns (no actual text stored)
+        "answer_patterns": [
+            {
+                "q": ans.get("question_key", ""),
+                "a_hash": hashlib.md5(ans.get("answer_text", "").encode()).hexdigest()[:8]
+            }
+            for ans in data.get("answers", [])
+        ]
+    }
+
+@app.post("/api/track")
+async def track_response(request: dict):
+    """
+    Track user response anonymously for system learning
+
+    Privacy: NO personal data stored - only anonymized patterns
+    Helps improve recommendations over time
+    """
+    try:
+        anonymous_data = anonymize_tracking_data(request)
+
+        # Log to Vercel logs for analysis
+        print(f"[TRACK] {json.dumps(anonymous_data)}")
+
+        return {
+            "success": True,
+            "message": "Response tracked anonymously",
+            "session_id": anonymous_data["session_id"]
+        }
+    except Exception as e:
+        print(f"[TRACK ERROR] {str(e)}")
+        return {
+            "success": False,
+            "error": "Tracking failed"
+        }
+
+@app.get("/api/track/stats")
+def get_tracking_stats():
+    """
+    Placeholder for analytics dashboard
+    In production: Connect to database and return stats
+    """
+    return {
+        "success": True,
+        "message": "Analytics endpoint - ready for database integration",
+        "note": "Connect to Vercel KV, MongoDB, or your preferred database"
+    }
+
 # Required for Vercel

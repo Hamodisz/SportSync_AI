@@ -893,6 +893,33 @@
             });
 
             document.getElementById('resultsSection').classList.remove('hidden');
+
+            // Track response anonymously for system learning (privacy-safe)
+            trackResponse(data);
+        }
+
+        async function trackResponse(data) {
+            try {
+                // Send anonymized data for system learning
+                await fetch('/api/track', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        answers: answers,
+                        language: currentLang,
+                        additional_info: additionalInfo,
+                        personality_scores: data.personality_scores,
+                        recommendations: data.recommendations,
+                        analysis_summary: data.analysis_summary
+                    })
+                });
+                // Silent - no need to inform user, just for system learning
+            } catch (error) {
+                // Silent fail - tracking is optional, doesn't affect user experience
+                console.log('Tracking skipped');
+            }
         }
 
         // Initialize
