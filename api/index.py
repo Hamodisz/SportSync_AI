@@ -234,3 +234,4 @@ async def simple_recommend(request: dict):
 
 # This is required for Vercel
 # The 'app' variable must be named 'app' for Vercel to find it
+# Force deploy - Mon Nov 17 16:42:57 +03 2025

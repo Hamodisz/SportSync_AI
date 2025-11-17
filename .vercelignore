@@ -1,0 +1,11 @@
+# Vercel ignore file
+.git
+.github
+htmlcov
+*.pyc
+__pycache__
+.env
+.env.local
+tests/
+docs/
+archive/
