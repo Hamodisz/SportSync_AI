@@ -44,3 +44,4 @@ data/logs/*_202411*.json
 
 # External archives (if needed later)
 external/orchive/
+.vercel

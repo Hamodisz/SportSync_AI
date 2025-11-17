@@ -9,3 +9,14 @@ __pycache__
 tests/
 docs/
 archive/
+
+# Large unnecessary directories
+.vscode
+.npm
+.npm-global
+.claude*
+.qodo
+.config
+node_modules
+*.tar.gz
+.vercel
