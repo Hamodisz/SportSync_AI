@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SportSync AI - اكتشف رياضتك المثالية</title>
+    <title>SportSync AI - Discover Your Perfect Sport</title>
     <style>
         * {
             margin: 0;
@@ -16,7 +16,7 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             padding: 20px;
-            direction: rtl;
+            transition: direction 0.3s ease;
         }
 
         .container {
@@ -26,6 +26,35 @@
             border-radius: 20px;
             padding: 40px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .lang-toggle {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .lang-toggle:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .lang-toggle:active {
+            transform: translateY(0);
         }
 
         h1 {
@@ -98,88 +127,107 @@
             font-size: 1.4rem;
             color: #333;
             margin-bottom: 25px;
-            font-weight: 600;
+            font-weight: 500;
             line-height: 1.6;
         }
 
         .options {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
+            display: grid;
+            gap: 15px;
         }
 
         .option {
-            padding: 18px 20px;
             background: white;
             border: 2px solid #e0e0e0;
+            padding: 20px;
             border-radius: 12px;
             cursor: pointer;
-            transition: all 0.3s;
-            font-size: 1.05rem;
+            transition: all 0.3s ease;
+            font-size: 1.1rem;
+            line-height: 1.5;
         }
 
         .option:hover {
             border-color: #667eea;
-            background: #f0f4ff;
-            transform: translateX(-3px);
+            background: #f8f9ff;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
         }
 
         .option.selected {
-            border-color: #667eea;
-            background: #667eea;
+            background: linear-gradient(135deg, #667eea, #764ba2);
             color: white;
-            transform: translateX(-5px);
+            border-color: #667eea;
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
         }
 
         .navigation {
             display: flex;
             gap: 15px;
+            justify-content: center;
             margin-top: 30px;
-            justify-content: space-between;
         }
 
         button {
-            background: #667eea;
-            color: white;
-            padding: 15px 35px;
-            border: none;
-            border-radius: 10px;
+            padding: 15px 40px;
             font-size: 1.1rem;
+            border: none;
+            border-radius: 30px;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: all 0.3s ease;
             font-weight: 600;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
         }
 
-        button:hover {
-            background: #5568d3;
+        button:hover:not(:disabled) {
             transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
         }
 
         button:disabled {
-            background: #ccc;
+            opacity: 0.5;
             cursor: not-allowed;
-            transform: none;
         }
 
         button.secondary {
             background: #6c757d;
+            box-shadow: 0 4px 15px rgba(108, 117, 125, 0.3);
         }
 
-        button.secondary:hover {
-            background: #5a6268;
+        button.secondary:hover:not(:disabled) {
+            box-shadow: 0 6px 20px rgba(108, 117, 125, 0.4);
         }
 
         .results {
-            padding: 20px;
+            animation: fadeIn 0.6s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .result-card {
-            background: linear-gradient(135deg, #667eea10 0%, #764ba210 100%);
-            padding: 30px;
+            background: white;
+            border: 2px solid #e0e0e0;
             border-radius: 15px;
-            margin-bottom: 25px;
-            border-right: 5px solid #667eea;
+            padding: 25px;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .result-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.15);
+            transform: translateY(-5px);
         }
 
         .result-card h3 {
@@ -189,14 +237,14 @@
         }
 
         .result-card p {
+            color: #555;
             line-height: 1.8;
-            color: #333;
             font-size: 1.05rem;
         }
 
         .match-score {
             display: inline-block;
-            background: #667eea;
+            background: linear-gradient(135deg, #667eea, #764ba2);
             color: white;
             padding: 5px 15px;
             border-radius: 20px;
@@ -267,17 +315,27 @@
             button {
                 width: 100%;
             }
+
+            .header {
+                flex-direction: column;
+                gap: 15px;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
+        <div class="header">
+            <div style="flex: 1;"></div>
+            <button class="lang-toggle" onclick="toggleLanguage()" id="langBtn">English</button>
+        </div>
+
         <h1>🎯 SportSync AI</h1>
-        <p class="subtitle">اكتشف رياضتك المثالية من خلال الذكاء الاصطناعي</p>
+        <p class="subtitle" id="subtitle">اكتشف رياضتك المثالية من خلال الذكاء الاصطناعي</p>
 
         <!-- Progress -->
         <div id="progressSection" class="progress-section hidden">
-            <p class="progress-text">السؤال <span id="currentQ">1</span> من <span id="totalQ">10</span></p>
+            <p class="progress-text"><span id="questionText">السؤال</span> <span id="currentQ">1</span> <span id="ofText">من</span> <span id="totalQ">10</span></p>
             <div class="progress-bar">
                 <div id="progressFill" class="progress-fill"></div>
                 <div id="progressPercentage" class="progress-percentage">0%</div>
@@ -298,14 +356,14 @@
         <!-- Loading -->
         <div id="loadingSection" class="loading hidden">
             <div class="spinner"></div>
-            <p>جاري تحليل شخصيتك...</p>
-            <p style="color: #666; margin-top: 10px;">قد يستغرق الأمر بضع ثوانٍ</p>
+            <p id="analyzingText">جاري تحليل شخصيتك...</p>
+            <p id="waitText" style="color: #666; margin-top: 10px;">قد يستغرق الأمر بضع ثوانٍ</p>
         </div>
 
         <!-- Results -->
         <div id="resultsSection" class="results hidden">
             <div id="personalitySummary" class="personality-summary"></div>
-            <h2 style="text-align: center; margin-bottom: 30px;">✨ توصياتك الرياضية</h2>
+            <h2 id="recommendationsTitle" style="text-align: center; margin-bottom: 30px;">✨ توصياتك الرياضية</h2>
             <div id="recommendations"></div>
         </div>
     </div>
@@ -314,24 +372,97 @@
         let questions = [];
         let currentQuestionIndex = 0;
         let answers = [];
+        let currentLang = 'ar'; // Default to Arabic
+
+        // Translation object
+        const translations = {
+            ar: {
+                langBtn: 'English',
+                subtitle: 'اكتشف رياضتك المثالية من خلال الذكاء الاصطناعي',
+                questionText: 'السؤال',
+                ofText: 'من',
+                prevBtn: 'السابق',
+                nextBtn: 'التالي',
+                submitBtn: '🧠 احصل على توصياتك',
+                analyzingText: 'جاري تحليل شخصيتك...',
+                waitText: 'قد يستغرق الأمر بضع ثوانٍ',
+                personalityTitle: '🎯 شخصيتك الرياضية',
+                recommendationsTitle: '✨ توصياتك الرياضية',
+                matchScore: 'نسبة التطابق',
+                loadError: 'فشل تحميل الأسئلة',
+                connectionError: 'خطأ في الاتصال بالخادم',
+                answerAllQuestions: 'الرجاء الإجابة على جميع الأسئلة',
+                analysisError: 'حدث خطأ'
+            },
+            en: {
+                langBtn: 'العربية',
+                subtitle: 'Discover Your Perfect Sport Through AI',
+                questionText: 'Question',
+                ofText: 'of',
+                prevBtn: 'Previous',
+                nextBtn: 'Next',
+                submitBtn: '🧠 Get Your Recommendations',
+                analyzingText: 'Analyzing your personality...',
+                waitText: 'This may take a few seconds',
+                personalityTitle: '🎯 Your Sports Personality',
+                recommendationsTitle: '✨ Your Sport Recommendations',
+                matchScore: 'Match Score',
+                loadError: 'Failed to load questions',
+                connectionError: 'Connection error',
+                answerAllQuestions: 'Please answer all questions',
+                analysisError: 'An error occurred'
+            }
+        };
+
+        function updateUIText() {
+            const t = translations[currentLang];
+
+            document.getElementById('langBtn').textContent = t.langBtn;
+            document.getElementById('subtitle').textContent = t.subtitle;
+            document.getElementById('questionText').textContent = t.questionText;
+            document.getElementById('ofText').textContent = t.ofText;
+            document.getElementById('prevBtn').textContent = t.prevBtn;
+            document.getElementById('nextBtn').textContent = t.nextBtn;
+            document.getElementById('submitBtn').textContent = t.submitBtn;
+            document.getElementById('analyzingText').textContent = t.analyzingText;
+            document.getElementById('waitText').textContent = t.waitText;
+            document.getElementById('recommendationsTitle').textContent = t.recommendationsTitle;
+
+            // Update HTML lang and dir
+            document.documentElement.lang = currentLang;
+            document.documentElement.dir = currentLang === 'ar' ? 'rtl' : 'ltr';
+            document.body.style.direction = currentLang === 'ar' ? 'rtl' : 'ltr';
+        }
+
+        function toggleLanguage() {
+            currentLang = currentLang === 'ar' ? 'en' : 'ar';
+            updateUIText();
+
+            // Reload questions in new language
+            if (questions.length > 0) {
+                loadQuestions();
+            }
+        }
 
         // Load questions on page load
         async function loadQuestions() {
             try {
-                const response = await fetch('/api/questions?lang=ar');
+                const response = await fetch(`/api/questions?lang=${currentLang}`);
                 const data = await response.json();
 
                 if (data.success && data.questions) {
                     questions = data.questions;
+                    answers = []; // Reset answers when changing language
+                    currentQuestionIndex = 0;
                     document.getElementById('totalQ').textContent = questions.length;
                     document.getElementById('progressSection').classList.remove('hidden');
                     showQuestion(0);
                 } else {
-                    alert('فشل تحميل الأسئلة');
+                    alert(translations[currentLang].loadError);
                 }
             } catch (error) {
                 console.error('Error loading questions:', error);
-                alert('خطأ في الاتصال بالخادم');
+                alert(translations[currentLang].connectionError);
             }
         }
 
@@ -340,20 +471,24 @@
 
             currentQuestionIndex = index;
             const question = questions[index];
+            const t = translations[currentLang];
 
             // Update progress
             updateProgress();
 
             // Render question
             const container = document.getElementById('questionContainer');
+            const questionField = currentLang === 'ar' ? 'question_ar' : 'question_en';
+            const textField = currentLang === 'ar' ? 'text_ar' : 'text_en';
+
             container.innerHTML = `
                 <div class="question-container">
-                    <div class="question-number">السؤال ${index + 1} من ${questions.length}</div>
-                    <div class="question-text">${question.question_ar}</div>
+                    <div class="question-number">${t.questionText} ${index + 1} ${t.ofText} ${questions.length}</div>
+                    <div class="question-text">${question[questionField]}</div>
                     <div class="options">
                         ${question.options.map((option, optIndex) => `
-                            <div class="option" onclick="selectOption(${index}, ${optIndex}, '${option.text_ar}')" id="option-${index}-${optIndex}">
-                                ${option.text_ar}
+                            <div class="option" onclick="selectOption(${index}, ${optIndex}, '${option[textField]}')" id="option-${index}-${optIndex}">
+                                ${option[textField]}
                             </div>
                         `).join('')}
                     </div>
@@ -363,7 +498,9 @@
             // Restore previous selection if any
             const previousAnswer = answers.find(a => a.question_key === question.key);
             if (previousAnswer) {
-                const optionIndex = question.options.findIndex(opt => opt.text_ar === previousAnswer.answer_text);
+                const optionIndex = question.options.findIndex(opt =>
+                    opt[textField] === previousAnswer.answer_text
+                );
                 if (optionIndex >= 0) {
                     const optionElement = document.getElementById(`option-${index}-${optionIndex}`);
                     if (optionElement) {
@@ -431,8 +568,10 @@
         }
 
         async function submitAnswers() {
+            const t = translations[currentLang];
+
             if (answers.length < questions.length) {
-                alert(`الرجاء الإجابة على جميع الأسئلة (${answers.length}/${questions.length})`);
+                alert(`${t.answerAllQuestions} (${answers.length}/${questions.length})`);
                 return;
             }
 
@@ -448,7 +587,7 @@
                     },
                     body: JSON.stringify({
                         answers: answers,
-                        language: 'ar'
+                        language: currentLang
                     })
                 });
 
@@ -457,23 +596,25 @@
                 if (data.success) {
                     showResults(data);
                 } else {
-                    throw new Error(data.error || 'فشل التحليل');
+                    throw new Error(data.error || t.analysisError);
                 }
             } catch (error) {
-                alert('حدث خطأ: ' + error.message);
+                alert(t.analysisError + ': ' + error.message);
                 document.getElementById('questionsSection').classList.remove('hidden');
                 document.getElementById('loadingSection').classList.add('hidden');
             }
         }
 
         function showResults(data) {
+            const t = translations[currentLang];
+
             // Hide loading
             document.getElementById('loadingSection').classList.add('hidden');
 
             // Show personality summary
             const summaryEl = document.getElementById('personalitySummary');
             summaryEl.innerHTML = `
-                <h2>🎯 شخصيتك الرياضية</h2>
+                <h2>${t.personalityTitle}</h2>
                 <p style="font-size: 1.3rem; font-weight: 600;">${data.analysis_summary.profile_type}</p>
             `;
 
@@ -487,7 +628,7 @@
                 card.innerHTML = `
                     <h3>${index + 1}. ${rec.sport}</h3>
                     <p>${rec.description}</p>
-                    <span class="match-score">نسبة التطابق: ${Math.round(rec.match_score * 100)}%</span>
+                    <span class="match-score">${t.matchScore}: ${Math.round(rec.match_score * 100)}%</span>
                 `;
                 recsEl.appendChild(card);
             });
@@ -497,6 +638,7 @@
         }
 
         // Initialize
+        updateUIText();
         loadQuestions();
     </script>
 </body>
