@@ -1,0 +1,16 @@
+# SportSync AI - Streamlit Admin Interface Dependencies
+# For local admin interface: streamlit run streamlit_app.py
+
+# Installation:
+# pip install -r requirements-streamlit.txt
+
+# Streamlit framework
+streamlit>=1.28.0
+
+# AI & OpenAI integration
+openai>=1.3.0
+
+# Common utilities
+python-dotenv>=1.0.0
+
+# Note: For Vercel deployment, see requirements.txt (minimal dependencies)
