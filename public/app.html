@@ -161,6 +161,45 @@
             box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
         }
 
+        .optional-info {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 15px;
+            margin-top: 30px;
+        }
+
+        .optional-info label {
+            display: block;
+            color: #667eea;
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .optional-info p {
+            color: #666;
+            font-size: 0.95rem;
+            margin-bottom: 15px;
+        }
+
+        .optional-info textarea {
+            width: 100%;
+            min-height: 100px;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            font-family: inherit;
+            font-size: 1rem;
+            resize: vertical;
+            transition: border-color 0.3s;
+        }
+
+        .optional-info textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            background: #f8f9ff;
+        }
+
         .navigation {
             display: flex;
             gap: 15px;
@@ -295,6 +334,123 @@
             opacity: 0.9;
         }
 
+        /* AI Assistant Styles */
+        .ai-assistant {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 1000;
+        }
+
+        .ai-assistant-button {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border: none;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            transition: all 0.3s ease;
+        }
+
+        .ai-assistant-button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 25px rgba(102, 126, 234, 0.5);
+        }
+
+        .ai-assistant-panel {
+            position: absolute;
+            bottom: 80px;
+            right: 0;
+            width: 320px;
+            max-height: 450px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            display: none;
+            flex-direction: column;
+            animation: slideUp 0.3s ease;
+        }
+
+        .ai-assistant-panel.show {
+            display: flex;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .ai-assistant-header {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 20px;
+            border-radius: 20px 20px 0 0;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .ai-assistant-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0;
+            width: auto;
+            height: auto;
+            box-shadow: none;
+            transition: transform 0.2s;
+        }
+
+        .ai-assistant-close:hover {
+            transform: rotate(90deg);
+        }
+
+        .ai-assistant-content {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .ai-message {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 15px;
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        .ai-help-option {
+            background: white;
+            border: 2px solid #e0e0e0;
+            padding: 12px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+
+        .ai-help-option:hover {
+            border-color: #667eea;
+            background: #f8f9ff;
+            transform: translateX(-5px);
+        }
+
         @media (max-width: 600px) {
             .container {
                 padding: 25px;
@@ -319,6 +475,16 @@
             .header {
                 flex-direction: column;
                 gap: 15px;
+            }
+
+            .ai-assistant {
+                bottom: 20px;
+                right: 20px;
+            }
+
+            .ai-assistant-panel {
+                width: calc(100vw - 40px);
+                right: -20px;
             }
         }
     </style>
@@ -346,6 +512,13 @@
         <div id="questionsSection">
             <div id="questionContainer"></div>
 
+            <!-- Optional Additional Info -->
+            <div id="optionalInfo" class="optional-info hidden">
+                <label id="optionalLabel">معلومات إضافية (اختياري)</label>
+                <p id="optionalHint">أخبرنا المزيد عن تفضيلاتك الرياضية، قيودك الجسدية، أو أي معلومات أخرى تساعدنا في تقديم توصيات أفضل</p>
+                <textarea id="additionalInfo" placeholder="مثال: أفضل الرياضات الخارجية، لدي إصابة سابقة في الركبة..."></textarea>
+            </div>
+
             <div class="navigation">
                 <button id="prevBtn" class="secondary" onclick="previousQuestion()">السابق</button>
                 <button id="nextBtn" onclick="nextQuestion()">التالي</button>
@@ -368,11 +541,42 @@
         </div>
     </div>
 
+    <!-- AI Assistant -->
+    <div class="ai-assistant">
+        <button class="ai-assistant-button" onclick="toggleAssistant()" id="assistantBtn">
+            🤖
+        </button>
+        <div class="ai-assistant-panel" id="assistantPanel">
+            <div class="ai-assistant-header">
+                <span id="assistantTitle">💬 مساعد SportSync AI</span>
+                <button class="ai-assistant-close" onclick="toggleAssistant()">×</button>
+            </div>
+            <div class="ai-assistant-content">
+                <div class="ai-message" id="assistantWelcome">
+                    مرحباً! أنا هنا لمساعدتك. اختر أحد الأسئلة الشائعة:
+                </div>
+                <div class="ai-help-option" onclick="showHelp('how')">
+                    ❓ كيف يعمل النظام؟
+                </div>
+                <div class="ai-help-option" onclick="showHelp('questions')">
+                    📝 لماذا هذه الأسئلة؟
+                </div>
+                <div class="ai-help-option" onclick="showHelp('results')">
+                    🎯 كيف تُحسب النتائج؟
+                </div>
+                <div class="ai-help-option" onclick="showHelp('privacy')">
+                    🔒 هل بياناتي آمنة؟
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         let questions = [];
         let currentQuestionIndex = 0;
         let answers = [];
-        let currentLang = 'ar'; // Default to Arabic
+        let currentLang = 'ar';
+        let additionalInfo = '';
 
         // Translation object
         const translations = {
@@ -392,7 +596,16 @@
                 loadError: 'فشل تحميل الأسئلة',
                 connectionError: 'خطأ في الاتصال بالخادم',
                 answerAllQuestions: 'الرجاء الإجابة على جميع الأسئلة',
-                analysisError: 'حدث خطأ'
+                analysisError: 'حدث خطأ',
+                optionalLabel: 'معلومات إضافية (اختياري)',
+                optionalHint: 'أخبرنا المزيد عن تفضيلاتك الرياضية، قيودك الجسدية، أو أي معلومات أخرى تساعدنا في تقديم توصيات أفضل',
+                optionalPlaceholder: 'مثال: أفضل الرياضات الخارجية، لدي إصابة سابقة في الركبة...',
+                assistantTitle: '💬 مساعد SportSync AI',
+                assistantWelcome: 'مرحباً! أنا هنا لمساعدتك. اختر أحد الأسئلة الشائعة:',
+                helpHow: 'نظام SportSync AI يحلل شخصيتك من خلال 10 أسئلة عميقة تقيس 7 أبعاد نفسية، ثم يستخدم خوارزميات ذكاء اصطناعي للتوصية بالرياضات المثالية لك.',
+                helpQuestions: 'الأسئلة العشرة مصممة لفهم تفضيلاتك في: التركيز، التفاعل الاجتماعي، المخاطرة، التنوع، والحساسية الحسية. كل إجابة تساعدنا في رسم صورة أدق لشخصيتك الرياضية.',
+                helpResults: 'نستخدم 15 نظام تحليل نفسي (MBTI، Big Five، Enneagram وغيرها) لحساب درجات التطابق بين شخصيتك والرياضات المختلفة، ثم نختار أفضل 3 توصيات لك.',
+                helpPrivacy: 'بياناتك آمنة تماماً! لا نحفظ أي معلومات شخصية. جميع التحليلات تتم في الوقت الفعلي ولا تُخزن على خوادمنا.'
             },
             en: {
                 langBtn: 'العربية',
@@ -410,7 +623,16 @@
                 loadError: 'Failed to load questions',
                 connectionError: 'Connection error',
                 answerAllQuestions: 'Please answer all questions',
-                analysisError: 'An error occurred'
+                analysisError: 'An error occurred',
+                optionalLabel: 'Additional Information (Optional)',
+                optionalHint: 'Tell us more about your sports preferences, physical limitations, or any other information to help us provide better recommendations',
+                optionalPlaceholder: 'Example: I prefer outdoor sports, I have a previous knee injury...',
+                assistantTitle: '💬 SportSync AI Assistant',
+                assistantWelcome: 'Hello! I\'m here to help. Choose a common question:',
+                helpHow: 'SportSync AI analyzes your personality through 10 deep questions measuring 7 psychological dimensions, then uses AI algorithms to recommend the perfect sports for you.',
+                helpQuestions: 'The 10 questions are designed to understand your preferences in: focus, social interaction, risk-taking, variety, and sensory sensitivity. Each answer helps us paint a more accurate picture of your sports personality.',
+                helpResults: 'We use 15 psychological analysis systems (MBTI, Big Five, Enneagram, and more) to calculate match scores between your personality and different sports, then select the top 3 recommendations for you.',
+                helpPrivacy: 'Your data is completely safe! We don\'t store any personal information. All analyses happen in real-time and are not stored on our servers.'
             }
         };
 
@@ -427,24 +649,60 @@
             document.getElementById('analyzingText').textContent = t.analyzingText;
             document.getElementById('waitText').textContent = t.waitText;
             document.getElementById('recommendationsTitle').textContent = t.recommendationsTitle;
+            document.getElementById('optionalLabel').textContent = t.optionalLabel;
+            document.getElementById('optionalHint').textContent = t.optionalHint;
+            document.getElementById('additionalInfo').placeholder = t.optionalPlaceholder;
+            document.getElementById('assistantTitle').textContent = t.assistantTitle;
+            document.getElementById('assistantWelcome').textContent = t.assistantWelcome;
 
             // Update HTML lang and dir
             document.documentElement.lang = currentLang;
             document.documentElement.dir = currentLang === 'ar' ? 'rtl' : 'ltr';
             document.body.style.direction = currentLang === 'ar' ? 'rtl' : 'ltr';
+
+            // Update help options text
+            const helpOptions = document.querySelectorAll('.ai-help-option');
+            const helpTexts = currentLang === 'ar'
+                ? ['❓ كيف يعمل النظام؟', '📝 لماذا هذه الأسئلة؟', '🎯 كيف تُحسب النتائج؟', '🔒 هل بياناتي آمنة؟']
+                : ['❓ How does it work?', '📝 Why these questions?', '🎯 How are results calculated?', '🔒 Is my data safe?'];
+
+            helpOptions.forEach((option, index) => {
+                option.textContent = helpTexts[index];
+            });
         }
 
         function toggleLanguage() {
             currentLang = currentLang === 'ar' ? 'en' : 'ar';
             updateUIText();
 
-            // Reload questions in new language
             if (questions.length > 0) {
                 loadQuestions();
             }
         }
 
-        // Load questions on page load
+        function toggleAssistant() {
+            const panel = document.getElementById('assistantPanel');
+            panel.classList.toggle('show');
+        }
+
+        function showHelp(type) {
+            const t = translations[currentLang];
+            const welcomeMsg = document.getElementById('assistantWelcome');
+
+            const helpTexts = {
+                how: t.helpHow,
+                questions: t.helpQuestions,
+                results: t.helpResults,
+                privacy: t.helpPrivacy
+            };
+
+            welcomeMsg.textContent = helpTexts[type];
+
+            setTimeout(() => {
+                welcomeMsg.textContent = t.assistantWelcome;
+            }, 8000);
+        }
+
         async function loadQuestions() {
             try {
                 const response = await fetch(`/api/questions?lang=${currentLang}`);
@@ -452,7 +710,7 @@
 
                 if (data.success && data.questions) {
                     questions = data.questions;
-                    answers = []; // Reset answers when changing language
+                    answers = [];
                     currentQuestionIndex = 0;
                     document.getElementById('totalQ').textContent = questions.length;
                     document.getElementById('progressSection').classList.remove('hidden');
@@ -473,10 +731,8 @@
             const question = questions[index];
             const t = translations[currentLang];
 
-            // Update progress
             updateProgress();
 
-            // Render question
             const container = document.getElementById('questionContainer');
             const questionField = currentLang === 'ar' ? 'question_ar' : 'question_en';
             const textField = currentLang === 'ar' ? 'text_ar' : 'text_en';
@@ -495,7 +751,6 @@
                 </div>
             `;
 
-            // Restore previous selection if any
             const previousAnswer = answers.find(a => a.question_key === question.key);
             if (previousAnswer) {
                 const optionIndex = question.options.findIndex(opt =>
@@ -509,7 +764,14 @@
                 }
             }
 
-            // Update button visibility
+            // Show optional info on last question
+            const optionalInfo = document.getElementById('optionalInfo');
+            if (index === questions.length - 1) {
+                optionalInfo.classList.remove('hidden');
+            } else {
+                optionalInfo.classList.add('hidden');
+            }
+
             document.getElementById('prevBtn').disabled = index === 0;
             document.getElementById('nextBtn').classList.toggle('hidden', index === questions.length - 1);
             document.getElementById('submitBtn').classList.toggle('hidden', index !== questions.length - 1);
@@ -518,18 +780,15 @@
         function selectOption(questionIndex, optionIndex, answerText) {
             const question = questions[questionIndex];
 
-            // Remove previous selection
             document.querySelectorAll(`#questionContainer .option`).forEach(opt => {
                 opt.classList.remove('selected');
             });
 
-            // Add selection to clicked option
             const selectedOption = document.getElementById(`option-${questionIndex}-${optionIndex}`);
             if (selectedOption) {
                 selectedOption.classList.add('selected');
             }
 
-            // Save answer
             const existingAnswerIndex = answers.findIndex(a => a.question_key === question.key);
             const newAnswer = {
                 question_key: question.key,
@@ -575,7 +834,9 @@
                 return;
             }
 
-            // Show loading
+            // Get optional additional info
+            additionalInfo = document.getElementById('additionalInfo').value.trim();
+
             document.getElementById('questionsSection').classList.add('hidden');
             document.getElementById('loadingSection').classList.remove('hidden');
 
@@ -587,7 +848,8 @@
                     },
                     body: JSON.stringify({
                         answers: answers,
-                        language: currentLang
+                        language: currentLang,
+                        additional_info: additionalInfo
                     })
                 });
 
@@ -608,17 +870,14 @@
         function showResults(data) {
             const t = translations[currentLang];
 
-            // Hide loading
             document.getElementById('loadingSection').classList.add('hidden');
 
-            // Show personality summary
             const summaryEl = document.getElementById('personalitySummary');
             summaryEl.innerHTML = `
                 <h2>${t.personalityTitle}</h2>
                 <p style="font-size: 1.3rem; font-weight: 600;">${data.analysis_summary.profile_type}</p>
             `;
 
-            // Show recommendations
             const recsEl = document.getElementById('recommendations');
             recsEl.innerHTML = '';
 
@@ -633,7 +892,6 @@
                 recsEl.appendChild(card);
             });
 
-            // Show results section
             document.getElementById('resultsSection').classList.remove('hidden');
         }
 
