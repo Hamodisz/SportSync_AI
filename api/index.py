@@ -330,10 +330,13 @@ SPORT_DATABASE = {
 def generate_unique_sports_with_ai(z_scores: Dict[str, float], lang: str = "ar", reasoning_insights: Dict[str, Any] = None) -> List[Dict]:
     """
     INTELLIGENCE AI (GPT-4): Generate TRULY UNIQUE sports
+    NOW WITH WEB SEARCH - Can find ANY of 8000+ sports!
 
-    Uses insights from Reasoning AI to create personalized sport identities
-    Creates completely unique experiences that have never existed before
-    NO generic sports unless they genuinely fit (200% certainty)
+    Process:
+    1. Search web for sports matching personality
+    2. Use GPT-4 to analyze and select best matches
+    3. Can discover obscure, niche, hybrid sports
+    4. NOT limited to pre-defined database
     """
     # Get OpenAI API key from environment
     api_key = os.environ.get("OPENAI_API_KEY")
@@ -343,6 +346,16 @@ def generate_unique_sports_with_ai(z_scores: Dict[str, float], lang: str = "ar",
         return generate_unique_sports_fallback(z_scores, lang)
 
     openai.api_key = api_key
+
+    # STEP 1: Search web for sports (8000+ possibilities)
+    from mcp_research import MCPResearchEngine
+    research_engine = MCPResearchEngine()
+
+    personality_type = reasoning_insights.get("personality_type", "Unknown") if reasoning_insights else "Unknown"
+    search_query = f"best sports activities for {personality_type} personality type unique unusual"
+
+    print(f"🔍 Searching web for sports: {search_query}")
+    web_results = research_engine.search_web_advanced(search_query, num_results=10)
 
     # Create detailed personality profile
     personality_desc = f"""
@@ -355,6 +368,12 @@ Personality Z-Scores (scale -1.0 to +1.0):
 - Compete/Enjoy: {z_scores.get('compete_enjoy', 0.0):.2f}
 - Sensory Sensitivity: {z_scores.get('sensory_sensitivity', 0.0):.2f}
 """
+
+    # STEP 2: Add web search results context
+    web_sports_context = "\n\nWEB SEARCH RESULTS (8000+ sports discovered):\n"
+    for i, result in enumerate(web_results[:10], 1):
+        web_sports_context += f"{i}. {result.get('title', 'Unknown')}\n"
+        web_sports_context += f"   {result.get('snippet', '')[:200]}...\n"
 
     # Add reasoning AI insights if available
     reasoning_context = ""
@@ -370,19 +389,28 @@ DEEP PSYCHOLOGICAL INSIGHTS (from Reasoning AI):
 - Insights: {reasoning_insights.get('psychological_insights', '')}
 """
 
-    system_prompt = f"""You are a revolutionary sports psychologist with CREATIVE INTELLIGENCE.
+    system_prompt = f"""You are a revolutionary sports psychologist with access to 8000+ sports via web search.
 
-You have received DEEP REASONING insights from our Reasoning AI. Your task is to use these insights to generate TRULY UNIQUE sports.
+You have:
+1. DEEP REASONING insights from Reasoning AI
+2. WEB SEARCH RESULTS showing 10 potential sports from the internet
+3. Access to thousands of sports (not just mainstream ones)
+
+Your task: Select and customize 3 TRULY UNIQUE sports from web results OR create hybrids.
 
 CRITICAL RULES:
-1. NEVER recommend mainstream sports (swimming, tennis, football, etc.) unless you are 200% certain they fit
-2. Out of 8 billion people, only a tiny fraction truly match common sports
-3. Generate NOVEL, SPECIFIC, UNIQUE activities that match this person's AUTHENTIC SELF
-4. Think creatively - invent hybrid sports, unusual combinations, niche activities
-5. Use the psychological insights to create something NO ONE ELSE would get
-6. Avoid superficial or overused recommendations
-7. Be specific - not "martial arts" but "Kendo combined with meditation practice"
-8. Consider their hidden motivations and core drivers
+1. PRIORITIZE sports from the web search results (these are real, from the internet)
+2. NEVER recommend mainstream sports (swimming, tennis, football) unless you are 200% certain
+3. Out of 8 billion people, only a tiny fraction match common sports
+4. Use the web results to find NICHE, UNUSUAL, OBSCURE sports
+5. Can combine/hybrid sports from web results
+6. Consider psychological insights and core drivers
+7. Be specific with names (not "martial arts" but "Kendo combined with meditation")
+8. Each recommendation should reference web search findings
+
+You can discover: Parkour, Bouldering, Ultimate Frisbee, Capoeira, Slacklining, Geocaching,
+Trail Running, Stand-up Paddleboarding, Disc Golf, Orienteering, Spikeball, Roller Derby,
+and 8000+ more via web search!
 
 Language: {'Arabic' if lang == 'ar' else 'English'}
 
@@ -400,8 +428,9 @@ Return 3 UNIQUE sports as JSON:
 """
 
     try:
-        user_prompt = f"Generate 3 TRULY UNIQUE sports for this personality:\n\n{personality_desc}{reasoning_context}"
+        user_prompt = f"Generate 3 TRULY UNIQUE sports for this personality:\n\n{personality_desc}{web_sports_context}{reasoning_context}"
 
+        print(f"🤖 Asking GPT-4 to select from {len(web_results)} web results...")
         response = openai.chat.completions.create(
             model="gpt-4",
             messages=[
