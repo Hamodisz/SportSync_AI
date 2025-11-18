@@ -1,7 +1,11 @@
 """
-SportSync AI - FULL FastAPI Backend for Vercel
-Complete system with 10 questions + AI analysis
-Uses OpenAI GPT to generate TRULY UNIQUE sports for each person
+SportSync AI - DUAL-AI SYSTEM
+Complete system with 10 questions + DUAL AI analysis
+
+ARCHITECTURE:
+1. Reasoning AI (o1-preview): Deep personality analysis, psychological insights
+2. Intelligence AI (GPT-4): Creative sport generation, 8 billion unique identities
+3. MCP Integration: Real-time communication protocol
 """
 
 from fastapi import FastAPI, HTTPException
@@ -143,6 +147,95 @@ def calculate_personality_scores(answers: List[Dict]) -> Dict[str, float]:
     return z_scores
 
 # ═══════════════════════════════════════════════════════════════
+# REASONING AI - Deep Personality Analysis (o1-preview)
+# ═══════════════════════════════════════════════════════════════
+
+def analyze_personality_with_reasoning_ai(z_scores: Dict[str, float], answers: List[Dict], lang: str = "ar") -> Dict[str, Any]:
+    """
+    REASONING AI (o1-preview): Deep psychological analysis
+
+    This AI model:
+    - Analyzes personality patterns with PhD-level psychology reasoning
+    - Identifies unique traits and hidden motivations
+    - Provides insights that generic scoring systems miss
+    - Reasons through complex personality interactions
+    """
+    api_key = os.environ.get("OPENAI_API_KEY")
+
+    if not api_key:
+        # Fallback to basic analysis
+        return {
+            "personality_type": determine_profile_type(z_scores),
+            "key_traits": ["Based on Z-scores"],
+            "hidden_motivations": ["Requires AI reasoning"],
+            "psychological_insights": "AI reasoning unavailable - using basic analysis",
+            "reasoning_confidence": 0.5
+        }
+
+    openai.api_key = api_key
+
+    # Prepare personality data
+    z_scores_text = "\n".join([f"- {axis.replace('_', '/')}: {score:.2f}" for axis, score in z_scores.items()])
+
+    reasoning_prompt = f"""You are a PhD-level sports psychologist with deep expertise in personality analysis.
+
+PERSONALITY Z-SCORES:
+{z_scores_text}
+
+Your task: Provide DEEP REASONING about this person's personality:
+
+1. What are their CORE psychological drivers? (Not just surface traits)
+2. What HIDDEN MOTIVATIONS might they have that they don't even realize?
+3. How do these personality dimensions INTERACT with each other?
+4. What makes this person TRULY UNIQUE compared to mainstream profiles?
+5. What sports experiences would profoundly match their AUTHENTIC SELF?
+
+Think deeply. Reason through the psychology. Look beyond obvious patterns.
+
+Return your analysis as JSON:
+{{
+  "personality_type": "descriptive label",
+  "core_drivers": ["driver 1", "driver 2", "driver 3"],
+  "hidden_motivations": ["motivation 1", "motivation 2"],
+  "unique_traits": ["what makes them different"],
+  "psychological_insights": "deep paragraph of reasoning",
+  "sport_criteria": ["what they TRULY need in sports"],
+  "reasoning_confidence": 0.0-1.0
+}}
+"""
+
+    try:
+        response = openai.chat.completions.create(
+            model="o1-preview",  # Reasoning model
+            messages=[
+                {"role": "user", "content": reasoning_prompt}
+            ]
+        )
+
+        # Parse response
+        content = response.choices[0].message.content
+        json_match = re.search(r'\{.*\}', content, re.DOTALL)
+
+        if json_match:
+            analysis = json.loads(json_match.group())
+            return analysis
+        else:
+            raise ValueError("No JSON in reasoning response")
+
+    except Exception as e:
+        print(f"Reasoning AI error: {e}")
+        # Fallback
+        return {
+            "personality_type": determine_profile_type(z_scores),
+            "core_drivers": ["Requires reasoning AI"],
+            "hidden_motivations": ["Requires reasoning AI"],
+            "unique_traits": ["Requires reasoning AI"],
+            "psychological_insights": f"Reasoning AI unavailable: {str(e)}",
+            "sport_criteria": ["Based on Z-scores"],
+            "reasoning_confidence": 0.3
+        }
+
+# ═══════════════════════════════════════════════════════════════
 # SPORT RECOMMENDATION ENGINE
 # ═══════════════════════════════════════════════════════════════
 
@@ -234,11 +327,13 @@ SPORT_DATABASE = {
     ]
 }
 
-def generate_unique_sports_with_ai(z_scores: Dict[str, float], lang: str = "ar") -> List[Dict]:
+def generate_unique_sports_with_ai(z_scores: Dict[str, float], lang: str = "ar", reasoning_insights: Dict[str, Any] = None) -> List[Dict]:
     """
-    Generate TRULY UNIQUE sports using GPT-4
-    Creates completely personalized sport identities that have never existed before
-    NO generic sports unless they genuinely fit (99.9% certainty)
+    INTELLIGENCE AI (GPT-4): Generate TRULY UNIQUE sports
+
+    Uses insights from Reasoning AI to create personalized sport identities
+    Creates completely unique experiences that have never existed before
+    NO generic sports unless they genuinely fit (200% certainty)
     """
     # Get OpenAI API key from environment
     api_key = os.environ.get("OPENAI_API_KEY")
@@ -261,16 +356,33 @@ Personality Z-Scores (scale -1.0 to +1.0):
 - Sensory Sensitivity: {z_scores.get('sensory_sensitivity', 0.0):.2f}
 """
 
-    system_prompt = f"""You are a revolutionary sports psychologist creating UNIQUE sport identities.
+    # Add reasoning AI insights if available
+    reasoning_context = ""
+    if reasoning_insights:
+        reasoning_context = f"""
+
+DEEP PSYCHOLOGICAL INSIGHTS (from Reasoning AI):
+- Personality Type: {reasoning_insights.get('personality_type', 'Unknown')}
+- Core Drivers: {', '.join(reasoning_insights.get('core_drivers', []))}
+- Hidden Motivations: {', '.join(reasoning_insights.get('hidden_motivations', []))}
+- Unique Traits: {', '.join(reasoning_insights.get('unique_traits', []))}
+- Sport Criteria: {', '.join(reasoning_insights.get('sport_criteria', []))}
+- Insights: {reasoning_insights.get('psychological_insights', '')}
+"""
+
+    system_prompt = f"""You are a revolutionary sports psychologist with CREATIVE INTELLIGENCE.
+
+You have received DEEP REASONING insights from our Reasoning AI. Your task is to use these insights to generate TRULY UNIQUE sports.
 
 CRITICAL RULES:
 1. NEVER recommend mainstream sports (swimming, tennis, football, etc.) unless you are 200% certain they fit
 2. Out of 8 billion people, only a tiny fraction truly match common sports
-3. Generate NOVEL, SPECIFIC, UNIQUE activities that match this exact personality
+3. Generate NOVEL, SPECIFIC, UNIQUE activities that match this person's AUTHENTIC SELF
 4. Think creatively - invent hybrid sports, unusual combinations, niche activities
-5. Each person should get something NO ONE ELSE would get
+5. Use the psychological insights to create something NO ONE ELSE would get
 6. Avoid superficial or overused recommendations
 7. Be specific - not "martial arts" but "Kendo combined with meditation practice"
+8. Consider their hidden motivations and core drivers
 
 Language: {'Arabic' if lang == 'ar' else 'English'}
 
@@ -279,19 +391,22 @@ Return 3 UNIQUE sports as JSON:
   {{
     "name_ar": "unique Arabic name",
     "name_en": "unique English name",
-    "description_ar": "why this specific person matches this specific sport",
-    "description_en": "why this specific person matches this specific sport",
-    "uniqueness_score": 0.0-1.0
+    "description_ar": "why this specific person matches this specific sport (reference their psychology)",
+    "description_en": "why this specific person matches this specific sport (reference their psychology)",
+    "uniqueness_score": 0.0-1.0,
+    "psychological_match": "how it connects to their core drivers"
   }}
 ]
 """
 
     try:
+        user_prompt = f"Generate 3 TRULY UNIQUE sports for this personality:\n\n{personality_desc}{reasoning_context}"
+
         response = openai.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Generate 3 TRULY UNIQUE sports for this personality:\n\n{personality_desc}"}
+                {"role": "user", "content": user_prompt}
             ],
             temperature=1.2,  # High creativity
             max_tokens=1500
@@ -420,9 +535,28 @@ def generate_unique_sports_fallback(z_scores: Dict[str, float], lang: str = "ar"
 
     return recommendations
 
-def recommend_sports(z_scores: Dict[str, float], lang: str = "ar") -> List[Dict]:
-    """Main recommendation function - calls AI unique generator"""
-    return generate_unique_sports_with_ai(z_scores, lang)
+def recommend_sports(z_scores: Dict[str, float], lang: str = "ar", answers: List[Dict] = None) -> Dict[str, Any]:
+    """
+    DUAL-AI ORCHESTRATION
+
+    Step 1: Reasoning AI (o1-preview) analyzes personality deeply
+    Step 2: Intelligence AI (GPT-4) generates unique sports using those insights
+
+    Returns: {
+        "sports": [...],
+        "reasoning_analysis": {...}
+    }
+    """
+    # Step 1: Deep reasoning analysis
+    reasoning_analysis = analyze_personality_with_reasoning_ai(z_scores, answers or [], lang)
+
+    # Step 2: Generate unique sports using reasoning insights
+    sports = generate_unique_sports_with_ai(z_scores, lang, reasoning_analysis)
+
+    return {
+        "sports": sports,
+        "reasoning_analysis": reasoning_analysis
+    }
 
 # ═══════════════════════════════════════════════════════════════
 # API ENDPOINTS
@@ -495,8 +629,10 @@ async def analyze(request: dict):
         # Calculate personality scores
         z_scores = calculate_personality_scores(answers)
 
-        # Get sport recommendations (AI-generated unique sports)
-        sports = recommend_sports(z_scores, language)
+        # DUAL-AI SYSTEM: Get deep reasoning + unique sports
+        ai_results = recommend_sports(z_scores, language, answers)
+        sports = ai_results["sports"]
+        reasoning_analysis = ai_results["reasoning_analysis"]
 
         # Format recommendations
         recommendations = []
@@ -507,17 +643,21 @@ async def analyze(request: dict):
             recommendations.append({
                 "sport": sport.get(name_key, sport.get("name_en", "Unknown")),
                 "description": sport.get(desc_key, ""),
-                "match_score": sport.get("match_score", 0.85)  # AI already calculated match_score
+                "match_score": sport.get("match_score", 0.85),
+                "psychological_match": sport.get("psychological_match", "")
             })
 
         return {
             "success": True,
             "personality_scores": z_scores,
             "recommendations": recommendations,
+            "reasoning_analysis": reasoning_analysis,  # NEW: Deep psychological insights
             "analysis_summary": {
                 "total_questions_answered": len(answers),
                 "language": language,
-                "profile_type": determine_profile_type(z_scores)
+                "profile_type": reasoning_analysis.get("personality_type", determine_profile_type(z_scores)),
+                "core_drivers": reasoning_analysis.get("core_drivers", []),
+                "hidden_motivations": reasoning_analysis.get("hidden_motivations", [])
             }
         }
 

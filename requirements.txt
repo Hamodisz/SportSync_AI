@@ -1,7 +1,10 @@
 # SportSync AI - Vercel Dependencies
-# For public app deployed on Vercel (api/index.py)
+# Dual-AI System: o1-preview (reasoning) + GPT-4 (intelligence)
 
 fastapi>=0.104.0
 openai>=1.3.0
+websockets>=12.0
+uvicorn>=0.24.0
 
 # Note: For local Streamlit admin interface, see requirements-streamlit.txt
+# Note: For MCP server, run: python mcp_server.py
