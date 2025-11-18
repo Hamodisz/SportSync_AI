@@ -20,6 +20,7 @@ import random
 import re
 import hashlib
 from datetime import datetime
+from expanded_fallback_sports import EXPANDED_FALLBACK_SPORTS
 
 # Create FastAPI app
 app = FastAPI(
@@ -470,8 +471,9 @@ Return 3 UNIQUE sports as JSON:
 
 def generate_unique_sports_fallback(z_scores: Dict[str, float], lang: str = "ar") -> List[Dict]:
     """
-    Fallback: Creative generation without API
-    Still avoids generic sports
+    EXPANDED Fallback: 261 diverse sports (up from 36)
+    Uses personality-matched selection from expanded list
+    Priority 3: Prevent duplication during API failures
     """
     import hashlib
 
@@ -483,82 +485,75 @@ def generate_unique_sports_fallback(z_scores: Dict[str, float], lang: str = "ar"
     calm = z_scores.get("calm_adrenaline", 0.0)
     social = z_scores.get("solo_group", 0.0)
     variety = z_scores.get("repeat_variety", 0.0)
-    control = z_scores.get("control_freedom", 0.0)
-    technical = z_scores.get("technical_intuitive", 0.0)
-    compete = z_scores.get("compete_enjoy", 0.0)
-    sensory = z_scores.get("sensory_sensitivity", 0.0)
 
-    # Dynamic sport generation based on personality dimensions
+    # Dynamic sport selection from expanded list (261 sports)
     recommendations = []
 
-    # Sport 1: Based on calm/adrenaline axis
+    # Sport 1: Based on calm/adrenaline axis (29 options per category)
     if calm < -0.6:
-        sport1 = {
-            "name_ar": random.choice(["🧘 اليوغا النارية", "🎯 التأمل الحركي", "🌊 السباحة التأملية", "🎨 الطاقة بالحركة"]),
-            "name_en": random.choice(["Fire Yoga", "Moving Meditation", "Meditative Swimming", "Energy through Movement"]),
-            "description_ar": f"رياضة مصممة خصيصاً للشخصيات الهادئة (درجة {calm:.1f}). تجمع بين السكون الداخلي والحركة الواعية.",
-            "description_en": f"Sport designed for calm personalities (score {calm:.1f}). Combines inner peace with conscious movement."
-        }
+        calm_category = "very_calm"
+        description_ar = f"رياضة مصممة خصيصاً للشخصيات الهادئة (درجة {calm:.1f}). تجمع بين السكون الداخلي والحركة الواعية."
+        description_en = f"Sport designed for calm personalities (score {calm:.1f}). Combines inner peace with conscious movement."
     elif calm > 0.6:
-        sport1 = {
-            "name_ar": random.choice(["🏃 الباركور الحضري", "🧗 التسلق الحر", "🚴 الدراجات المتطرفة", "⚡ سباقات العوائق"]),
-            "name_en": random.choice(["Urban Parkour", "Free Climbing", "Extreme Cycling", "Obstacle Racing"]),
-            "description_ar": f"رياضة عالية الأدرينالين (درجة {calm:.1f}) مثالية لمحبي التحدي والإثارة.",
-            "description_en": f"High-adrenaline sport (score {calm:.1f}) perfect for thrill-seekers."
-        }
+        calm_category = "very_adrenaline"
+        description_ar = f"رياضة عالية الأدرينالين (درجة {calm:.1f}) مثالية لمحبي التحدي والإثارة."
+        description_en = f"High-adrenaline sport (score {calm:.1f}) perfect for thrill-seekers."
     else:
-        sport1 = {
-            "name_ar": random.choice(["🏊 السباحة الديناميكية", "🎾 التنس الاستراتيجي", "🚶 المشي النشط", "🤸 الجمباز الإيقاعي"]),
-            "name_en": random.choice(["Dynamic Swimming", "Strategic Tennis", "Active Walking", "Rhythmic Gymnastics"]),
-            "description_ar": f"رياضة متوازنة (درجة {calm:.1f}) تجمع بين الهدوء والنشاط.",
-            "description_en": f"Balanced sport (score {calm:.1f}) combining calm and activity."
-        }
+        calm_category = "balanced_calm"
+        description_ar = f"رياضة متوازنة (درجة {calm:.1f}) تجمع بين الهدوء والنشاط."
+        description_en = f"Balanced sport (score {calm:.1f}) combining calm and activity."
 
-    # Sport 2: Based on social/solo axis
+    sport1_data = random.choice(EXPANDED_FALLBACK_SPORTS[calm_category]["sports"])
+    sport1 = {
+        "name_ar": sport1_data["name_ar"],
+        "name_en": sport1_data["name_en"],
+        "description_ar": description_ar,
+        "description_en": description_en
+    }
+
+    # Sport 2: Based on social/solo axis (29 options per category)
     if social > 0.6:
-        sport2 = {
-            "name_ar": random.choice(["⚽ كرة القدم الشاطئية", "🏐 الكرة الطائرة", "🏀 كرة السلة الجماعية", "🤼 الرياضات القتالية الجماعية"]),
-            "name_en": random.choice(["Beach Football", "Volleyball", "Team Basketball", "Group Martial Arts"]),
-            "description_ar": f"رياضة جماعية (درجة {social:.1f}) تعزز التواصل والعمل الجماعي.",
-            "description_en": f"Team sport (score {social:.1f}) enhancing connection and teamwork."
-        }
+        social_category = "very_social"
+        description_ar = f"رياضة جماعية (درجة {social:.1f}) تعزز التواصل والعمل الجماعي."
+        description_en = f"Team sport (score {social:.1f}) enhancing connection and teamwork."
     elif social < -0.6:
-        sport2 = {
-            "name_ar": random.choice(["🎯 الرماية بالقوس", "🏃 الجري الفردي", "🧘 اليوغا المنفردة", "🚴 ركوب الدراجات الفردي"]),
-            "name_en": random.choice(["Archery", "Solo Running", "Solo Yoga", "Individual Cycling"]),
-            "description_ar": f"رياضة فردية (درجة {social:.1f}) مثالية للتركيز الذاتي.",
-            "description_en": f"Solo sport (score {social:.1f}) perfect for self-focus."
-        }
+        social_category = "very_solo"
+        description_ar = f"رياضة فردية (درجة {social:.1f}) مثالية للتركيز الذاتي."
+        description_en = f"Solo sport (score {social:.1f}) perfect for self-focus."
     else:
-        sport2 = {
-            "name_ar": random.choice(["🎾 التنس الزوجي", "🏓 تنس الطاولة", "🏸 الريشة الطائرة", "🤺 المبارزة"]),
-            "name_en": random.choice(["Doubles Tennis", "Table Tennis", "Badminton", "Fencing"]),
-            "description_ar": f"رياضة مرنة (درجة {social:.1f}) يمكن ممارستها فردياً أو جماعياً.",
-            "description_en": f"Flexible sport (score {social:.1f}) playable solo or with others."
-        }
+        social_category = "balanced_social"
+        description_ar = f"رياضة مرنة (درجة {social:.1f}) يمكن ممارستها فردياً أو جماعياً."
+        description_en = f"Flexible sport (score {social:.1f}) playable solo or with others."
 
-    # Sport 3: Based on variety/repetition axis
+    sport2_data = random.choice(EXPANDED_FALLBACK_SPORTS[social_category]["sports"])
+    sport2 = {
+        "name_ar": sport2_data["name_ar"],
+        "name_en": sport2_data["name_en"],
+        "description_ar": description_ar,
+        "description_en": description_en
+    }
+
+    # Sport 3: Based on variety/repetition axis (29 options per category)
     if variety > 0.6:
-        sport3 = {
-            "name_ar": random.choice(["🏋️ التدريب المتقاطع", "🤸 الجمباز الحر", "🏃 سباق الثلاثي", "🧗 رياضات متعددة"]),
-            "name_en": random.choice(["CrossFit", "Free Gymnastics", "Triathlon", "Multi-Sport Training"]),
-            "description_ar": f"رياضة متنوعة (درجة {variety:.1f}) تقدم تحديات جديدة كل يوم.",
-            "description_en": f"Varied sport (score {variety:.1f}) offering new challenges daily."
-        }
+        variety_category = "high_variety"
+        description_ar = f"رياضة متنوعة (درجة {variety:.1f}) تقدم تحديات جديدة كل يوم."
+        description_en = f"Varied sport (score {variety:.1f}) offering new challenges daily."
     elif variety < -0.6:
-        sport3 = {
-            "name_ar": random.choice(["🏊 السباحة الروتينية", "🚶 المشي المنتظم", "🎯 الرماية المتكررة", "🧘 اليوغا اليومية"]),
-            "name_en": random.choice(["Routine Swimming", "Regular Walking", "Repetitive Archery", "Daily Yoga"]),
-            "description_ar": f"رياضة منتظمة (درجة {variety:.1f}) مثالية لبناء العادات.",
-            "description_en": f"Regular sport (score {variety:.1f}) perfect for building habits."
-        }
+        variety_category = "low_variety"
+        description_ar = f"رياضة منتظمة (درجة {variety:.1f}) مثالية لبناء العادات."
+        description_en = f"Regular sport (score {variety:.1f}) perfect for building habits."
     else:
-        sport3 = {
-            "name_ar": random.choice(["🏃 الجري بالفترات", "🚴 ركوب الدراجات المختلط", "🏊 السباحة المتنوعة", "🎾 التنس التكتيكي"]),
-            "name_en": random.choice(["Interval Running", "Mixed Cycling", "Varied Swimming", "Tactical Tennis"]),
-            "description_ar": f"رياضة متوسطة (درجة {variety:.1f}) توازن بين الروتين والتنوع.",
-            "description_en": f"Moderate sport (score {variety:.1f}) balancing routine and variety."
-        }
+        variety_category = "balanced_variety"
+        description_ar = f"رياضة متوسطة (درجة {variety:.1f}) توازن بين الروتين والتنوع."
+        description_en = f"Moderate sport (score {variety:.1f}) balancing routine and variety."
+
+    sport3_data = random.choice(EXPANDED_FALLBACK_SPORTS[variety_category]["sports"])
+    sport3 = {
+        "name_ar": sport3_data["name_ar"],
+        "name_en": sport3_data["name_en"],
+        "description_ar": description_ar,
+        "description_en": description_en
+    }
 
     recommendations = [sport1, sport2, sport3]
 
@@ -567,6 +562,9 @@ def generate_unique_sports_fallback(z_scores: Dict[str, float], lang: str = "ar"
         # Calculate match score based on how well it fits the profile
         base_score = 0.70 + (i * 0.05) + (abs(calm) * 0.05) + (abs(social) * 0.05)
         rec["match_score"] = min(0.99, base_score + random.uniform(0, 0.1))
+
+    print(f"✓ Expanded fallback used: {calm_category}, {social_category}, {variety_category}")
+    print(f"  Sports: {sport1['name_en']}, {sport2['name_en']}, {sport3['name_en']}")
 
     return recommendations
 
