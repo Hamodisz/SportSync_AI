@@ -766,10 +766,12 @@
 
             // Show optional info on last question
             const optionalInfo = document.getElementById('optionalInfo');
-            if (index === questions.length - 1) {
-                optionalInfo.classList.remove('hidden');
-            } else {
-                optionalInfo.classList.add('hidden');
+            if (optionalInfo) {
+                if (index === questions.length - 1) {
+                    optionalInfo.classList.remove('hidden');
+                } else {
+                    optionalInfo.classList.add('hidden');
+                }
             }
 
             document.getElementById('prevBtn').disabled = index === 0;
