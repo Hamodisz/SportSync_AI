@@ -27,6 +27,7 @@ try:  # Optional LLM client; fallback works without it.
     from layer_z_enhanced import EnhancedLayerZ  # NEW: Task 1.2 - Enhanced Layer-Z
     from systems import analyze_all_systems  # NEW: Task 1.3 - Multi-system analysis
     from layer_z_engine import calculate_z_scores_from_questions  # NEW: Task 2.1 - Explicit scoring
+    from local_sports_db import LocalSportsDatabase  # NEW: Priority 2 - Local database fallback
     from core.user_logger import log_event, log_recommendation_result  # type: ignore
     DUAL_MODEL_ENABLED = True
 except Exception:  # pragma: no cover - LLM unavailable
@@ -39,6 +40,7 @@ except Exception:  # pragma: no cover - LLM unavailable
     EnhancedLayerZ = None  # NEW: Task 1.2
     analyze_all_systems = None  # NEW: Task 1.3
     calculate_z_scores_from_questions = None  # NEW: Task 2.1
+    LocalSportsDatabase = None  # NEW: Priority 2
     log_event = lambda *args, **kwargs: None  # fallback
     log_recommendation_result = lambda *args, **kwargs: None  # fallback
     DUAL_MODEL_ENABLED = False
