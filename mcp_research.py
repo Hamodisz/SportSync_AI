@@ -28,6 +28,7 @@ class MCPResearchEngine:
 
     def __init__(self):
         self.search_cache = {}
+        self.brave_api_key = os.environ.get("BRAVE_API_KEY")  # Brave Search API
         self.google_api_key = os.environ.get("GOOGLE_API_KEY")
         self.google_cse_id = os.environ.get("GOOGLE_CSE_ID")
         self.serper_api_key = os.environ.get("SERPER_API_KEY")  # Alternative: serper.dev
@@ -36,23 +37,82 @@ class MCPResearchEngine:
         """
         Advanced web search like ChatGPT
         Uses multiple search providers for best results
+        Priority: Brave > Google > Serper > DuckDuckGo
         """
         results = []
 
-        # Try Google Custom Search API first (best quality)
+        # Try Brave Search API first (fast, reliable, no rate limits)
+        if self.brave_api_key:
+            results = self._brave_search(query, num_results)
+            if results:
+                print(f"✓ Brave Search: {len(results)} results")
+                return results
+
+        # Try Google Custom Search API (high quality)
         if self.google_api_key and self.google_cse_id:
             results = self._google_custom_search(query, num_results)
             if results:
+                print(f"✓ Google Search: {len(results)} results")
                 return results
 
         # Try Serper.dev API (ChatGPT-like results)
         if self.serper_api_key:
             results = self._serper_search(query, num_results)
             if results:
+                print(f"✓ Serper Search: {len(results)} results")
                 return results
 
-        # Fallback to DuckDuckGo
+        # Fallback to DuckDuckGo (unreliable but free)
+        print("⚠️  Using DuckDuckGo fallback (unreliable)")
         return self.search_web(query, num_results)
+
+    def _brave_search(self, query: str, num_results: int = 10) -> List[Dict[str, Any]]:
+        """
+        Brave Search API - Fast, reliable, privacy-focused
+        Get API key: https://brave.com/search/api/
+        Docs: https://api.search.brave.com/app/documentation/web-search/get-started
+        """
+        try:
+            url = "https://api.search.brave.com/res/v1/web/search"
+            headers = {
+                "Accept": "application/json",
+                "Accept-Encoding": "gzip",
+                "X-Subscription-Token": self.brave_api_key
+            }
+            params = {
+                "q": query,
+                "count": min(num_results, 20),  # Brave allows up to 20
+                "text_decorations": False,
+                "search_lang": "en"
+            }
+
+            response = requests.get(url, headers=headers, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            results = []
+            for item in data.get("web", {}).get("results", []):
+                results.append({
+                    "title": item.get("title", ""),
+                    "snippet": item.get("description", ""),
+                    "url": item.get("url", ""),
+                    "source": "Brave Search",
+                    "age": item.get("age", ""),
+                    "language": item.get("language", "en")
+                })
+
+            return results
+
+        except requests.exceptions.HTTPError as e:
+            print(f"Brave Search HTTP error: {e}")
+            if e.response.status_code == 401:
+                print("⚠️  Brave API key invalid or expired")
+            elif e.response.status_code == 429:
+                print("⚠️  Brave API rate limit exceeded")
+            return []
+        except Exception as e:
+            print(f"Brave Search error: {e}")
+            return []
 
     def _google_custom_search(self, query: str, num_results: int = 10) -> List[Dict[str, Any]]:
         """
