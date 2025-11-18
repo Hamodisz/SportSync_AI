@@ -14,7 +14,8 @@ from typing import List, Dict, Any, Optional
 import json
 import os
 from pathlib import Path
-import openai
+from openai import OpenAI
+import httpx
 import random
 import re
 import hashlib
@@ -172,7 +173,9 @@ def analyze_personality_with_reasoning_ai(z_scores: Dict[str, float], answers: L
             "reasoning_confidence": 0.5
         }
 
-    openai.api_key = api_key
+    # Create OpenAI client (new v1+ syntax) with custom http_client to bypass proxy issues
+    http_client = httpx.Client(timeout=60.0)
+    client = OpenAI(api_key=api_key, http_client=http_client)
 
     # Prepare personality data
     z_scores_text = "\n".join([f"- {axis.replace('_', '/')}: {score:.2f}" for axis, score in z_scores.items()])
@@ -205,9 +208,10 @@ Return your analysis as JSON:
 """
 
     try:
-        response = openai.chat.completions.create(
-            model="o1-preview",  # Reasoning model
+        response = client.chat.completions.create(
+            model="gpt-4-turbo-preview",  # Reasoning model (o1-preview not available, using gpt-4-turbo)
             messages=[
+                {"role": "system", "content": "You are a PhD-level sports psychologist specializing in deep personality analysis and reasoning."},
                 {"role": "user", "content": reasoning_prompt}
             ]
         )
@@ -345,7 +349,9 @@ def generate_unique_sports_with_ai(z_scores: Dict[str, float], lang: str = "ar",
         # Fallback to creative generation without API
         return generate_unique_sports_fallback(z_scores, lang)
 
-    openai.api_key = api_key
+    # Create OpenAI client (new v1+ syntax) with custom http_client to bypass proxy issues
+    http_client = httpx.Client(timeout=60.0)
+    client = OpenAI(api_key=api_key, http_client=http_client)
 
     # STEP 1: Search web for sports (8000+ possibilities)
     from mcp_research import MCPResearchEngine
@@ -431,7 +437,7 @@ Return 3 UNIQUE sports as JSON:
         user_prompt = f"Generate 3 TRULY UNIQUE sports for this personality:\n\n{personality_desc}{web_sports_context}{reasoning_context}"
 
         print(f"🤖 Asking GPT-4 to select from {len(web_results)} web results...")
-        response = openai.chat.completions.create(
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": system_prompt},
