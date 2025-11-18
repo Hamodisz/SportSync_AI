@@ -1,12 +1,16 @@
 # SportSync AI - Vercel Dependencies
 # Dual-AI System: o1-preview (reasoning) + GPT-4 (intelligence)
-# MCP Server: Internet research + Adaptive chat
+# MCP Server: ChatGPT-like web search + Adaptive chat
 
 fastapi>=0.104.0
 openai>=1.3.0
 websockets>=12.0
 uvicorn>=0.24.0
 requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
 
 # Note: For local Streamlit admin interface, see requirements-streamlit.txt
-# Note: For MCP server with research, run: python mcp_server.py
+# Note: For MCP server with ChatGPT-like search, run: python mcp_server.py
+# Note: For Google Search API, set: GOOGLE_API_KEY, GOOGLE_CSE_ID
+# Note: For Serper.dev API, set: SERPER_API_KEY

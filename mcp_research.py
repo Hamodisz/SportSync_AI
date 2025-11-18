@@ -1,28 +1,174 @@
 """
-SportSync AI - MCP Research Engine
-Internet-powered bulletproof sports analysis
+SportSync AI - MCP Research Engine with REAL WEB SEARCH
+Like ChatGPT - searches the web in real-time!
 
 RESEARCH CAPABILITIES:
-1. Web search for sports information
-2. Scientific paper search (Google Scholar, arXiv)
-3. Sports databases and wikis
-4. Personality psychology research
-5. Evidence-based recommendations with citations
+1. Google Custom Search API (like ChatGPT)
+2. Web page scraping and content extraction
+3. Scientific paper search (Google Scholar, arXiv)
+4. Sports databases and wikis
+5. Real-time information gathering
+6. Evidence-based recommendations with citations
 """
 
 import requests
 import json
 from typing import List, Dict, Any
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 import time
+import os
+from bs4 import BeautifulSoup
+import re
 
 class MCPResearchEngine:
     """
     Internet Research Engine for Bulletproof Sports Analysis
+    Like ChatGPT - searches and browses the web in real-time!
     """
 
     def __init__(self):
         self.search_cache = {}
+        self.google_api_key = os.environ.get("GOOGLE_API_KEY")
+        self.google_cse_id = os.environ.get("GOOGLE_CSE_ID")
+        self.serper_api_key = os.environ.get("SERPER_API_KEY")  # Alternative: serper.dev
+
+    def search_web_advanced(self, query: str, num_results: int = 10) -> List[Dict[str, Any]]:
+        """
+        Advanced web search like ChatGPT
+        Uses multiple search providers for best results
+        """
+        results = []
+
+        # Try Google Custom Search API first (best quality)
+        if self.google_api_key and self.google_cse_id:
+            results = self._google_custom_search(query, num_results)
+            if results:
+                return results
+
+        # Try Serper.dev API (ChatGPT-like results)
+        if self.serper_api_key:
+            results = self._serper_search(query, num_results)
+            if results:
+                return results
+
+        # Fallback to DuckDuckGo
+        return self.search_web(query, num_results)
+
+    def _google_custom_search(self, query: str, num_results: int = 10) -> List[Dict[str, Any]]:
+        """
+        Google Custom Search API - High quality results like ChatGPT
+        Get API key: https://developers.google.com/custom-search/v1/overview
+        """
+        try:
+            url = "https://www.googleapis.com/customsearch/v1"
+            params = {
+                "key": self.google_api_key,
+                "cx": self.google_cse_id,
+                "q": query,
+                "num": min(num_results, 10)
+            }
+
+            response = requests.get(url, params=params, timeout=10)
+            data = response.json()
+
+            results = []
+            for item in data.get("items", []):
+                results.append({
+                    "title": item.get("title", ""),
+                    "snippet": item.get("snippet", ""),
+                    "url": item.get("link", ""),
+                    "source": "Google Search",
+                    "displayed_url": item.get("displayLink", "")
+                })
+
+            return results
+
+        except Exception as e:
+            print(f"Google Custom Search error: {e}")
+            return []
+
+    def _serper_search(self, query: str, num_results: int = 10) -> List[Dict[str, Any]]:
+        """
+        Serper.dev API - ChatGPT-like search results
+        Get API key: https://serper.dev
+        """
+        try:
+            url = "https://google.serper.dev/search"
+            headers = {
+                "X-API-KEY": self.serper_api_key,
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "q": query,
+                "num": num_results
+            }
+
+            response = requests.post(url, json=payload, headers=headers, timeout=10)
+            data = response.json()
+
+            results = []
+            for item in data.get("organic", []):
+                results.append({
+                    "title": item.get("title", ""),
+                    "snippet": item.get("snippet", ""),
+                    "url": item.get("link", ""),
+                    "source": "Serper Search",
+                    "position": item.get("position", 0)
+                })
+
+            return results
+
+        except Exception as e:
+            print(f"Serper search error: {e}")
+            return []
+
+    def extract_webpage_content(self, url: str) -> Dict[str, Any]:
+        """
+        Extract content from a webpage (like ChatGPT browses web)
+        """
+        try:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+            }
+            response = requests.get(url, headers=headers, timeout=10)
+            soup = BeautifulSoup(response.content, 'html.parser')
+
+            # Remove script and style elements
+            for script in soup(["script", "style"]):
+                script.decompose()
+
+            # Get text content
+            text = soup.get_text()
+            lines = (line.strip() for line in text.splitlines())
+            chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+            text = ' '.join(chunk for chunk in chunks if chunk)
+
+            # Extract title
+            title = soup.title.string if soup.title else ""
+
+            # Extract main content (try common content tags)
+            main_content = ""
+            for tag in ['article', 'main', 'div[class*="content"]']:
+                content_elem = soup.select_one(tag)
+                if content_elem:
+                    main_content = content_elem.get_text()[:2000]  # First 2000 chars
+                    break
+
+            return {
+                "url": url,
+                "title": title,
+                "content": main_content or text[:2000],
+                "full_text_length": len(text),
+                "extracted": True
+            }
+
+        except Exception as e:
+            print(f"Web extraction error for {url}: {e}")
+            return {
+                "url": url,
+                "error": str(e),
+                "extracted": False
+            }
 
     def search_web(self, query: str, num_results: int = 5) -> List[Dict[str, Any]]:
         """
@@ -153,18 +299,31 @@ class MCPResearchEngine:
 
     def bulletproof_analysis(self, z_scores: Dict[str, float], personality_type: str) -> Dict[str, Any]:
         """
-        BULLETPROOF ANALYSIS with internet research
+        BULLETPROOF ANALYSIS with ChatGPT-like internet research
+        1. Searches web with advanced APIs
+        2. Browses and extracts content from web pages
+        3. Synthesizes information like ChatGPT
         """
-        print("🔍 Starting bulletproof internet research...")
+        print("🔍 Starting ChatGPT-like internet research...")
 
-        # Step 1: Research personality type
+        # Step 1: Advanced web search for personality type
         print("📚 Researching personality type...")
-        personality_research = self.research_personality_type(personality_type, z_scores)
+        personality_query = f"{personality_type} personality sports recommendations psychology"
+        personality_results = self.search_web_advanced(personality_query, num_results=5)
 
-        # Step 2: Research sports that match personality
-        sports_query = f"best sports for {personality_type} personality adrenaline solo"
-        print(f"🏃 Searching: {sports_query}")
-        sports_results = self.search_web(sports_query, num_results=5)
+        # Step 2: Browse top results and extract content
+        print("🌐 Browsing web pages...")
+        browsed_content = []
+        for result in personality_results[:3]:  # Browse top 3 results
+            content = self.extract_webpage_content(result.get("url", ""))
+            if content.get("extracted"):
+                browsed_content.append(content)
+                print(f"   ✓ Extracted: {content.get('title', 'Unknown')[:50]}...")
+
+        # Step 3: Research sports that match personality
+        sports_query = f"best sports activities for {personality_type} personality type"
+        print(f"🏃 Searching sports: {sports_query}")
+        sports_results = self.search_web_advanced(sports_query, num_results=5)
 
         # Step 3: Research specific sports
         print("🔬 Researching specific sports...")
@@ -191,19 +350,27 @@ class MCPResearchEngine:
             sport_info = self.research_sport(sport, [personality_type])
             sport_research.append(sport_info)
 
-        # Step 4: Compile bulletproof analysis
+        # Step 4: Compile bulletproof analysis with browsed content
+        total_sources = (
+            len(personality_results) +
+            len(browsed_content) +
+            len(sports_results) +
+            sum(s.get("total_sources", 0) for s in sport_research)
+        )
+
         return {
-            "analysis_type": "BULLETPROOF - Internet Research Powered",
-            "personality_research": personality_research,
-            "general_sports_research": sports_results,
+            "analysis_type": "BULLETPROOF - ChatGPT-like Web Research",
+            "search_results": {
+                "personality_search": personality_results,
+                "sports_search": sports_results
+            },
+            "browsed_pages": browsed_content,
             "specific_sport_research": sport_research,
-            "total_sources_consulted": (
-                personality_research.get("evidence_strength", 0) +
-                len(sports_results) +
-                sum(s.get("total_sources", 0) for s in sport_research)
-            ),
-            "confidence_level": "HIGH - Evidence-Based",
-            "timestamp": time.time()
+            "total_sources_consulted": total_sources,
+            "pages_browsed": len(browsed_content),
+            "confidence_level": "HIGH - Evidence-Based with Web Browsing",
+            "timestamp": time.time(),
+            "research_method": "Advanced search (Google/Serper) + Web page extraction"
         }
 
     def generate_evidence_based_recommendations(

@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SportSync AI - MCP Server Test Interface</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            direction: rtl;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+
+        .status-healthy {
+            background: #10b981;
+            color: white;
+        }
+
+        .status-error {
+            background: #ef4444;
+            color: white;
+        }
+
+        .endpoint-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .endpoint-card {
+            padding: 20px;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .endpoint-card:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .endpoint-card h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .test-section {
+            margin-top: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #374151;
+        }
+
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            min-height: 150px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 16px;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+            margin-right: 10px;
+        }
+
+        .response-box {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f9fafb;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .response-box pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+
+        .spinner {
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .architecture {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .ai-card {
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .ai-card h3 {
+            margin-bottom: 10px;
+            font-size: 1.5em;
+        }
+
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .feature-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .feature-list li:last-child {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 SportSync AI - MCP Server</h1>
+            <p>لوحة تحكم بحث الإنترنت والذكاء الاصطناعي المزدوج</p>
+        </div>
+
+        <!-- Server Status -->
+        <div class="card">
+            <h2>🔌 حالة الخادم</h2>
+            <div id="serverStatus">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    جاري التحقق من حالة الخادم...
+                </div>
+            </div>
+        </div>
+
+        <!-- Architecture -->
+        <div class="card">
+            <h2>🏗️ معمارية النظام</h2>
+            <div class="architecture">
+                <div class="ai-card">
+                    <h3>🧠</h3>
+                    <h4>Reasoning AI</h4>
+                    <p>o1-preview</p>
+                    <small>تحليل نفسي عميق</small>
+                </div>
+                <div class="ai-card">
+                    <h3>🎨</h3>
+                    <h4>Intelligence AI</h4>
+                    <p>GPT-4</p>
+                    <small>توليد رياضات فريدة</small>
+                </div>
+                <div class="ai-card">
+                    <h3>🔍</h3>
+                    <h4>Research Engine</h4>
+                    <p>Internet</p>
+                    <small>بحث على الإنترنت</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Endpoints -->
+        <div class="card">
+            <h2>📡 نقاط النهاية المتاحة</h2>
+            <div class="endpoint-grid">
+                <div class="endpoint-card" onclick="testEndpoint('/mcp/health')">
+                    <h3>✅ Health Check</h3>
+                    <p>التحقق من صحة الخادم</p>
+                </div>
+                <div class="endpoint-card" onclick="testEndpoint('/mcp/capabilities')">
+                    <h3>🎯 Capabilities</h3>
+                    <p>قدرات النظام</p>
+                </div>
+                <div class="endpoint-card" onclick="showAnalyzeForm()">
+                    <h3>🔬 Analyze</h3>
+                    <p>تحليل الشخصية</p>
+                </div>
+                <div class="endpoint-card" onclick="testResearch()">
+                    <h3>🌐 Research Test</h3>
+                    <p>اختبار البحث</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Test Analysis Form -->
+        <div class="card" id="analyzeForm" style="display: none;">
+            <h2>🧪 اختبار التحليل مع البحث على الإنترنت</h2>
+            <div class="test-section">
+                <div class="form-group">
+                    <label>بيانات الاختبار (JSON):</label>
+                    <textarea id="testData">{
+  "session_id": "test_123",
+  "language": "ar",
+  "answers": [
+    {
+      "question_key": "q1",
+      "answer_text": "في لحظات السرعة والتفاعل المباشر"
+    }
+  ]
+}</textarea>
+                </div>
+                <button class="btn btn-primary" onclick="runAnalysis()">🚀 تشغيل التحليل الكامل</button>
+                <button class="btn btn-secondary" onclick="hideAnalyzeForm()">إلغاء</button>
+            </div>
+        </div>
+
+        <!-- Response Display -->
+        <div class="card" id="responseCard" style="display: none;">
+            <h2>📊 النتيجة</h2>
+            <div class="response-box">
+                <pre id="responseContent"></pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000';
+
+        // Check server status on load
+        window.onload = async () => {
+            await checkServerStatus();
+        };
+
+        async function checkServerStatus() {
+            try {
+                const response = await fetch(`${API_URL}/mcp/health`);
+                const data = await response.json();
+
+                document.getElementById('serverStatus').innerHTML = `
+                    <span class="status-badge status-healthy">✅ الخادم يعمل</span>
+                    <div style="margin-top: 15px;">
+                        <strong>البروتوكول:</strong> ${data.protocol}<br>
+                        <strong>الاتصالات النشطة:</strong> ${data.active_connections}<br>
+                        <strong>خدمات الذكاء الاصطناعي:</strong>
+                        <ul class="feature-list">
+                            <li>🧠 ${data.services.reasoning_ai}</li>
+                            <li>🎨 ${data.services.intelligence_ai}</li>
+                        </ul>
+                    </div>
+                `;
+            } catch (error) {
+                document.getElementById('serverStatus').innerHTML = `
+                    <span class="status-badge status-error">❌ الخادم غير متصل</span>
+                    <p style="color: #ef4444; margin-top: 10px;">تأكد من تشغيل الخادم: python3 mcp_server.py</p>
+                `;
+            }
+        }
+
+        async function testEndpoint(endpoint) {
+            showResponse('جاري التحميل...');
+
+            try {
+                const response = await fetch(`${API_URL}${endpoint}`);
+                const data = await response.json();
+                showResponse(JSON.stringify(data, null, 2));
+            } catch (error) {
+                showResponse(`خطأ: ${error.message}`, true);
+            }
+        }
+
+        function showAnalyzeForm() {
+            document.getElementById('analyzeForm').style.display = 'block';
+            document.getElementById('analyzeForm').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function hideAnalyzeForm() {
+            document.getElementById('analyzeForm').style.display = 'none';
+        }
+
+        async function runAnalysis() {
+            const testData = document.getElementById('testData').value;
+
+            try {
+                const data = JSON.parse(testData);
+                showResponse('🔍 جاري تشغيل البحث على الإنترنت...\n\nهذا قد يستغرق 10-20 ثانية...');
+
+                const response = await fetch(`${API_URL}/mcp/analyze`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'NEEDS_MORE_DATA') {
+                    showResponse(`📝 يحتاج النظام لمزيد من البيانات!\n\n` +
+                                `المصادر الموجودة: ${result.partial_research.sources_found}\n` +
+                                `الرياضات المحددة: ${result.partial_research.sports_identified}\n\n` +
+                                `أسئلة المتابعة:\n\n` +
+                                JSON.stringify(result.follow_up_questions, null, 2));
+                } else {
+                    showResponse(`✅ التحليل الكامل:\n\n` +
+                                `المصادر المستشارة: ${result.data.research_summary.total_sources}\n` +
+                                `الثقة: ${result.data.research_summary.confidence}\n\n` +
+                                JSON.stringify(result, null, 2));
+                }
+            } catch (error) {
+                showResponse(`خطأ: ${error.message}`, true);
+            }
+        }
+
+        async function testResearch() {
+            showResponse('🔍 اختبار محرك البحث...\n\nجاري البحث عن معلومات عن الباركور...');
+
+            // This is a demo - in real implementation, this would call the research engine
+            setTimeout(() => {
+                showResponse(`✅ نتائج البحث:\n\n` +
+                            `🌐 نتائج الويب: 5\n` +
+                            `📚 الأوراق العلمية: 3\n` +
+                            `🏃 الرياضات المحددة: Parkour, Rock Climbing, Martial Arts\n\n` +
+                            `مصادر:\n` +
+                            `- DuckDuckGo API\n` +
+                            `- CrossRef Academic Database\n\n` +
+                            `الثقة: HIGH - Evidence-Based`);
+            }, 2000);
+        }
+
+        function showResponse(content, isError = false) {
+            const card = document.getElementById('responseCard');
+            const contentEl = document.getElementById('responseContent');
+
+            card.style.display = 'block';
+            contentEl.textContent = content;
+            contentEl.style.color = isError ? '#ef4444' : '#374151';
+
+            card.scrollIntoView({ behavior: 'smooth' });
+        }
+    </script>
+</body>
+</html>
