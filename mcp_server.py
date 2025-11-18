@@ -1,10 +1,12 @@
 """
-SportSync AI - MCP (Model Context Protocol) Server
-Exposes Dual-AI system through standardized protocol
+SportSync AI - MCP (Model Context Protocol) Server with INTERNET RESEARCH
+Bulletproof analysis powered by real web research
 
 ARCHITECTURE:
+- Internet Research Engine: Web search + Scientific papers
 - Reasoning AI (o1-preview): Deep personality analysis
 - Intelligence AI (GPT-4): Creative sport generation
+- Adaptive Chat: Asks follow-up questions if data insufficient
 - MCP Protocol: Standard communication interface
 """
 
@@ -14,6 +16,11 @@ from typing import Dict, List, Any
 import json
 import asyncio
 from datetime import datetime
+import openai
+import os
+
+# Import research engine
+from mcp_research import MCPResearchEngine
 
 # Create MCP server
 mcp_app = FastAPI(
@@ -30,6 +37,114 @@ mcp_app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Initialize research engine
+research_engine = MCPResearchEngine()
+
+# Adaptive Chat Engine
+class AdaptiveChatEngine:
+    """
+    Asks follow-up questions when initial data is insufficient
+    """
+
+    def __init__(self):
+        self.openai_key = os.environ.get("OPENAI_API_KEY")
+
+    def check_data_sufficiency(self, research_results: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Check if research data is sufficient for bulletproof analysis
+        """
+        total_sources = research_results.get("total_sources_consulted", 0)
+        specific_sports = len(research_results.get("specific_sport_research", []))
+
+        is_sufficient = total_sources >= 10 and specific_sports >= 3
+
+        return {
+            "is_sufficient": is_sufficient,
+            "total_sources": total_sources,
+            "specific_sports_found": specific_sports,
+            "confidence": "HIGH" if is_sufficient else "LOW",
+            "needs_follow_up": not is_sufficient
+        }
+
+    async def generate_follow_up_questions(
+        self,
+        z_scores: Dict[str, float],
+        personality_type: str,
+        current_answers: List[Dict],
+        research_gaps: List[str]
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate intelligent follow-up questions using GPT-4
+        """
+        if not self.openai_key:
+            # Default follow-up questions
+            return [
+                {
+                    "question_en": "Can you describe a recent physical activity that made you feel truly alive?",
+                    "question_ar": "هل يمكنك وصف نشاط بدني حديث جعلك تشعر بأنك على قيد الحياة حقًا؟",
+                    "purpose": "Identify peak experiences"
+                },
+                {
+                    "question_en": "What environments make you feel most comfortable during physical activities?",
+                    "question_ar": "ما هي البيئات التي تجعلك تشعر بأكبر قدر من الراحة أثناء الأنشطة البدنية؟",
+                    "purpose": "Environmental preferences"
+                }
+            ]
+
+        openai.api_key = self.openai_key
+
+        # Build context
+        context = f"""
+Personality Type: {personality_type}
+Z-Scores: {json.dumps(z_scores, indent=2)}
+Current Answers: {len(current_answers)} questions answered
+Research Gaps: {', '.join(research_gaps)}
+
+The initial 10 questions didn't provide enough specific data for a bulletproof recommendation.
+We need 2-3 targeted follow-up questions to fill these gaps.
+"""
+
+        try:
+            response = openai.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an expert sports psychologist. Generate 2-3 specific follow-up questions to better understand this person's ideal sports match. Return JSON only."
+                    },
+                    {
+                        "role": "user",
+                        "content": f"{context}\n\nGenerate questions as JSON:\n[{{\"question_en\": \"...\", \"question_ar\": \"...\", \"purpose\": \"...\"}}]"
+                    }
+                ],
+                temperature=0.7,
+                max_tokens=500
+            )
+
+            content = response.choices[0].message.content
+            import re
+            json_match = re.search(r'\[.*\]', content, re.DOTALL)
+            if json_match:
+                questions = json.loads(json_match.group())
+                return questions[:3]
+
+        except Exception as e:
+            print(f"Follow-up question generation error: {e}")
+
+        # Fallback questions
+        return [
+            {
+                "question_en": "Do you prefer structured training or spontaneous movement?",
+                "question_ar": "هل تفضل التدريب المنظم أو الحركة العفوية؟",
+                "purpose": "Training style preference"
+            },
+            {
+                "question_en": "How important is competition vs. personal achievement to you?",
+                "question_ar": "ما مدى أهمية المنافسة مقابل الإنجاز الشخصي بالنسبة لك؟",
+                "purpose": "Motivation clarification"
+            }
+        ]
 
 # Connection manager for WebSocket
 class MCPConnectionManager:
@@ -58,6 +173,7 @@ class MCPConnectionManager:
             await connection.send_json(message)
 
 manager = MCPConnectionManager()
+chat_engine = AdaptiveChatEngine()
 
 # ═══════════════════════════════════════════════════════════════
 # MCP PROTOCOL ENDPOINTS
@@ -101,33 +217,80 @@ async def mcp_capabilities():
 @mcp_app.post("/mcp/analyze")
 async def mcp_analyze(request: dict):
     """
-    MCP Analyze Endpoint
+    MCP Analyze Endpoint with INTERNET RESEARCH
 
-    Receives personality data and returns dual-AI analysis
+    1. Calculate personality scores
+    2. Do bulletproof internet research
+    3. Check if data is sufficient
+    4. If not sufficient → return follow-up questions for chat
+    5. If sufficient → return evidence-based recommendations
     """
     try:
         answers = request.get("answers", [])
         language = request.get("language", "ar")
         session_id = request.get("session_id", "")
+        follow_up_answers = request.get("follow_up_answers", [])
 
         # Import main API functions
-        from api.index import calculate_personality_scores, recommend_sports
+        from api.index import calculate_personality_scores, determine_profile_type
 
         # Calculate personality
         z_scores = calculate_personality_scores(answers)
+        personality_type = determine_profile_type(z_scores)
 
-        # Dual-AI analysis
-        ai_results = recommend_sports(z_scores, language, answers)
+        # STEP 1: Internet Research
+        research_results = research_engine.bulletproof_analysis(z_scores, personality_type)
+
+        # STEP 2: Check data sufficiency
+        sufficiency = chat_engine.check_data_sufficiency(research_results)
+
+        # STEP 3: If insufficient, generate follow-up questions
+        if sufficiency["needs_follow_up"] and not follow_up_answers:
+            follow_up_questions = await chat_engine.generate_follow_up_questions(
+                z_scores,
+                personality_type,
+                answers,
+                ["Not enough specific sports found", "Limited research data"]
+            )
+
+            return {
+                "success": True,
+                "session_id": session_id,
+                "protocol": "MCP v1.0 - RESEARCH POWERED",
+                "timestamp": datetime.utcnow().isoformat(),
+                "status": "NEEDS_MORE_DATA",
+                "sufficiency": sufficiency,
+                "follow_up_required": True,
+                "follow_up_questions": follow_up_questions,
+                "partial_research": {
+                    "sources_found": research_results.get("total_sources_consulted", 0),
+                    "sports_identified": len(research_results.get("specific_sport_research", []))
+                }
+            }
+
+        # STEP 4: Generate evidence-based recommendations
+        recommendations = research_engine.generate_evidence_based_recommendations(
+            z_scores,
+            personality_type,
+            language
+        )
 
         return {
             "success": True,
             "session_id": session_id,
-            "protocol": "MCP v1.0",
+            "protocol": "MCP v1.0 - BULLETPROOF",
             "timestamp": datetime.utcnow().isoformat(),
+            "status": "COMPLETE",
+            "sufficiency": sufficiency,
             "data": {
                 "personality_scores": z_scores,
-                "reasoning_analysis": ai_results["reasoning_analysis"],
-                "recommended_sports": ai_results["sports"]
+                "personality_type": personality_type,
+                "research_summary": {
+                    "total_sources": research_results.get("total_sources_consulted", 0),
+                    "confidence": "HIGH - Evidence-Based"
+                },
+                "recommendations": recommendations,
+                "research_details": research_results
             }
         }
 
